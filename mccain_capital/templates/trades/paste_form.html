@@ -1,0 +1,21 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">📋 Paste Trades (tabs please ✅)</div>
+  <div class="tiny stack10 line15">
+    Pro tip: copy straight from your sheet/log, keep the tabs.
+    <div class="hr"></div>
+    Example:<br/><code class="preWrapMuted">{{ example }}</code>
+  </div>
+  <div class="hr"></div>
+  <form method="post">
+    <input type="hidden" name="selected_account_id" value="{{ selected_account_id }}" />
+    <div class="stack12">
+      <label>📎 Paste here</label>
+      <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
+    </div>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">🚀 Import</button>
+      <a class="btn" href="/trades">← Back</a>
+    </div>
+  </form>
+</div></div>

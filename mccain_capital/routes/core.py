@@ -64,6 +64,7 @@ def register(app):
     )
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
+    app.add_url_rule("/executive", endpoint="executive_dashboard", view_func=h.executive_dashboard)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
     app.add_url_rule("/market-pulse", endpoint="market_pulse_page", view_func=h.market_pulse_page)
     app.add_url_rule(
@@ -79,6 +80,12 @@ def register(app):
         "/api/market-pulse/context",
         endpoint="market_pulse_context_api",
         view_func=h.market_pulse_context_api,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/gamma-ladder",
+        endpoint="gamma_ladder_api",
+        view_func=h.gamma_ladder_api,
         methods=["GET"],
     )
     app.add_url_rule(
@@ -115,6 +122,36 @@ def register(app):
         "/dashboard/recompute-balances",
         endpoint="dashboard_recompute_balances",
         view_func=h.dashboard_recompute_balances,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-metrics",
+        endpoint="dashboard_refresh_account_metrics",
+        view_func=h.dashboard_refresh_account_metrics,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/vanquish-session",
+        endpoint="dashboard_seed_vanquish_session",
+        view_func=h.dashboard_seed_vanquish_session,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-drawdown",
+        endpoint="dashboard_manual_drawdown_update",
+        view_func=h.dashboard_manual_drawdown_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-manual-metrics",
+        endpoint="dashboard_manual_broker_metrics_update",
+        view_func=h.dashboard_manual_broker_metrics_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-equity",
+        endpoint="dashboard_manual_equity_update",
+        view_func=h.dashboard_manual_equity_update,
         methods=["POST"],
     )
     app.add_url_rule(

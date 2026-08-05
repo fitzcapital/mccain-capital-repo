@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -22,6 +23,8 @@ SOURCE_PLACEHOLDER_SETUPS = {
     "balance snapshot",
     "imported",
 }
+
+DEFAULT_PROP_FIRM = "Vanquish"
 
 
 def _trade_clock_to_minutes(value: Any) -> Optional[int]:
@@ -58,6 +61,86 @@ def compute_hold_minutes(entry_time: Any, exit_time: Any) -> Optional[int]:
 
 def _normalize_filter_value(raw: Any) -> str:
     return str(raw or "").strip()
+
+
+def normalize_broker_account_id(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if ":" in raw:
+        prefix, suffix = raw.split(":", 1)
+        cleaned_suffix = suffix.strip()
+        if not cleaned_suffix:
+            return ""
+        return f"{prefix.strip() or 'default'}:{cleaned_suffix}"
+    return f"default:{raw}"
+
+
+def display_broker_account_id(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if ":" in raw:
+        _prefix, suffix = raw.split(":", 1)
+        return suffix.strip()
+    return raw
+
+
+def _continuity_setting_key(account_id: int) -> str:
+    return f"account_continuity::{int(account_id)}"
+
+
+def set_account_continuity(account_id: int, linked_account_ids: list[int]) -> None:
+    active_id = int(account_id or 0)
+    if active_id <= 0:
+        return
+    linked = [i for i in _clean_account_ids(linked_account_ids) if i != active_id]
+    set_setting_value(_continuity_setting_key(active_id), json.dumps(linked))
+
+
+def account_continuity_ids(account_id: int | None) -> list[int]:
+    active_id = int(account_id or 0)
+    if active_id <= 0:
+        return []
+    raw = str(get_setting_value(_continuity_setting_key(active_id), "[]") or "[]").strip()
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = []
+    linked = _clean_account_ids(parsed if isinstance(parsed, list) else [])
+    return _clean_account_ids([*linked, active_id])
+
+
+def account_continuity_label(account_id: int | None) -> str:
+    ids = account_continuity_ids(account_id)
+    if len(ids) <= 1:
+        return ""
+    accounts = [get_account(account_id) for account_id in ids]
+    labels = [
+        str(
+            (account or {}).get("display_broker_account_id")
+            or (account or {}).get("account_name")
+            or ""
+        )
+        for account in accounts
+    ]
+    return " + ".join(label for label in labels if label)
+
+
+def maybe_link_rollover_account(new_account_id: int, prior_account_id: int | None) -> bool:
+    if not new_account_id or not prior_account_id or int(new_account_id) == int(prior_account_id):
+        return False
+    new_account = get_account(int(new_account_id))
+    prior_account = get_account(int(prior_account_id))
+    if not new_account or not prior_account:
+        return False
+    new_broker = display_broker_account_id(new_account.get("broker_account_id")).upper()
+    prior_broker = display_broker_account_id(prior_account.get("broker_account_id")).upper()
+    if not (new_broker.startswith("OPA") and prior_broker.startswith("OEV")):
+        return False
+    existing = [i for i in account_continuity_ids(int(new_account_id)) if i != int(new_account_id)]
+    set_account_continuity(int(new_account_id), [*existing, int(prior_account_id)])
+    return True
 
 
 def clean_setup_label(raw: Any) -> str:
@@ -165,7 +248,14 @@ def _enrich_trade_review_fields(row: Dict[str, Any]) -> Dict[str, Any]:
     return enriched
 
 
-def fetch_trades(d: str = "", q: str = "", filters: Optional[Dict[str, Any]] = None):
+def fetch_trades(
+    d: str = "",
+    q: str = "",
+    filters: Optional[Dict[str, Any]] = None,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+):
     d = (d or "").strip()
     q = (q or "").strip()
     normalized = normalize_trade_filters(filters)
@@ -212,6 +302,10 @@ def fetch_trades(d: str = "", q: str = "", filters: Optional[Dict[str, Any]] = N
     if d:
         where.append("t.trade_date = ?")
         params.append(d)
+    account_filter, account_params = _account_scope_filter(account_id, account_ids, prefix="t.")
+    if account_filter:
+        where.append(account_filter)
+        params.extend(account_params)
 
     if q:
         where.append("(t.ticker LIKE ? OR t.opt_type LIKE ? OR t.raw_line LIKE ?)")
@@ -239,6 +333,411 @@ def fetch_trades(d: str = "", q: str = "", filters: Optional[Dict[str, Any]] = N
     return [row for row in enriched_rows if _row_matches_trade_filters(row, normalized)]
 
 
+def _active_account_record_id() -> int:
+    raw = str(get_setting_value("active_account_record_id", "") or "").strip()
+    return int(raw) if raw.isdigit() else 0
+
+
+def _clean_account_ids(account_ids: Any) -> list[int]:
+    cleaned: list[int] = []
+    seen: set[int] = set()
+    for raw in list(account_ids or []):
+        try:
+            account_id = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if account_id <= 0 or account_id in seen:
+            continue
+        cleaned.append(account_id)
+        seen.add(account_id)
+    return cleaned
+
+
+def _account_scope_filter(
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+    *,
+    prefix: str = "",
+) -> tuple[str, list[Any]]:
+    if account_id:
+        return f"{prefix}account_id = ?", [int(account_id)]
+    cleaned = _clean_account_ids(account_ids)
+    if not cleaned:
+        return "", []
+    marks = ",".join(["?"] * len(cleaned))
+    return f"{prefix}account_id IN ({marks})", list(cleaned)
+
+
+def _trade_scope_clause(
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+    start_date: str = "",
+    end_date: str = "",
+    alias: str = "",
+) -> tuple[list[str], list[Any]]:
+    prefix = f"{alias}." if alias else ""
+    where: list[str] = []
+    params: list[Any] = []
+    account_filter, account_params = _account_scope_filter(
+        account_id,
+        account_ids,
+        prefix=prefix,
+    )
+    if account_filter:
+        where.append(account_filter)
+        params.extend(account_params)
+    if start_date:
+        where.append(f"{prefix}trade_date >= ?")
+        params.append(str(start_date))
+    if end_date:
+        where.append(f"{prefix}trade_date < ?")
+        params.append(str(end_date))
+    return where, params
+
+
+def _account_display_size(row: Dict[str, Any]) -> float:
+    account_size = row.get("account_size")
+    if account_size not in (None, ""):
+        try:
+            return float(account_size)
+        except Exception:
+            pass
+    try:
+        return float(row.get("starting_balance") or 0.0)
+    except Exception:
+        return 0.0
+
+
+def get_account(account_id: int) -> Optional[Dict[str, Any]]:
+    if not account_id:
+        return None
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM accounts
+            WHERE id = ? AND archived = 0
+            LIMIT 1
+            """,
+            (int(account_id),),
+        ).fetchone()
+    if not row:
+        return None
+    account = dict(row)
+    account["prop_firm"] = str(account.get("prop_firm") or "").strip() or DEFAULT_PROP_FIRM
+    account["display_broker_account_id"] = display_broker_account_id(
+        account.get("broker_account_id")
+    )
+    account["account_size"] = _account_display_size(account)
+    account["current_balance"] = latest_balance_overall(
+        account_id=int(account["id"]),
+        starting_balance=float(account.get("starting_balance") or 0.0),
+    )
+    return account
+
+
+def find_account_by_broker_account_id(
+    broker_account_id: str, *, include_archived: bool = False
+) -> Optional[Dict[str, Any]]:
+    normalized = normalize_broker_account_id(broker_account_id)
+    if not normalized:
+        return None
+    archived_filter = "" if include_archived else "AND archived = 0"
+    with db() as conn:
+        row = conn.execute(
+            f"""
+            SELECT *
+            FROM accounts
+            WHERE broker_account_id = ?
+              {archived_filter}
+            ORDER BY archived ASC, updated_at DESC, created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (normalized,),
+        ).fetchone()
+    if not row:
+        return None
+    account = dict(row)
+    account["prop_firm"] = str(account.get("prop_firm") or "").strip() or DEFAULT_PROP_FIRM
+    account["display_broker_account_id"] = display_broker_account_id(
+        account.get("broker_account_id")
+    )
+    account["account_size"] = _account_display_size(account)
+    account["current_balance"] = latest_balance_overall(
+        account_id=int(account["id"]),
+        starting_balance=float(account.get("starting_balance") or 0.0),
+    )
+    return account
+
+
+def list_accounts(include_archived: bool = False) -> List[Dict[str, Any]]:
+    where = "" if include_archived else "WHERE archived = 0"
+    with db() as conn:
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                f"""
+                SELECT *
+                FROM accounts
+                {where}
+                ORDER BY archived ASC, created_at DESC, id DESC
+                """
+            ).fetchall()
+        ]
+    accounts: List[Dict[str, Any]] = []
+    for row in rows:
+        row["prop_firm"] = str(row.get("prop_firm") or "").strip() or DEFAULT_PROP_FIRM
+        row["display_broker_account_id"] = display_broker_account_id(row.get("broker_account_id"))
+        row["account_size"] = _account_display_size(row)
+        row["current_balance"] = latest_balance_overall(
+            account_id=int(row["id"]),
+            starting_balance=float(row.get("starting_balance") or 0.0),
+        )
+        accounts.append(row)
+    return accounts
+
+
+def create_account(
+    *,
+    account_name: str,
+    starting_balance: float,
+    prop_firm: str = "",
+    broker_account_id: str = "",
+    account_size: float | None = None,
+    max_drawdown: float = 0.0,
+) -> int:
+    now = now_iso()
+    account_name = str(account_name or "").strip()
+    if not account_name:
+        raise ValueError("account name required")
+    starting = float(starting_balance)
+    size_value = float(account_size if account_size is not None else starting)
+    with db() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO accounts (
+                prop_firm, account_name, broker_account_id, account_size,
+                starting_balance, current_balance, max_drawdown, archived,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                str(prop_firm or "").strip() or DEFAULT_PROP_FIRM,
+                account_name,
+                normalize_broker_account_id(broker_account_id),
+                size_value,
+                starting,
+                starting,
+                float(max_drawdown or 0.0),
+                now,
+                now,
+            ),
+        )
+        account_id = int(cur.lastrowid)
+        conn.commit()
+    return account_id
+
+
+def update_account(
+    account_id: int,
+    *,
+    account_name: str,
+    starting_balance: float,
+    prop_firm: str = "",
+    broker_account_id: str = "",
+    account_size: float | None = None,
+    max_drawdown: float = 0.0,
+) -> None:
+    now = now_iso()
+    starting = float(starting_balance)
+    size_value = float(account_size if account_size is not None else starting)
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE accounts
+            SET prop_firm = ?,
+                account_name = ?,
+                broker_account_id = ?,
+                account_size = ?,
+                starting_balance = ?,
+                max_drawdown = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                str(prop_firm or "").strip() or DEFAULT_PROP_FIRM,
+                str(account_name or "").strip(),
+                normalize_broker_account_id(broker_account_id),
+                size_value,
+                starting,
+                float(max_drawdown or 0.0),
+                now,
+                int(account_id),
+            ),
+        )
+        conn.commit()
+
+
+def update_account_broker_metrics(
+    account_id: int,
+    *,
+    broker_equity: float | None = None,
+    broker_equity_peak: float | None = None,
+    broker_remaining_drawdown: float | None = None,
+    broker_max_loss: float | None = None,
+    updated_at: str | None = None,
+) -> None:
+    if not account_id:
+        return
+    now = updated_at or now_iso()
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE accounts
+            SET broker_equity = ?,
+                broker_equity_peak = ?,
+                broker_remaining_drawdown = ?,
+                broker_max_loss = ?,
+                broker_metrics_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                broker_equity,
+                broker_equity_peak,
+                broker_remaining_drawdown,
+                broker_max_loss,
+                now,
+                now,
+                int(account_id),
+            ),
+        )
+        conn.commit()
+
+
+def update_account_broker_equity_from_statement(
+    account_id: int,
+    *,
+    broker_equity: float,
+    updated_at: str | None = None,
+) -> None:
+    if not account_id:
+        return
+    now = updated_at or now_iso()
+    equity = float(broker_equity)
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT broker_equity_peak
+            FROM accounts
+            WHERE id = ?
+            LIMIT 1
+            """,
+            (int(account_id),),
+        ).fetchone()
+        existing_peak = row["broker_equity_peak"] if row else None
+        broker_equity_peak = equity
+        if existing_peak is not None:
+            try:
+                broker_equity_peak = max(float(existing_peak), equity)
+            except (TypeError, ValueError):
+                broker_equity_peak = equity
+        conn.execute(
+            """
+            UPDATE accounts
+            SET broker_equity = ?,
+                broker_equity_peak = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                equity,
+                broker_equity_peak,
+                now,
+                int(account_id),
+            ),
+        )
+        conn.commit()
+
+
+def archive_account(account_id: int) -> None:
+    now = now_iso()
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE accounts
+            SET archived = 1,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (now, int(account_id)),
+        )
+        conn.commit()
+
+
+def restore_account(account_id: int) -> None:
+    now = now_iso()
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE accounts
+            SET archived = 0,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (now, int(account_id)),
+        )
+        conn.commit()
+
+
+def set_active_account(account_id: int | None) -> None:
+    if not account_id:
+        set_setting_value("active_account_record_id", "")
+        clear_account_scope()
+        return
+    account = get_account(int(account_id))
+    if not account:
+        set_setting_value("active_account_record_id", "")
+        return
+    set_setting_value("active_account_record_id", str(int(account["id"])))
+    set_setting_value("active_account_id", str(account.get("broker_account_id") or "").strip())
+    set_setting_value("active_account_name", str(account.get("account_name") or "").strip())
+    set_setting_value("active_account_label", str(account.get("account_name") or "").strip())
+    set_setting_value("active_account_type", str(account.get("prop_firm") or "").strip())
+    set_setting_value(
+        "active_account_start_balance",
+        f"{float(account.get('starting_balance') or 0.0):.2f}",
+    )
+    set_setting_value("active_account_start_date", "")
+
+
+def create_upload(
+    *,
+    account_id: int,
+    filename: str,
+    source: str,
+    import_batch_id: str = "",
+) -> int:
+    with db() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO uploads (account_id, filename, source, import_batch_id, uploaded_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                int(account_id),
+                str(filename or "").strip(),
+                str(source or "").strip(),
+                str(import_batch_id or "").strip(),
+                now_iso(),
+            ),
+        )
+        upload_id = int(cur.lastrowid)
+        conn.commit()
+    return upload_id
+
+
 def fetch_latest_trade_date() -> str:
     with db() as conn:
         row = conn.execute(
@@ -253,21 +752,37 @@ def fetch_latest_trade_date() -> str:
     return str(row["trade_date"] or "").strip() if row else ""
 
 
-def fetch_trades_range(start_iso: str, end_iso: str):
+def fetch_trades_range(
+    start_iso: str,
+    end_iso: str,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+):
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [start_iso, end_iso]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
         return list(
             conn.execute(
                 """
             SELECT * FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
+            WHERE """
+                + " AND ".join(where)
+                + """
             ORDER BY trade_date ASC, id ASC
             """,
-                (start_iso, end_iso),
+                params,
             ).fetchall()
         )
 
 
-def fetch_open_positions(as_of: str = "", q: str = "") -> List[Dict[str, Any]]:
+def fetch_open_positions(
+    as_of: str = "", q: str = "", *, account_id: int | None = None
+) -> List[Dict[str, Any]]:
     where: List[str] = [
         "(COALESCE(exit_time, '') = '' OR exit_price IS NULL OR net_pl IS NULL)",
         "COALESCE(contracts, 0) > 0",
@@ -280,6 +795,9 @@ def fetch_open_positions(as_of: str = "", q: str = "") -> List[Dict[str, Any]]:
         like = f"%{q.strip()}%"
         where.append("(ticker LIKE ? OR opt_type LIKE ? OR raw_line LIKE ?)")
         params.extend([like, like, like])
+    if account_id:
+        where.append("account_id = ?")
+        params.append(int(account_id))
 
     sql = f"""
         SELECT *
@@ -596,19 +1114,24 @@ def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     return {int(r["trade_id"]): dict(r) for r in rows}
 
 
-def day_net_total(day_iso: str) -> float:
+def day_net_total(day_iso: str, *, account_id: int | None = None) -> float:
     with db() as conn:
+        where = ["trade_date = ?"]
+        params: list[Any] = [day_iso]
+        if account_id:
+            where.append("account_id = ?")
+            params.append(int(account_id))
         row = conn.execute(
-            "SELECT COALESCE(SUM(net_pl), 0) AS total FROM trades WHERE trade_date = ?",
-            (day_iso,),
+            "SELECT COALESCE(SUM(net_pl), 0) AS total FROM trades WHERE " + " AND ".join(where),
+            params,
         ).fetchone()
     return float((row["total"] if row else 0.0) or 0.0)
 
 
 def trade_lockout_state(
-    day_iso: str, *, daily_max_loss: float, enforce_lockout: int
+    day_iso: str, *, daily_max_loss: float, enforce_lockout: int, account_id: int | None = None
 ) -> Dict[str, Any]:
-    day_net = day_net_total(day_iso)
+    day_net = day_net_total(day_iso, account_id=account_id)
     max_loss = abs(float(daily_max_loss or 0.0))
     locked = bool(enforce_lockout) and max_loss > 0 and day_net <= (-max_loss)
     return {
@@ -658,9 +1181,48 @@ def trade_day_stats(trades: List[object]) -> Dict[str, Any]:
     }
 
 
+def _empty_consistency() -> Dict[str, Any]:
+    return {
+        "ratio": None,
+        "status": "—",
+        "class": "",
+        "biggest": 0.0,
+        "denom": 0.0,
+        "next_win_cap": None,
+        "remaining_room": None,
+        "cap_available": False,
+        "cap_status": "unavailable",
+    }
+
+
+def _consistency_cap(
+    *,
+    biggest: float,
+    denom: float,
+    ratio: Optional[float],
+    threshold: float = 0.30,
+) -> Dict[str, Any]:
+    if ratio is None or denom <= 0 or threshold <= 0 or threshold >= 1:
+        return {
+            "next_win_cap": None,
+            "remaining_room": None,
+            "cap_available": False,
+            "cap_status": "unavailable",
+        }
+
+    max_next_win = (threshold * denom) / (1.0 - threshold)
+    remaining_room = max_next_win - biggest
+    return {
+        "next_win_cap": max_next_win,
+        "remaining_room": remaining_room,
+        "cap_available": True,
+        "cap_status": "over" if ratio > threshold else "within",
+    }
+
+
 def calc_consistency(trades: List[object]) -> Dict[str, Any]:
     if not trades:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+        return _empty_consistency()
 
     net_vals: List[float] = []
     for t in trades:
@@ -676,7 +1238,7 @@ def calc_consistency(trades: List[object]) -> Dict[str, Any]:
             continue
 
     if not net_vals:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+        return _empty_consistency()
 
     total_pnl = sum(net_vals)
     winners = [v for v in net_vals if v > 0]
@@ -691,7 +1253,7 @@ def calc_consistency(trades: List[object]) -> Dict[str, Any]:
         denom = abs(total_pnl)
         ratio = (biggest / denom) if denom else None
     else:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+        return _empty_consistency()
 
     ok = (ratio is not None) and (ratio <= 0.30)
     return {
@@ -700,6 +1262,7 @@ def calc_consistency(trades: List[object]) -> Dict[str, Any]:
         "class": "glow-green" if ok else "glow-red",
         "biggest": biggest,
         "denom": denom,
+        **_consistency_cap(biggest=biggest, denom=denom, ratio=ratio),
     }
 
 
@@ -712,21 +1275,48 @@ def week_range_for(day_iso: Optional[str]) -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
-def week_total_net(day_iso: str) -> float:
+def week_total_net(
+    day_iso: str,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+) -> float:
     start, end = week_range_for(day_iso)
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [start, end]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
         row = conn.execute(
             """
             SELECT COALESCE(SUM(net_pl), 0) AS net
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            """,
-            (start, end),
+            WHERE """
+            + " AND ".join(where),
+            params,
         ).fetchone()
     return float(row["net"] or 0.0)
 
 
 def account_scope_snapshot() -> Dict[str, Any]:
+    active_id = _active_account_record_id()
+    if active_id:
+        account = get_account(active_id)
+        if account:
+            return {
+                "enabled": True,
+                "start_date": "",
+                "starting_balance": float(account.get("starting_balance") or 0.0),
+                "label": str(account.get("account_name") or "").strip(),
+                "account_id": str(account.get("id") or ""),
+                "account_name": str(account.get("account_name") or "").strip(),
+                "account_type": str(account.get("prop_firm") or "").strip(),
+                "broker_account_id": str(account.get("broker_account_id") or "").strip(),
+                "account_size": float(account.get("account_size") or 0.0),
+                "current_balance": float(account.get("current_balance") or 0.0),
+            }
     start_date = str(get_setting_value("active_account_start_date", "") or "").strip()
     label = str(get_setting_value("active_account_label", "") or "").strip()
     account_id = str(get_setting_value("active_account_id", "") or "").strip()
@@ -741,6 +1331,8 @@ def account_scope_snapshot() -> Dict[str, Any]:
             "account_id": account_id,
             "account_name": account_name,
             "account_type": account_type,
+            "broker_account_id": account_id,
+            "account_size": float(get_setting_float("starting_balance", 50000.0)),
         }
     try:
         datetime.strptime(start_date, "%Y-%m-%d")
@@ -753,6 +1345,8 @@ def account_scope_snapshot() -> Dict[str, Any]:
             "account_id": account_id,
             "account_name": account_name,
             "account_type": account_type,
+            "broker_account_id": account_id,
+            "account_size": float(get_setting_float("starting_balance", 50000.0)),
         }
     scoped_starting = float(
         get_setting_float(
@@ -767,10 +1361,28 @@ def account_scope_snapshot() -> Dict[str, Any]:
         "account_id": account_id,
         "account_name": account_name,
         "account_type": account_type,
+        "broker_account_id": account_id,
+        "account_size": scoped_starting,
     }
 
 
 def save_account_scope(start_date: str, starting_balance: float, label: str = "") -> None:
+    active_id = _active_account_record_id()
+    if active_id:
+        account = get_account(active_id)
+        if account:
+            update_account(
+                active_id,
+                account_name=str(label or account.get("account_name") or "").strip()
+                or str(account.get("account_name") or "").strip(),
+                starting_balance=float(starting_balance),
+                prop_firm=str(account.get("prop_firm") or "").strip(),
+                broker_account_id=str(account.get("broker_account_id") or "").strip(),
+                account_size=float(starting_balance),
+                max_drawdown=float(account.get("max_drawdown") or 0.0),
+            )
+            set_active_account(active_id)
+            return
     set_setting_value("active_account_start_date", str(start_date).strip())
     set_setting_value("active_account_start_balance", f"{float(starting_balance):.2f}")
     set_setting_value("active_account_label", str(label or "").strip())
@@ -779,6 +1391,7 @@ def save_account_scope(start_date: str, starting_balance: float, label: str = ""
 
 
 def clear_account_scope() -> None:
+    set_setting_value("active_account_record_id", "")
     set_setting_value("active_account_start_date", "")
     set_setting_value("active_account_start_balance", "")
     set_setting_value("active_account_label", "")
@@ -789,15 +1402,23 @@ def clear_trades() -> None:
         conn.execute("DELETE FROM trades")
 
 
-def recompute_balances(starting_balance: float = 50000.0) -> None:
+def recompute_balances(starting_balance: float = 50000.0, *, account_id: int | None = None) -> None:
     with db() as conn:
-        rows = conn.execute(
-            """
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+        except Exception:
+            cols = []
+        where, params = _trade_scope_clause(account_id=account_id)
+        if "ticker" in cols:
+            where.append("COALESCE(ticker, '') <> 'ACCT'")
+        query = """
             SELECT id, net_pl
             FROM trades
-            ORDER BY trade_date ASC, id ASC
-            """
-        ).fetchall()
+        """
+        if where:
+            query += " WHERE " + " AND ".join(where)
+        query += " ORDER BY trade_date ASC, id ASC"
+        rows = conn.execute(query, params).fetchall()
         bal = float(starting_balance)
         conn.execute("BEGIN")
         for r in rows:
@@ -830,6 +1451,8 @@ def latest_trade_day() -> Optional[date]:
 def latest_balance_overall(
     as_of: str | None = None,
     *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
     start_date: str | None = None,
     starting_balance: float | None = None,
 ) -> float:
@@ -867,9 +1490,15 @@ def latest_balance_overall(
             pnl_q = _q(pnl_col)
             where: list[str] = []
             params: list[Any] = []
-            if date_col and start_date:
-                where.append(f"{_q(date_col)} >= ?")
-                params.append(str(start_date))
+            scope_where, scope_params = _trade_scope_clause(
+                account_id=account_id,
+                account_ids=account_ids,
+                start_date=str(start_date or ""),
+            )
+            where.extend(scope_where)
+            params.extend(scope_params)
+            if "ticker" in cols:
+                where.append("COALESCE(ticker, '') <> 'ACCT'")
             if date_col and as_of:
                 where.append(f"{_q(date_col)} <= ?")
                 params.append(str(as_of))
@@ -892,12 +1521,18 @@ def balance_integrity_snapshot(
     as_of: str | None = None,
     tolerance: float = 0.01,
     *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
     start_date: str | None = None,
     starting_balance: float | None = None,
 ) -> Dict[str, Any]:
     derived = float(
         latest_balance_overall(
-            as_of=as_of, start_date=start_date, starting_balance=starting_balance
+            as_of=as_of,
+            account_id=account_id,
+            account_ids=account_ids,
+            start_date=start_date,
+            starting_balance=starting_balance,
         )
     )
     starting = (
@@ -916,10 +1551,19 @@ def balance_integrity_snapshot(
         ),
         "derived_balance": derived,
         "stored_balance": None,
+        "stored_status_label": "No snapshot",
+        "stored_status_tone": "neutral",
         "delta": None,
         "has_drift": False,
         "tolerance": float(tolerance),
     }
+    if account_id or _clean_account_ids(account_ids):
+        out["source_detail"] = (
+            "Active account views use derived ledger math. "
+            "Stored row balance drift is only comparable on all-history ledger rows."
+        )
+        out["stored_status_label"] = "Derived only"
+        return out
     with db() as conn:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
 
@@ -943,6 +1587,9 @@ def balance_integrity_snapshot(
 
         where: list[str] = [f"{_q(bal_col)} IS NOT NULL"]
         params: list[Any] = []
+        if account_id:
+            where.append("account_id = ?")
+            params.append(int(account_id))
         if acct_filter:
             where.append(acct_filter)
         if date_col and start_date:
@@ -969,6 +1616,9 @@ def balance_integrity_snapshot(
         if row and row["bal"] is not None and start_date and date_col:
             pre_where: list[str] = [f"{_q(bal_col)} IS NOT NULL", f"{_q(date_col)} < ?"]
             pre_params: list[Any] = [str(start_date)]
+            if account_id:
+                pre_where.append("account_id = ?")
+                pre_params.append(int(account_id))
             if acct_filter:
                 pre_where.append(acct_filter)
             if as_of:
@@ -1002,8 +1652,10 @@ def balance_integrity_snapshot(
         return out
     delta = derived - stored
     out["stored_balance"] = stored
+    out["stored_status_label"] = "Drift check"
     out["delta"] = delta
     out["has_drift"] = abs(delta) > float(tolerance)
+    out["stored_status_tone"] = "critical" if out["has_drift"] else "healthy"
     if not out["has_drift"]:
         out["source_detail"] = "Stored trade balances match the derived ledger."
     return out
@@ -1013,6 +1665,8 @@ def month_heatmap(
     year: int,
     month: int,
     *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
     start_date: str = "",
     starting_balance: float | None = None,
 ) -> Dict[str, Any]:
@@ -1024,6 +1678,12 @@ def month_heatmap(
         params: list[Any] = [first.isoformat(), nxt.isoformat()]
         bal_where = ["trade_date >= ?", "trade_date < ?", "balance IS NOT NULL"]
         bal_params: list[Any] = [first.isoformat(), nxt.isoformat()]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
+            bal_where.append(account_filter)
+            bal_params.extend(account_params)
         if start_date:
             where.append("trade_date >= ?")
             params.append(str(start_date))
@@ -1063,6 +1723,10 @@ def month_heatmap(
         if start_date:
             pre_where = ["trade_date < ?", "balance IS NOT NULL"]
             pre_params: list[Any] = [str(start_date)]
+            account_filter, account_params = _account_scope_filter(account_id, account_ids)
+            if account_filter:
+                pre_where.append(account_filter)
+                pre_params.extend(account_params)
             if "ticker" in cols:
                 pre_where.append("COALESCE(ticker, '') <> 'ACCT'")
             pre_row = conn.execute(
@@ -1210,30 +1874,34 @@ def month_heatmap(
     }
 
 
-def last_n_trading_day_totals(n: int = 20, since_date: str = "") -> List[float]:
+def last_n_trading_day_totals(
+    n: int = 20,
+    since_date: str = "",
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+) -> List[float]:
     with db() as conn:
+        where: list[str] = []
+        params: list[Any] = []
         if since_date:
-            rows = conn.execute(
-                """
-                SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
-                FROM trades
-                WHERE trade_date >= ?
-                GROUP BY trade_date
-                ORDER BY trade_date DESC
-                LIMIT 200
-                """,
-                (since_date,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
-                FROM trades
-                GROUP BY trade_date
-                ORDER BY trade_date DESC
-                LIMIT 200
-                """
-            ).fetchall()
+            where.append("trade_date >= ?")
+            params.append(since_date)
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
+        rows = conn.execute(
+            f"""
+            SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
+            FROM trades
+            {'WHERE ' + ' AND '.join(where) if where else ''}
+            GROUP BY trade_date
+            ORDER BY trade_date DESC
+            LIMIT 200
+            """,
+            params,
+        ).fetchall()
     out: List[float] = []
     for r in rows:
         try:
@@ -1261,61 +1929,107 @@ def projections_from_daily(
     return {"avg": avg, "base_balance": base, "p5": _proj(5), "p10": _proj(10), "p20": _proj(20)}
 
 
-def month_total_net(year: int, month: int) -> float:
+def month_total_net(
+    year: int,
+    month: int,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+) -> float:
     first = date(year, month, 1)
     nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [first.isoformat(), nxt.isoformat()]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
         row = conn.execute(
-            """
+            f"""
             SELECT COALESCE(SUM(net_pl), 0) AS net
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
+            WHERE {' AND '.join(where)}
             """,
-            (first.isoformat(), nxt.isoformat()),
+            params,
         ).fetchone()
     return float(row["net"] or 0.0)
 
 
-def ytd_total_net(year: int) -> float:
+def ytd_total_net(
+    year: int,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+) -> float:
     start = date(year, 1, 1)
     end = date(year + 1, 1, 1)
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [start.isoformat(), end.isoformat()]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
         row = conn.execute(
-            """
+            f"""
             SELECT COALESCE(SUM(net_pl), 0) AS net
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
+            WHERE {' AND '.join(where)}
             """,
-            (start.isoformat(), end.isoformat()),
+            params,
         ).fetchone()
     return float(row["net"] or 0.0)
 
 
-def month_trade_count(year: int, month: int) -> int:
+def month_trade_count(
+    year: int,
+    month: int,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+) -> int:
     first = date(year, month, 1)
     nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [first.isoformat(), nxt.isoformat()]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
         row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS c
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
+            WHERE {' AND '.join(where)}
             """,
-            (first.isoformat(), nxt.isoformat()),
+            params,
         ).fetchone()
     return int(row["c"] or 0)
 
 
-def ytd_trade_count(year: int) -> int:
+def ytd_trade_count(
+    year: int,
+    *,
+    account_id: int | None = None,
+    account_ids: list[int] | tuple[int, ...] | None = None,
+) -> int:
     start = date(year, 1, 1)
     end = date(year + 1, 1, 1)
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [start.isoformat(), end.isoformat()]
+        account_filter, account_params = _account_scope_filter(account_id, account_ids)
+        if account_filter:
+            where.append(account_filter)
+            params.extend(account_params)
         row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS c
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
+            WHERE {' AND '.join(where)}
             """,
-            (start.isoformat(), end.isoformat()),
+            params,
         ).fetchone()
     return int(row["c"] or 0)

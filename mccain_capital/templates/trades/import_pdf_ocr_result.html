@@ -1,0 +1,14 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">📄 PDF → OCR → Trades ✅</div>
+  <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted == 1 else 's' }}.</div>
+  {% if msgs %}
+    <div class="hr"></div>
+    <div class="tiny metaBlue line16">
+      {% for m in msgs %}• {{ m }}<br>{% endfor %}
+    </div>
+  {% endif %}
+  {{ reconciliation_html|safe }}
+  <div class="hr"></div>
+  <a class="btn primary" href="/trades">Trades 📅</a>
+  <a class="btn" href="/trades/upload/statement">Upload Another</a>
+</div></div>

@@ -37,6 +37,14 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
         assert {"symbol", "rule_type", "threshold", "enabled"}.issubset(alerts_cols)
         fires_cols = _table_columns(conn, "alert_fires")
         assert {"alert_id", "symbol", "price", "message", "fired_at"}.issubset(fires_cols)
+        account_cols = _table_columns(conn, "accounts")
+        assert {
+            "broker_equity",
+            "broker_equity_peak",
+            "broker_remaining_drawdown",
+            "broker_max_loss",
+            "broker_metrics_updated_at",
+        }.issubset(account_cols)
 
         applied = [
             r[0] for r in conn.execute("SELECT id FROM schema_migrations ORDER BY id").fetchall()
@@ -54,6 +62,8 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0010_trading_blocked_sites",
             "0011_trading_scope_hardening",
             "0012_full_trading_host_coverage",
+            "0013_multi_account_ledgers",
+            "0014_account_broker_metrics",
         ]
     finally:
         conn.close()

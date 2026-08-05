@@ -316,7 +316,9 @@ def self_control_rule_trigger(slug: str):
         duration = int(app_runtime.parse_float(action.get("duration_minutes") or 0) or 0)
         label = str(action.get("label") or rule.get("name") or "Rule Trigger").strip()
         strict_mode = bool(action.get("strict_mode"))
-        blocked_scope = _resolve_block_scope(categories=list(SELF_CONTROL_CATEGORIES), explicit_domains=[])
+        blocked_scope = _resolve_block_scope(
+            categories=list(SELF_CONTROL_CATEGORIES), explicit_domains=[]
+        )
         unlock_requirement = str(action.get("unlock_requirement") or "").strip()
     if duration <= 0:
         flash("This rule is missing a valid duration.", "warning")
@@ -434,7 +436,9 @@ def _recover_stale_session() -> Optional[Dict[str, Any]]:
         "auto_recovered",
         {"status": next_status, "completed_minutes": completed_minutes},
     )
-    _write_enforcement_state_snapshot(repo.get_active_session() if next_status == "awaiting_journal_unlock" else None)
+    _write_enforcement_state_snapshot(
+        repo.get_active_session() if next_status == "awaiting_journal_unlock" else None
+    )
     return repo.get_active_session() if next_status == "awaiting_journal_unlock" else None
 
 
@@ -454,14 +458,19 @@ def _enrich_session(session: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any
     item["strict_label"] = "Strict" if item.get("strict_mode") else "Flexible"
     item["remaining_seconds"] = max(
         0,
-        int((planned_end - now_et).total_seconds()) if planned_end and str(item.get("status")) == "active" else 0,
+        (
+            int((planned_end - now_et).total_seconds())
+            if planned_end and str(item.get("status")) == "active"
+            else 0
+        ),
     )
     item["completed_minutes_label"] = str(item.get("completed_minutes") or 0)
     item["blocked_scope_label"] = (
         f"{len(item.get('blocked_domains') or [])} sites across {len(item.get('blocked_categories') or [])} groups"
     )
     item["requires_journal_unlock"] = (
-        str(item.get("unlock_requirement") or "").strip() == "trade_debrief_today_after_session_start"
+        str(item.get("unlock_requirement") or "").strip()
+        == "trade_debrief_today_after_session_start"
     )
     return item
 
@@ -474,16 +483,25 @@ def _group_sites(sites: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [
         {
             "name": category,
-            "items": sorted(items, key=lambda item: (0 if item.get("enabled") else 1, str(item.get("domain") or ""))),
+            "items": sorted(
+                items,
+                key=lambda item: (0 if item.get("enabled") else 1, str(item.get("domain") or "")),
+            ),
             "enabled_count": sum(1 for item in items if item.get("enabled")),
         }
         for category, items in buckets.items()
     ]
 
 
-def _resolve_block_scope(categories: List[str], explicit_domains: List[str]) -> Dict[str, List[str]]:
-    active_sites = [site for site in repo.list_blocked_sites() if int(site.get("enabled") or 0) == 1]
-    normalized_categories = [str(item or "").strip() for item in categories if str(item or "").strip()]
+def _resolve_block_scope(
+    categories: List[str], explicit_domains: List[str]
+) -> Dict[str, List[str]]:
+    active_sites = [
+        site for site in repo.list_blocked_sites() if int(site.get("enabled") or 0) == 1
+    ]
+    normalized_categories = [
+        str(item or "").strip() for item in categories if str(item or "").strip()
+    ]
     domain_set = {
         str(site.get("domain") or "").strip().lower()
         for site in active_sites
@@ -530,7 +548,9 @@ def _rule_card(
             signal = "Daily max loss threshold not configured."
             tone = "warning"
     elif slug == "midday-reset-after-trade-count":
-        if trade_signals["today_trade_count"] >= int(item.get("trigger_config", {}).get("trade_count") or 0):
+        if trade_signals["today_trade_count"] >= int(
+            item.get("trigger_config", {}).get("trade_count") or 0
+        ):
             signal = "Trade-count threshold reached."
             tone = "warning"
     elif slug == "prevent-immediate-reentry":
@@ -565,7 +585,9 @@ def _enrich_provider_cards(
 ) -> List[Dict[str, Any]]:
     status_payload = _read_enforcement_status()
     helper_active = bool(status_payload.get("active"))
-    helper_connected = bool(status_payload.get("installed") or status_payload.get("last_checked_at"))
+    helper_connected = bool(
+        status_payload.get("installed") or status_payload.get("last_checked_at")
+    )
     managed_mode = str(status_payload.get("mode") or "").strip().lower()
     last_error = str(status_payload.get("last_error") or "").strip()
     out: List[Dict[str, Any]] = []
@@ -626,7 +648,9 @@ def _create_focus_session(payload: Dict[str, Any], *, started_at: Optional[datet
 def _write_enforcement_state_snapshot(session: Optional[Dict[str, Any]]) -> None:
     app_runtime.ensure_storage_dirs()
     os.makedirs(os.path.dirname(SELF_CONTROL_STATE_PATH) or ".", exist_ok=True)
-    active = bool(session and str(session.get("status") or "") in {"active", "awaiting_journal_unlock"})
+    active = bool(
+        session and str(session.get("status") or "") in {"active", "awaiting_journal_unlock"}
+    )
     blocked_categories = list((session or {}).get("blocked_categories") or [])
     blocked_domains = list((session or {}).get("blocked_domains") or [])
     if active:
@@ -669,7 +693,9 @@ def _daily_metrics(
 ) -> Dict[str, Any]:
     today = now_et.date().isoformat()
     sessions_today = [item for item in sessions if _session_day(item) == today]
-    completed_today = [item for item in sessions_today if str(item.get("status") or "") == "completed"]
+    completed_today = [
+        item for item in sessions_today if str(item.get("status") or "") == "completed"
+    ]
     focus_minutes_today = sum(int(item.get("completed_minutes") or 0) for item in sessions_today)
     if any(str(item.get("status") or "") == "active" for item in sessions_today):
         focus_minutes_today += 0
@@ -703,10 +729,14 @@ def _daily_metrics(
             f"{last_broken.get('label')} · {last_broken.get('started_label')}"
             if last_broken
             else (
-                _format_et(_parse_dt(last_broken_event.get("event_at"))) if last_broken_event else "None"
+                _format_et(_parse_dt(last_broken_event.get("event_at")))
+                if last_broken_event
+                else "None"
             )
         ),
-        "compliance_rate": int(round((completed_recent / started_recent) * 100.0)) if started_recent else 100,
+        "compliance_rate": (
+            int(round((completed_recent / started_recent) * 100.0)) if started_recent else 100
+        ),
     }
 
 
@@ -761,12 +791,18 @@ def _daily_max_loss_threshold() -> float:
 
 
 def _journal_unlock_satisfied(session: Dict[str, Any]) -> bool:
-    if str(session.get("unlock_requirement") or "").strip() != "trade_debrief_today_after_session_start":
+    if (
+        str(session.get("unlock_requirement") or "").strip()
+        != "trade_debrief_today_after_session_start"
+    ):
         return True
     started = _parse_dt(session.get("started_at"))
     if not started:
         return False
-    rows = [dict(r) for r in journal_repo.fetch_entries_by_type("trade_debrief", d=started.date().isoformat())]
+    rows = [
+        dict(r)
+        for r in journal_repo.fetch_entries_by_type("trade_debrief", d=started.date().isoformat())
+    ]
     for row in rows:
         updated = _parse_dt(row.get("updated_at")) or _parse_dt(row.get("created_at"))
         if updated and updated >= started:

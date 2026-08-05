@@ -26,8 +26,12 @@ from zoneinfo import ZoneInfo
 TZ = ZoneInfo("America/New_York")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
-DEFAULT_STATE_PATH = os.path.join(REPO_ROOT, "persistent-data", ".self_control_enforcement_state.json")
-DEFAULT_STATUS_PATH = os.path.join(REPO_ROOT, "persistent-data", ".self_control_enforcement_status.json")
+DEFAULT_STATE_PATH = os.path.join(
+    REPO_ROOT, "persistent-data", ".self_control_enforcement_state.json"
+)
+DEFAULT_STATUS_PATH = os.path.join(
+    REPO_ROOT, "persistent-data", ".self_control_enforcement_status.json"
+)
 DEFAULT_ANCHOR_NAME = "com.mccain.selfcontrol"
 DEFAULT_ANCHOR_PATH = "/etc/pf.anchors/com.mccain.selfcontrol"
 DEFAULT_PF_CONF_PATH = "/etc/pf.conf"
@@ -202,7 +206,9 @@ def apply_pf(pf_conf_path: str) -> None:
         _run(["pfctl", "-e"], check=False)
 
 
-def set_block(*, pf_conf_path: str, anchor_name: str, anchor_path: str, domains: list[str]) -> tuple[bool, int, int]:
+def set_block(
+    *, pf_conf_path: str, anchor_name: str, anchor_path: str, domains: list[str]
+) -> tuple[bool, int, int]:
     ensure_anchor_registration(pf_conf_path, anchor_name, anchor_path)
     v4_ips, v6_ips = resolve_domains(domains)
     changed = write_text(anchor_path, build_anchor_rules(domains, v4_ips, v6_ips))

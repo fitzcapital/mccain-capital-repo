@@ -1,0 +1,43 @@
+<div class="metricStrip">
+  <div class="metric"><div class="label">Open Buckets</div><div class="value">{{ grouped_rows|length }}</div></div>
+  <div class="metric"><div class="label">Open Contracts</div><div class="value">{{ total_contracts }}</div></div>
+  <div class="metric"><div class="label">Capital In Open Lots</div><div class="value">{{ money(total_spent) }}</div></div>
+  <div class="metric"><div class="label">Candidate Rows</div><div class="value">{{ rows|length }}</div></div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">📂 Open Positions (Unmatched / Incomplete)</div>
+  <div class="tiny stack10 line15">Derived from trades missing close info (no exit time, no exit price, or no net P/L).</div>
+  <div class="hr"></div>
+  <form method="get" class="row">
+    <div><label>As of Date</label><input type="date" name="as_of" value="{{ as_of }}" aria-label="As of date"></div>
+    <div class="fieldGrow2"><label>Filter</label><input name="q" value="{{ q }}" placeholder="SPX, CALL, raw note..."></div>
+    <div class="actionRow">
+      <button class="btn" type="submit">Apply</button>
+      <a class="btn" href="/trades/open-positions">Reset</a>
+      <a class="btn" href="/trades">Trades</a>
+    </div>
+  </form>
+</div></div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">🧾 Position Summary</div>
+  <div class="hr"></div>
+  <div class="tableWrap"><table class="tableDense">
+    <thead><tr><th>Symbol</th><th>Open Trades</th><th>Contracts</th><th>Capital</th><th>Latest</th></tr></thead>
+    <tbody>
+    {% for r in grouped_rows %}
+      <tr>
+        <td>{{ r.symbol }}</td>
+        <td>{{ r.trades }}</td>
+        <td>{{ r.contracts }}</td>
+        <td>{{ money(r.total_spent) }}</td>
+        <td>{{ r.latest_date }}</td>
+      </tr>
+    {% endfor %}
+    {% if grouped_rows|length == 0 %}
+      <tr><td colspan="5">No open-position candidates found.</td></tr>
+    {% endif %}
+    </tbody>
+  </table></div>
+</div></div>

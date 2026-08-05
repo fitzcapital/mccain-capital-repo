@@ -641,35 +641,46 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v10";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["cinematic-nebula", "new-galaxy", "cosmic-flare", "galaxy", "obsidian", "black", "nebula", "grey", "wallpaper-galaxy"];
-    const themeLabels = {
-      "new-galaxy": "Theme: New Galaxy",
-      "cinematic-nebula": "Theme: Cinematic Nebula",
-      grey: "Theme: Grey",
-      "wallpaper-galaxy": "Theme: Wallpaper Galaxy",
-      "cosmic-flare": "Theme: Cosmic Flare",
-      galaxy: "Theme: MGP",
-      obsidian: "Theme: True Dark",
-      black: "Theme: Midnight",
-      nebula: "Theme: Nebula",
-    };
+    const starAnimationKey = "mc_star_animation";
     const fontLabels = {
       clean: "Font: Tech",
       hand: "Font: Tech",
     };
+    const starLabels = {
+      on: "Star Animation: On",
+      off: "Star Animation: Off",
+    };
+    const reducedMotionQuery = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+    const starfieldHost = doc.getElementById("shellStarfield");
+    const starfieldCanvas = doc.getElementById("shellStarfieldCanvas");
+    const starfieldState = {
+      enabled: true,
+      active: false,
+      stars: [],
+      streaks: [],
+      frame: 0,
+      width: 0,
+      height: 0,
+      dpr: 1,
+      lastTs: 0,
+      drawTs: 0,
+      resizeTimer: 0,
+      ctx: starfieldCanvas ? starfieldCanvas.getContext("2d") : null,
+    };
 
-    const syncThemeButtons = (theme) => {
-      qsa("[data-theme-toggle-label]").forEach((btn) => {
-        btn.textContent = themeLabels[theme] || themeLabels.default;
+    const syncStarButtons = (enabled) => {
+      qsa("[data-star-toggle-label]").forEach((btn) => {
+        btn.textContent = enabled ? starLabels.on : starLabels.off;
+        const trigger = btn.closest("button");
+        if (trigger) trigger.setAttribute("aria-pressed", enabled ? "true" : "false");
       });
     };
 
-    const applyTheme = (theme) => {
-      const normalized = themeOrder.includes(theme) ? theme : "cinematic-nebula";
-      body.setAttribute("data-theme", normalized);
-      syncThemeButtons(normalized);
+    const applyTheme = () => {
+      body.setAttribute("data-theme", "cinematic-nebula");
     };
 
     const syncFontButtons = (mode) => {
@@ -718,12 +729,268 @@
       storageSet("mc_guided_seen", "1");
     };
 
-    window.toggleTheme = () => {
-      const current = body.getAttribute("data-theme") || "cinematic-nebula";
-      const idx = themeOrder.indexOf(current);
-      const next = themeOrder[(idx + 1) % themeOrder.length];
-      storageSet("mc_theme", next);
-      applyTheme(next);
+    const reducedMotion = () => !!reducedMotionQuery?.matches;
+
+    const perfMode = () => String(
+      docEl.getAttribute("data-perf-mode")
+      || storageGet("mc_perf_mode")
+      || ""
+    ).trim().toLowerCase();
+
+    const lowPerf = () =>
+      perfMode() === "low"
+      || perfMode() === "low-gpu"
+      || docEl.classList.contains("perf-mode-low-gpu");
+
+    const starfieldTheme = () => ({
+      field: "rgba(3, 8, 18, 0.18)",
+      white: "rgba(244, 250, 255, 0.98)",
+      ice: "rgba(164, 232, 255, 0.95)",
+      blue: "rgba(84, 170, 255, 0.9)",
+      line: "rgba(148, 224, 255, 0.16)",
+      streak: "rgba(196, 241, 255, 0.28)",
+      tail: "rgba(72, 162, 255, 0.02)",
+    });
+
+    const clearStarfield = () => {
+      if (!starfieldState.ctx) return;
+      starfieldState.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      starfieldState.ctx.clearRect(0, 0, starfieldCanvas.width, starfieldCanvas.height);
+    };
+
+    const starfieldSize = () => {
+      const viewportWidth = Math.max(window.innerWidth || 0, docEl.clientWidth || 0, 320);
+      const viewportHeight = Math.max(window.innerHeight || 0, docEl.clientHeight || 0, 320);
+      const fieldWidth = Math.ceil(Math.max(
+        viewportWidth,
+        docEl.scrollWidth || 0,
+        body.scrollWidth || 0,
+        docEl.offsetWidth || 0,
+        body.offsetWidth || 0
+      ));
+      const fieldHeight = Math.ceil(Math.max(
+        viewportHeight,
+        docEl.scrollHeight || 0,
+        body.scrollHeight || 0,
+        docEl.offsetHeight || 0,
+        body.offsetHeight || 0
+      ));
+      return { viewportWidth, viewportHeight, fieldWidth, fieldHeight };
+    };
+
+    const syncStarfieldShellSize = () => {
+      const { fieldWidth, fieldHeight } = starfieldSize();
+      docEl.style.setProperty("--shell-starfield-width", `${fieldWidth}px`);
+      docEl.style.setProperty("--shell-starfield-height", `${fieldHeight}px`);
+      if (starfieldHost) {
+        starfieldHost.style.width = `${fieldWidth}px`;
+        starfieldHost.style.height = `${fieldHeight}px`;
+      }
+      return { fieldWidth, fieldHeight };
+    };
+
+    const buildStarfield = () => {
+      if (!starfieldCanvas || !starfieldState.ctx) return;
+      const { viewportWidth, fieldWidth, fieldHeight } = starfieldSize();
+      const dpr = lowPerf() ? 1 : Math.min(window.devicePixelRatio || 1, 1.8);
+      starfieldState.width = fieldWidth;
+      starfieldState.height = fieldHeight;
+      starfieldState.dpr = dpr;
+      starfieldCanvas.width = Math.round(fieldWidth * dpr);
+      starfieldCanvas.height = Math.round(fieldHeight * dpr);
+      syncStarfieldShellSize();
+      starfieldCanvas.style.width = `${fieldWidth}px`;
+      starfieldCanvas.style.height = `${fieldHeight}px`;
+      starfieldState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const baseStarCount = lowPerf()
+        ? (viewportWidth < 720 ? 70 : 110)
+        : (viewportWidth < 720 ? 180 : 300);
+      const starCount = lowPerf() ? baseStarCount : Math.round(baseStarCount * 1.35);
+      const maxDepth = 3.4;
+      starfieldState.stars = Array.from({ length: starCount }, () => {
+        const depth = 0.8 + (Math.random() * maxDepth);
+        const bright = depth > 2.55 || Math.random() > 0.9;
+        const velocity = reducedMotion() ? 0.12 : 0.35 + (depth * 0.48);
+        return {
+          x: Math.random() * fieldWidth,
+          y: Math.random() * fieldHeight,
+          depth,
+          vx: velocity,
+          vy: (Math.random() - 0.5) * (reducedMotion() ? 0.012 : 0.075),
+          radius: bright ? 1.4 + (depth * 0.42) : 0.45 + (depth * 0.24),
+          alpha: bright ? 0.82 + Math.random() * 0.16 : 0.2 + (depth * 0.14),
+          pulse: Math.random() * Math.PI * 2,
+          pulseSpeed: reducedMotion() ? 0.006 : 0.018 + Math.random() * 0.028,
+          bright,
+          tint: bright && Math.random() > 0.56 ? "ice" : (Math.random() > 0.82 ? "blue" : "white"),
+        };
+      });
+      starfieldState.streaks = [];
+      clearStarfield();
+    };
+
+    const spawnStreak = () => {
+      if (reducedMotion()) return;
+      const width = starfieldState.width;
+      const height = starfieldState.height;
+      starfieldState.streaks.push({
+        x: -120 - (Math.random() * 120),
+        y: (Math.random() * height * 0.52) + (height * 0.08),
+        vx: 10 + Math.random() * 7,
+        vy: 0.6 + Math.random() * 0.8,
+        length: 34 + Math.random() * 42,
+        life: 12 + Math.random() * 8,
+        ttl: 12 + Math.random() * 8,
+      });
+      if (starfieldState.streaks.length > 4) starfieldState.streaks.shift();
+    };
+
+    const drawStarfield = (timestamp = 0) => {
+      if (!starfieldState.active || !starfieldState.ctx) return;
+      const ctx = starfieldState.ctx;
+      const width = starfieldState.width;
+      const height = starfieldState.height;
+      const palette = starfieldTheme();
+      const gpuQuiet = lowPerf();
+      const minFrameMs = gpuQuiet ? 55 : 0;
+      if (minFrameMs && starfieldState.drawTs && timestamp - starfieldState.drawTs < minFrameMs) {
+        starfieldState.frame = window.requestAnimationFrame(drawStarfield);
+        return;
+      }
+      starfieldState.drawTs = timestamp;
+      const dt = starfieldState.lastTs ? Math.min((timestamp - starfieldState.lastTs) / 16.67, 2) : 1;
+      starfieldState.lastTs = timestamp;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = palette.field;
+      ctx.fillRect(0, 0, width, height);
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+
+      if (!lowPerf() && Math.random() > 0.985) spawnStreak();
+
+      for (let i = 0; i < starfieldState.stars.length; i += 1) {
+        const star = starfieldState.stars[i];
+        const trail = (gpuQuiet || reducedMotion()) ? 0 : Math.min(2.8, star.depth * 0.8);
+        const pulse = 0.78 + Math.sin(star.pulse) * 0.26;
+        const radius = star.radius * pulse;
+        star.x += star.vx * dt;
+        star.y += star.vy * dt;
+        star.pulse += star.pulseSpeed * dt;
+        if (star.x - trail > width + 24) {
+          star.x = -20 - (Math.random() * 80);
+          star.y = Math.random() * height;
+        }
+        if (star.y < -14) star.y = height + 14;
+        else if (star.y > height + 14) star.y = -14;
+
+        if (!gpuQuiet && !reducedMotion() && star.depth > 2.1) {
+          const gradient = ctx.createLinearGradient(star.x - trail, star.y, star.x, star.y);
+          gradient.addColorStop(0, palette.tail);
+          gradient.addColorStop(1, palette.line);
+          ctx.strokeStyle = gradient;
+          ctx.lineWidth = Math.max(0.25, star.depth * 0.2);
+          ctx.globalAlpha = Math.min(0.18, star.alpha * 0.12);
+          ctx.beginPath();
+          ctx.moveTo(star.x - trail, star.y);
+          ctx.lineTo(star.x, star.y);
+          ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.fillStyle = palette[star.tint];
+        ctx.shadowBlur = gpuQuiet ? 0 : (star.bright ? 18 : 8);
+        ctx.shadowColor = gpuQuiet ? "transparent" : (star.tint === "blue" ? palette.blue : palette.ice);
+        ctx.globalAlpha = Math.max(0.14, Math.min(1, star.alpha * pulse));
+        ctx.arc(star.x, star.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let i = starfieldState.streaks.length - 1; i >= 0; i -= 1) {
+        const streak = starfieldState.streaks[i];
+        streak.x += streak.vx * dt;
+        streak.y += streak.vy * dt;
+        streak.life -= dt;
+        if (streak.life <= 0 || streak.x - streak.length > width + 80 || streak.y > height + 80) {
+          starfieldState.streaks.splice(i, 1);
+          continue;
+        }
+        const opacity = Math.max(0, streak.life / streak.ttl) * 0.85;
+        const gradient = ctx.createLinearGradient(streak.x - streak.length, streak.y - (streak.length * 0.06), streak.x, streak.y);
+        gradient.addColorStop(0, palette.tail);
+        gradient.addColorStop(0.45, palette.streak);
+        gradient.addColorStop(1, palette.white);
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 0.8;
+        ctx.globalAlpha = opacity * 0.7;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = palette.ice;
+        ctx.beginPath();
+        ctx.moveTo(streak.x - streak.length, streak.y - (streak.length * 0.06));
+        ctx.lineTo(streak.x, streak.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+      starfieldState.frame = window.requestAnimationFrame(drawStarfield);
+    };
+
+    const stopStarfield = () => {
+      starfieldState.active = false;
+      starfieldState.lastTs = 0;
+      starfieldState.drawTs = 0;
+      if (starfieldState.frame) {
+        window.cancelAnimationFrame(starfieldState.frame);
+        starfieldState.frame = 0;
+      }
+      clearStarfield();
+      body.removeAttribute("data-starfield");
+      syncStarfieldShellSize();
+      if (starfieldHost) starfieldHost.setAttribute("aria-hidden", "true");
+    };
+
+    const startStarfield = () => {
+      if (!starfieldState.enabled || !starfieldCanvas || !starfieldState.ctx) return;
+      buildStarfield();
+      starfieldState.active = true;
+      body.setAttribute("data-starfield", "on");
+      if (starfieldHost) starfieldHost.setAttribute("aria-hidden", "false");
+      if (starfieldState.frame) window.cancelAnimationFrame(starfieldState.frame);
+      starfieldState.frame = window.requestAnimationFrame(drawStarfield);
+    };
+
+    const scheduleStarfieldRebuild = (delay = 160) => {
+      window.clearTimeout(starfieldState.resizeTimer);
+      starfieldState.resizeTimer = window.setTimeout(() => {
+        if (!starfieldState.enabled || reducedMotion() || doc.visibilityState === "hidden") return;
+        const { fieldWidth, fieldHeight } = starfieldSize();
+        const heightDelta = Math.abs(fieldHeight - starfieldState.height);
+        const widthDelta = Math.abs(fieldWidth - starfieldState.width);
+        if (heightDelta > 24 || widthDelta > 8) startStarfield();
+      }, delay);
+    };
+
+    const syncStarfieldMotionState = () => {
+      if (doc.visibilityState === "hidden") {
+        stopStarfield();
+        return;
+      }
+      if (reducedMotion()) {
+        stopStarfield();
+        return;
+      }
+      startStarfield();
+    };
+
+    const setStarAnimationEnabled = (enabled) => {
+      starfieldState.enabled = !!enabled;
+      storageSet(starAnimationKey, enabled ? "1" : "0");
+      syncStarButtons(enabled);
+      if (enabled && !reducedMotion() && doc.visibilityState !== "hidden") {
+        startStarfield();
+      } else {
+        stopStarfield();
+      }
     };
 
     window.toggleGuidedMode = () => {
@@ -733,19 +1000,46 @@
     window.toggleAppFont = () => {
       applyFontMode("clean");
     };
+    window.toggleStarAnimation = () => {
+      setStarAnimationEnabled(!starfieldState.enabled);
+    };
 
-    if (storageGet(themeMigrationKey) !== "1") {
-      storageSet("mc_theme", "cinematic-nebula");
-      storageSet(themeMigrationKey, "1");
-    }
-
-    applyTheme(storageGet("mc_theme") || "cinematic-nebula");
+    applyTheme();
     applyFontMode(storageGet(fontModeKey) || doc.documentElement.getAttribute("data-font-mode") || "clean");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");
     if (savedGuide === "1") setGuidedMode(true);
     else if (savedGuide === "0") setGuidedMode(false);
     else setGuidedMode(!firstRunSeen);
+    const savedStarAnimation = storageGet(starAnimationKey);
+    const lowGpuStarDefaultKey = "mc_star_animation_low_gpu_default_v1";
+    const lowGpuDefaultApplied = storageGet(lowGpuStarDefaultKey) === "1";
+    if (lowPerf() && !lowGpuDefaultApplied) {
+      storageSet(lowGpuStarDefaultKey, "1");
+      setStarAnimationEnabled(false);
+    } else {
+      setStarAnimationEnabled(savedStarAnimation == null ? !lowPerf() : savedStarAnimation !== "0");
+    }
+
+    if (reducedMotionQuery && typeof reducedMotionQuery.addEventListener === "function") {
+      reducedMotionQuery.addEventListener("change", () => {
+        syncStarfieldMotionState();
+      });
+    }
+    window.addEventListener("resize", () => {
+      scheduleStarfieldRebuild(120);
+    });
+    if (typeof ResizeObserver === "function") {
+      const resizeObserver = new ResizeObserver(() => {
+        scheduleStarfieldRebuild(160);
+      });
+      resizeObserver.observe(body);
+      resizeObserver.observe(docEl);
+    }
+    window.setTimeout(() => {
+      scheduleStarfieldRebuild(0);
+    }, 900);
+    doc.addEventListener("visibilitychange", syncStarfieldMotionState);
   }
 
   function enforcePrimaryCta() {

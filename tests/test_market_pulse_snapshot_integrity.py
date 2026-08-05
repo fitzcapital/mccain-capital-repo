@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from mccain_capital.services import core
@@ -67,6 +68,65 @@ def _execution_model(
         },
         "posture_summary": "Core levels are usable for intraday planning.",
     }
+
+
+def test_market_pulse_playbook_cache_write_is_atomic(tmp_path, monkeypatch):
+    cache_path = tmp_path / ".market_pulse_playbook_cache.json"
+    original = {"ticker": "QQQ", "playbook_quote": {"price": 734.08}}
+    cache_path.write_text(json.dumps(original), encoding="utf-8")
+
+    monkeypatch.setattr(core, "_market_pulse_playbook_cache_file", lambda: str(cache_path))
+
+    def fail_after_partial_write(payload, handle, **_kwargs):
+        handle.write('{"ticker":')
+        raise TypeError("synthetic serialization failure")
+
+    monkeypatch.setattr(core.json, "dump", fail_after_partial_write)
+
+    core._save_market_pulse_playbook_disk_cache({"ticker": "QQQ", "bad": object()})
+
+    assert json.loads(cache_path.read_text(encoding="utf-8")) == original
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_market_pulse_page_gamma_snapshot_falls_back_when_cache_has_no_levels():
+    calls = []
+    fallback_snapshot = {
+        "gamma_flip_combined_basket": 7350.0,
+        "local_flip_aggregated_gamma": 7330.0,
+        "call_wall_aggregated_gamma": 7400.0,
+        "put_wall_aggregated_gamma": 7300.0,
+    }
+
+    resolved = core._market_pulse_resolve_page_gamma_snapshot(
+        {},
+        requested_refresh=False,
+        load_current=lambda: calls.append(True) or fallback_snapshot,
+    )
+
+    assert calls == [True]
+    assert resolved == fallback_snapshot
+
+
+def test_market_pulse_page_gamma_snapshot_keeps_usable_cached_levels():
+    calls = []
+    cached_snapshot = {
+        "gamma_snapshot": {
+            "gamma_flip_combined_basket": 7350.0,
+            "local_flip_aggregated_gamma": 7330.0,
+            "call_wall_aggregated_gamma": 7400.0,
+            "put_wall_aggregated_gamma": 7300.0,
+        }
+    }
+
+    resolved = core._market_pulse_resolve_page_gamma_snapshot(
+        cached_snapshot,
+        requested_refresh=False,
+        load_current=lambda: calls.append(True) or {},
+    )
+
+    assert calls == []
+    assert resolved == cached_snapshot["gamma_snapshot"]
 
 
 def test_after_hours_spot_prefers_official_close_over_zero():
@@ -242,9 +302,7 @@ def test_gamma_reason_label_explains_partial_and_fallback_states():
 
 def test_gamma_failure_label_ignores_successful_tradier_fetch_text():
     assert (
-        core._market_pulse_gamma_failure_label(
-            "Tradier live options chain fetched successfully."
-        )
+        core._market_pulse_gamma_failure_label("Tradier live options chain fetched successfully.")
         == ""
     )
 
@@ -302,8 +360,47 @@ def test_canonical_playbook_view_softens_copy_for_unconfirmed_planning_bias():
     assert playbook["bias_label"] == "Conditional bullish above Local Flip 6815"
     assert playbook["plan_label"] == "Buy dips above Local Flip only if next session confirms"
     assert playbook["trade_gate_label"] == "Next live session dip-hold above Local Flip"
+    assert playbook["decision_label"] == "Planning only"
+    assert playbook["bias_summary_label"] == "Buy dips only on confirmation"
+    assert "planning only until live confirmation" in playbook["hero_summary"].lower()
     assert playbook["ui_flags"]["is_planning_only"] is True
     assert playbook["ui_flags"]["is_unconfirmed_gamma"] is True
+
+
+def test_canonical_playbook_view_uses_explicit_unavailable_copy():
+    playbook = core._build_playbook_view_model(
+        market_structure_snapshot={
+            "spot": 694.77,
+            "session_mode": "regular",
+            "session_mode_label": "Regular",
+            "trade_state": "UNAVAILABLE",
+            "trade_state_label": "UNAVAILABLE",
+            "levels_source": "unavailable",
+            "gamma_data_status": "invalid",
+            "gamma_regime": "unavailable",
+            "gamma_regime_label": "Regime Unavailable",
+            "gamma_regime_reason_label": "Gamma snapshot unavailable",
+            "gamma_regime_subtitle": "Gamma snapshot unavailable",
+            "regime_confidence": "none",
+            "regime_confidence_label": "No confidence",
+            "planning_bias": "unavailable",
+            "planning_bias_label": "Unavailable",
+            "current_read": "Setup Pending",
+            "plan_note": "",
+            "tradeability": "NO_TRADE",
+        },
+        execution_model={
+            "location": {"zone": "Unknown", "status": "Awaiting structure"},
+            "playbook": {"why": "Gamma snapshot unavailable."},
+        },
+    )
+    assert playbook["decision_label"] == "No trade"
+    assert playbook["bias_summary_label"] == "Wait for cleaner structure"
+    assert playbook["hero_reason_label"] == "Gamma snapshot unavailable. Wait for validated levels."
+    assert (
+        playbook["hero_summary"]
+        == "Gamma snapshot unavailable, wait for validated levels before acting."
+    )
 
 
 def test_execution_chart_reuses_last_valid_session_bars_after_close():
@@ -359,6 +456,54 @@ def test_playbook_snapshot_valid_rejects_zero_and_unavailable():
     )
 
 
+def test_playbook_snapshot_valid_rejects_unavailable_levels_with_spot():
+    assert (
+        core._market_pulse_playbook_snapshot_valid(
+            {
+                "market_structure_snapshot": {
+                    "app_state": "AFTER_HOURS_VALID",
+                    "spot_meta": {"value": 741.74},
+                    "levels_source": "unavailable",
+                    "level_meta": {
+                        "main_flip": {"value": None},
+                        "local_flip": {"value": None},
+                        "call_wall": {"value": None},
+                        "put_wall": {"value": None},
+                    },
+                }
+            }
+        )
+        is False
+    )
+
+
+def test_cached_playbook_rejects_fresh_unavailable_payload(monkeypatch):
+    now = datetime.fromisoformat("2026-06-04T17:50:00-04:00")
+    monkeypatch.setattr(core, "_load_market_pulse_playbook_disk_cache", lambda: None)
+    monkeypatch.setitem(core._market_pulse_playbook_cache, "generated_at", now)
+    monkeypatch.setitem(
+        core._market_pulse_playbook_cache,
+        "payload",
+        {
+            "ticker": "QQQ",
+            "market_structure_snapshot": {
+                "app_state": "AFTER_HOURS_VALID",
+                "spot": 741.74,
+                "spot_meta": {"value": 741.74},
+                "levels_source": "unavailable",
+                "level_meta": {
+                    "main_flip": {"value": None},
+                    "local_flip": {"value": None},
+                    "call_wall": {"value": None},
+                    "put_wall": {"value": None},
+                },
+            },
+        },
+    )
+
+    assert core._market_pulse_cached_playbook_snapshot(now, ticker="QQQ") is None
+
+
 def test_playbook_snapshot_valid_rejects_invariant_violations():
     assert (
         core._market_pulse_playbook_snapshot_valid(
@@ -377,6 +522,75 @@ def test_playbook_snapshot_valid_rejects_invariant_violations():
         )
         is False
     )
+
+
+def test_degraded_partial_gamma_sanitizes_inverted_primary_walls():
+    payload = core._market_pulse_resolve_gamma_payload(
+        gamma_snapshot={
+            "snapshot_status": "degraded",
+            "snapshot_status_label": "Degraded Gamma Basket: 1 of 2 expiries available",
+            "stale_flags": ["missing_expiries"],
+            "gamma_flip_combined_basket": 7670.0,
+            "local_flip_aggregated_gamma": None,
+            "call_wall_aggregated_gamma": 7430.0,
+            "put_wall_aggregated_gamma": 7435.0,
+            "spot_price_used": 7491.22,
+            "last_successful_compute": "2026-06-18T10:20:24-04:00",
+        },
+        last_good_snapshot=None,
+        session_mode="regular",
+        now_et=datetime.fromisoformat("2026-06-18T10:21:00-04:00"),
+    )
+
+    assert payload["levels_source"] == "live_session_snapshot"
+    assert payload["gamma_data_status"] == "partial"
+    assert payload["structure_invariant_status"] == "soft_invalid"
+    assert "wall_order_sanitized_from_partial_basket" in payload["structure_invariant_issues"]
+    assert payload["level_meta"]["call_wall"]["value"] == 7435.0
+    assert payload["level_meta"]["put_wall"]["value"] == 7430.0
+    assert payload["level_meta"]["main_flip"]["value"] == 7670.0
+
+
+def test_cached_playbook_rejected_when_live_quote_diverges_from_spot():
+    cached = {
+        "ticker": "SPX",
+        "playbook_quote": {"price": 7542.32},
+        "market_structure_snapshot": {"spot": 7542.32},
+    }
+    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7594.11}]
+
+    assert core._market_pulse_cached_playbook_matches_quotes(cached, quotes, "SPX") is False
+
+
+def test_cached_playbook_kept_when_live_quote_matches_spot():
+    cached = {
+        "ticker": "SPX",
+        "playbook_quote": {"price": 7594.11},
+        "market_structure_snapshot": {"spot": 7594.11},
+    }
+    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7595.25}]
+
+    assert core._market_pulse_cached_playbook_matches_quotes(cached, quotes, "SPX") is True
+
+
+def test_live_worker_quote_overlays_stale_spx_quote(monkeypatch):
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "updated_at": "2026-06-01T13:31:00-04:00",
+            "prices": {"SPX": {"price": 7601.1, "pct_change": 0.42, "provider": "tradier"}},
+        },
+    )
+    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7542.32, "series": [7542.32]}]
+
+    merged = core._market_pulse_overlay_live_worker_quotes(quotes, "SPX")
+
+    assert merged[0]["price"] == 7601.1
+    assert merged[0]["series"] == [7542.32]
+    assert merged[0]["as_of"] == "2026-06-01T13:31:00-04:00"
 
 
 def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
@@ -467,7 +681,7 @@ def test_structure_snapshot_promotes_partial_regular_board_to_provisional_regime
     assert snapshot["gamma_regime_state"] == "provisional"
     assert snapshot["gamma_board_status"] == "Partial"
     assert snapshot["gamma_regime"] == "negative"
-    assert snapshot["gamma_regime_label"] == "Provisional Negative Gamma"
+    assert snapshot["gamma_regime_label"] == "Negative Gamma"
     assert snapshot["gamma_regime_subtitle"] == "Core levels present · medium confidence"
     assert snapshot["gamma_regime_confidence"] == "Medium"
     assert snapshot["regime_confidence"] == "medium"

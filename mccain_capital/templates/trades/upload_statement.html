@@ -1,24 +1,37 @@
 {% from "partials/async_job_macros.html" import runway %}
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 {% set ws = workspace or 'live' %}
 {% set last = sync_status or {} %}
+{% set canonical = live_sync_state or {} %}
 {% set workspace_title = 'Live Sync Lane' if ws == 'live' else 'Upload Lane' if ws == 'upload' else 'Reconcile Lane' %}
 {% set workspace_lead = 'Run broker login sync first, then use diagnostics and reliability trends to keep the import system healthy.' if ws == 'live' else 'Manual statement upload is the fastest recovery lane when you already have the file in hand.' if ws == 'upload' else 'Audit import batches before they distort balances, analytics, or review coverage.' %}
-{% set initial_sync_state = (last.get('status') or 'idle')|lower %}
-{% set initial_system_state = 'Healthy' if initial_sync_state in ['success', 'succeeded', 'ok', 'healthy', 'idle', 'debug_only'] else 'Warning' if initial_sync_state in ['queued', 'running', 'stale'] else 'Failed' %}
-{% set initial_system_tone = 'positive' if initial_system_state == 'Healthy' else 'warning' if initial_system_state == 'Warning' else 'negative' %}
+{% set initial_sync_state = (canonical.get('outcome') or last.get('status') or 'ready')|lower %}
+{% set initial_system_state = canonical.get('state_label') or ('Healthy' if initial_sync_state in ['success', 'completed', 'no_new_trades', 'ready'] else 'Running' if initial_sync_state == 'running' else 'Needs Attention') %}
+{% set initial_system_tone = 'positive' if initial_sync_state in ['completed', 'no_new_trades', 'ready'] else 'warning' if initial_sync_state in ['running', 'cancelled', 'diagnostic_only'] else 'negative' %}
+{% set active_job = sync_job or {} %}
+{% set active_job_status = (active_job.get('status') or '')|lower %}
+{% set active_job_stage = (active_job.get('stage') or 'start')|lower %}
+{% set startup_stages = ['start', 'queued', 'queue_dispatch', 'system_resource', 'browser_boot', 'open_login'] %}
+{% set startup_active = active_job_status in ['queued', 'running'] and active_job_stage in startup_stages %}
+{% set active_stage_label = (sync_stage_labels or {}).get(active_job_stage, active_job_stage|replace('_', ' ')|title) %}
+{% set initial_runway_badge = 'Dispatching' if active_job_stage in ['start', 'queued', 'queue_dispatch', 'system_resource'] else 'Booting Browser' if active_job_stage == 'browser_boot' else 'Opening Login' if active_job_stage == 'open_login' else 'Running' if (sync_active or active_job_status in ['queued', 'running']) else 'Ready' %}
 {% if ws == 'live' %}
-<div class="syncStatusSummary syncStatusSummary-{{ initial_system_tone }}" id="sync-status-summary">
+<div class="syncStatusSummary syncStatusSummary-{{ initial_system_tone }} liveSyncStatusRegion" id="sync-status-summary" data-live-sync-region="status">
   <div class="syncStatusSummaryItem">
-    <span class="syncStatusSummaryLabel">System</span>
+    <span class="syncStatusSummaryLabel">Live Sync</span>
     <strong id="sync-top-health-value">{{ initial_system_state }}</strong>
   </div>
   <div class="syncStatusSummaryItem">
-    <span class="syncStatusSummaryLabel">Last Run</span>
-    <strong id="sync-top-result-value">{{ (last.get('status') or 'No recent run')|replace('_', ' ')|title }}</strong>
+    <span class="syncStatusSummaryLabel">Today</span>
+    <strong id="sync-top-result-value">{{ 'Imported' if canonical.get('import_completed_today') else 'Pending' }}</strong>
   </div>
   <div class="syncStatusSummaryItem">
-    <span class="syncStatusSummaryLabel">Updated</span>
-    <strong id="sync-top-updated-value">{{ last.get('updated_at_human') or last.get('updated_at') or 'No recent run' }}</strong>
+    <span class="syncStatusSummaryLabel">Last Attempt</span>
+    <strong id="sync-top-updated-value">{{ canonical.get('last_attempt_at_et') or 'No recent attempt' }}</strong>
+  </div>
+  <div class="syncStatusSummaryItem">
+    <span class="syncStatusSummaryLabel">Automation</span>
+    <strong>{{ (canonical.get('automation_run_time_et') ~ ' ET') if canonical.get('automation_enabled') else 'Off' }}</strong>
   </div>
 </div>
 {% elif sync_badges %}
@@ -49,12 +62,8 @@
         <div class="workspaceHeroMetaRow">
           <span class="trendChip">{{ ws|replace('_', ' ')|title }}</span>
           {% if ws == 'live' %}
-            <span class="trendChip {% if (last.get('status') or '')|lower == 'failed' %}negative{% elif (last.get('status') or '')|lower == 'success' %}positive{% endif %}" id="sync-hero-status-chip">
-              <span id="sync-hero-status-value">
-              Last {{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}
-              </span>
-            </span>
-            <span class="trendChip" id="sync-hero-updated-chip"><span id="sync-hero-updated-value">{{ last.get('updated_at_human') or last.get('updated_at') or 'No recent run' }}</span></span>
+            <span class="trendChip positive">Normal import workflow</span>
+            <span class="trendChip">Recovery stays contextual</span>
           {% elif ws == 'upload' %}
             <span class="trendChip">Manual file import</span>
             <span class="trendChip">HTML preferred</span>
@@ -68,6 +77,7 @@
         <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">Live Sync</a>
         <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">Upload</a>
         <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
+        <a class="btn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener"><span class="dashboardButtonIcon">{{ app_icon('broker-dashboard') }}</span><span>Vanquish Dashboard</span></a>
         <a class="btn" href="/ops/alerts">Ops Alerts</a>
       </div>
     </div>
@@ -77,6 +87,88 @@
 {% if ws == 'upload' %}
 <div class="workspaceShell">
   <div class="workspacePrimary">
+    <div class="card">
+      <div class="toolbar">
+        <div class="pill">Account Ledger</div>
+        <div class="workspaceSectionLead">Select the account ledger first. Every upload in this workspace is written only to that selected account.</div>
+        <div class="row">
+          <div class="fieldGrow2">
+            <label>Selected Account</label>
+            <select name="selected_account_id" form="statement-upload-form">
+              <option value="">Select account…</option>
+              {% for account in accounts or [] %}
+                <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                  {{ account.account_name }} · {{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="rightActions">
+            <a class="btn" href="/dashboard?account_id=all&scope=all">All History</a>
+            <a class="btn" href="/dashboard{% if selected_account %}?account_id={{ selected_account.id }}&scope=active{% endif %}">Open Dashboard</a>
+          </div>
+        </div>
+        <div class="hr"></div>
+        <form method="post" action="/trades/upload/statement?ws=upload" class="stack12">
+          <input type="hidden" name="intent" value="save_account" />
+          <input type="hidden" name="selected_account_id" value="{{ selected_account.id if selected_account else '' }}" />
+          <div class="row">
+            <div>
+              <label>Account Name</label>
+              <input name="account_name" value="{{ selected_account.account_name if selected_account else '' }}" placeholder="Protect 75k" />
+            </div>
+            <div>
+              <label>Vanquish Account Number</label>
+              <input name="broker_account_id" value="{{ selected_account.display_broker_account_id if selected_account else '' }}" placeholder="OEV0052447" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Account Size</label>
+              <input name="account_size" inputmode="decimal" value="{{ selected_account.account_size if selected_account and selected_account.account_size is not none else '' }}" placeholder="75000" />
+            </div>
+            <div>
+              <label>Starting Balance</label>
+              <input name="starting_balance" inputmode="decimal" value="{{ selected_account.starting_balance if selected_account else '' }}" placeholder="75000" />
+            </div>
+            <div>
+              <label>Max Drawdown</label>
+              <input name="max_drawdown" inputmode="decimal" value="{{ selected_account.max_drawdown if selected_account and selected_account.max_drawdown is not none else '' }}" placeholder="5000" />
+            </div>
+          </div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit">{{ 'Update Account' if selected_account else 'Add Account' }}</button>
+            <a class="btn" href="/trades/upload/statement?ws=upload&account_id=all">New Account</a>
+            {% if selected_account %}<a class="btn ctaLink" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">Live Upload</a>{% endif %}
+          </div>
+        </form>
+        {% if selected_account %}
+        <form method="post" action="/trades/upload/statement?ws=upload" class="rightActions top12">
+          <input type="hidden" name="intent" value="archive_account" />
+          <input type="hidden" name="selected_account_id" value="{{ selected_account.id }}" />
+          <button class="btn" type="submit">Archive Account</button>
+        </form>
+        {% endif %}
+        {% if archived_accounts %}
+        <details class="syncDetails stack10 top12">
+          <summary>Archived Accounts</summary>
+          <div class="stack10">
+            {% for account in archived_accounts %}
+            <form method="post" action="/trades/upload/statement?ws=upload" class="row syncLaunchCompactRow">
+              <input type="hidden" name="intent" value="restore_account" />
+              <input type="hidden" name="selected_account_id" value="{{ account.id }}" />
+              <div class="fieldGrow2">
+                <strong>{{ account.account_name }}</strong>
+                <div class="tiny muted">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</div>
+              </div>
+              <button class="btn" type="submit">Restore</button>
+            </form>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
+    </div>
     <div class="card">
       <div class="toolbar">
         <div class="pill">Upload Statement</div>
@@ -144,8 +236,8 @@
 {% set auto = auto_sync_cfg or {} %}
 {% set summary = job.get('summary') or {} %}
 {% set sync_active = (job.get('status') or '') in ['queued', 'running'] %}
-{% set compact_job_card = ((job.get('status') or '')|lower) in ['success', 'debug_only'] and not sync_active %}
-{% set effective_status = (job.get('status') or last.get('status') or 'idle')|lower %}
+{% set compact_job_card = ((canonical.get('outcome') or job.get('status') or '')|lower) in ['completed', 'no_new_trades'] and not sync_active %}
+{% set effective_status = (canonical.get('outcome') or job.get('status') or last.get('status') or 'ready')|lower %}
 {% set effective_stage = job.get('stage') or last.get('stage') or 'standby' %}
 {% set effective_message = job.get('message') or last.get('message') or 'No active sync job. Use the live form to start a broker statement import.' %}
 {% set effective_help = (sync_stage_help or {}).get(effective_stage) or last.get('stage_help') or '' %}
@@ -154,100 +246,306 @@
 {% set feedback_inserted = summary.get('inserted') if summary.get('inserted') is not none else (last.get('inserted') if last.get('inserted') is not none else last.get('inserted_trades', 0)) %}
 {% set feedback_warn_count = summary.get('warn_count') if summary.get('warn_count') is not none else last.get('warn_count', 0) %}
 {% set feedback_error_count = summary.get('error_count') if summary.get('error_count') is not none else last.get('error_count', 0) %}
+{% set effective_requested = job.get('requested') if job.get('requested') is mapping else (last.get('requested') if last.get('requested') is mapping else {}) %}
+{% set credential_save_requested = effective_requested.get('credential_save_requested') %}
+{% set credential_save_status = (effective_requested.get('credential_save_status') or '')|lower %}
+{% set credential_save_detail = effective_requested.get('credential_save_detail') or '' %}
+{% set manual_recovery_visible = effective_status in ['failed', 'needs_recovery'] or effective_stage in ['capture_statement_html', 'auth_required'] %}
+<section class="card liveSyncPrimaryRegion" data-live-sync-region="primary" aria-labelledby="live-sync-primary-title">
+  <div class="liveSyncPrimaryHead">
+    <div>
+      <div class="pill">Sync Today</div>
+      <h3 id="live-sync-primary-title">One controlled broker import</h3>
+      <p>{{ canonical.get('recommended_next_action') or 'Confirm the preflight and run today’s import.' }}</p>
+    </div>
+    <span class="trendChip {% if canonical.get('preflight', {}).get('can_run') %}positive{% else %}warning{% endif %}">
+      {{ 'Ready to import' if canonical.get('preflight', {}).get('can_run') else 'Setup required' }}
+    </span>
+  </div>
+  <div class="liveSyncPreflightGrid" data-live-sync-primary-preflight>
+    <div><span>Ledger</span><strong>{{ canonical.get('preflight', {}).get('ledger_name', 'No ledger selected') }}</strong></div>
+    <div><span>Broker</span><strong>{{ canonical.get('preflight', {}).get('broker_account_masked', 'Not configured') }}</strong></div>
+    <div><span>Date</span><strong>{{ canonical.get('preflight', {}).get('from_date', default_day) }} ET</strong></div>
+    <div><span>Intent</span><strong>Normal import</strong></div>
+    <div><span>Credentials</span><strong>{{ 'Ready' if canonical.get('preflight', {}).get('credentials_ready') else 'Missing' }}</strong></div>
+  </div>
+  <div class="liveSyncPrimaryActionRow">
+    <div class="liveSyncPrimaryResult" aria-live="polite">
+      <span id="live-sync-primary-state">{{ canonical.get('state_label') or 'READY' }}</span>
+      <strong id="live-sync-primary-message">{{ effective_message if sync_active else canonical.get('current_sync_label') or 'Ready for today’s import' }}</strong>
+      <small id="live-sync-primary-meta">{% if sync_active %}{{ effective_stage|replace('_', ' ')|title }}{% else %}Last attempt {{ canonical.get('last_attempt_at_et') or 'not recorded' }}{% endif %}</small>
+    </div>
+    <form method="post" action="/trades/sync/live/last-run" class="liveSyncPrimaryForm" id="live-sync-primary-form">
+      <button class="btn primary liveSyncPrimaryButton" id="live-sync-primary-submit" type="submit" data-live-sync-primary-run
+        {% if sync_active or not canonical.get('preflight', {}).get('can_run') %}disabled{% endif %}
+        title="{% if sync_active %}A sync is already running{% else %}{{ canonical.get('preflight', {}).get('disabled_reason', '') }}{% endif %}">
+        {{ 'Sync Running' if sync_active else 'Sync Today' }}
+      </button>
+      <span class="srOnly" id="live-sync-primary-loading" aria-live="polite"></span>
+    </form>
+  </div>
+</section>
+<details class="card liveSyncAdvancedRegion" data-live-sync-region="advanced"{% if manual_recovery_visible %} open{% endif %}>
+  <summary>
+    <span><strong>Advanced &amp; Recovery</strong><small>Diagnostics, historical sync, account settings, evidence, and automation</small></span>
+    <span class="trendChip {% if manual_recovery_visible %}warning{% endif %}">{{ 'Action needed' if manual_recovery_visible else 'Closed by default' }}</span>
+  </summary>
+  <div class="liveSyncAdvancedContent">
 <div class="workspaceShell syncWorkspaceLive">
   <div class="workspacePrimary">
     <div class="card stack12 syncLaunchHero">
       <div class="toolbar">
         <div class="syncLaunchHeader">
           <div class="pillRow">
-            <div class="pill">Run Live Sync</div>
+            {{ app_pill('trades', 'Run Live Sync', 'syncAppPill') }}
             <details class="inlineHelp">
               <summary aria-label="Live login sync help">?</summary>
               <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
             </details>
           </div>
           <div class="supportLead">Launch the broker sync from here.</div>
-          <div class="supportBody">Set the window, confirm credentials, run one controlled import.</div>
+          <div class="supportBody">Confirm today's preflight, then run one normal import.</div>
+        </div>
+        <div class="syncCredentialStatusCard" data-live-sync-preflight>
+          <div class="syncCredentialStatusHead">
+            <strong>Sync Today preflight</strong>
+            <span class="trendChip {% if canonical.get('preflight', {}).get('can_run') %}positive{% else %}warning{% endif %}">
+              {{ 'Ready' if canonical.get('preflight', {}).get('can_run') else 'Needs setup' }}
+            </span>
+          </div>
+          <div class="syncCredentialStatusMeta">
+            <span class="trendChip">{{ canonical.get('preflight', {}).get('ledger_name', 'No ledger selected') }}</span>
+            <span class="trendChip">{{ canonical.get('preflight', {}).get('broker_account_masked', 'Not configured') }}</span>
+            <span class="trendChip">{{ canonical.get('preflight', {}).get('from_date', default_day) }} ET</span>
+            <span class="trendChip">{{ canonical.get('preflight', {}).get('mode_label', 'Broker fills → trades') }}</span>
+            <span class="trendChip positive">Normal import</span>
+          </div>
+          {% if canonical.get('preflight', {}).get('disabled_reason') %}
+            <div class="tiny line15">{{ canonical.get('preflight', {}).get('disabled_reason') }}</div>
+          {% endif %}
         </div>
         <div class="syncProfileRail">
-          <button class="btn syncProfileBtn" type="button" data-sync-profile="balanced">Balanced Run</button>
-          <button class="btn syncProfileBtn" type="button" data-sync-profile="recovery">Recovery Run</button>
-          <button class="btn syncProfileBtn" type="button" data-sync-profile="fast">Fast Run</button>
-          <div class="tiny syncProfileNote" id="sync-profile-note">Balanced keeps debug capture on and performs a full import.</div>
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="balanced">Normal Import</button>
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="recovery">Diagnostic Test — No Import</button>
+          <a class="btn syncProfileBtn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener"><span class="dashboardButtonIcon">{{ app_icon('broker-dashboard') }}</span><span>Vanquish Dashboard</span></a>
+          <div class="tiny syncProfileNote" id="sync-profile-note">Normal Import captures evidence and imports trades. Diagnostic Test never imports.</div>
         </div>
         <div class="hr"></div>
+        <form method="post" action="/trades/upload/statement?ws=live" id="live-account-form">
+        </form>
+        <form method="post" action="/trades/upload/statement?ws=live" id="live-archive-account-form">
+          <input type="hidden" name="intent" value="archive_account" />
+          <input type="hidden" name="selected_account_id" value="{{ selected_account.id if selected_account else '' }}" />
+        </form>
+        {% for account in archived_accounts %}
+        <form method="post" action="/trades/upload/statement?ws=live" id="live-restore-account-form-{{ account.id }}">
+          <input type="hidden" name="intent" value="restore_account" />
+          <input type="hidden" name="selected_account_id" value="{{ account.id }}" />
+        </form>
+        {% endfor %}
+        {% if selected_account %}
+        <form
+          method="post"
+          action="{{ url_for('dashboard_manual_drawdown_update') }}"
+          id="live-drawdown-form"
+        >
+          <input type="hidden" name="account_id" value="{{ selected_account.id }}">
+          <input type="hidden" name="next" value="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">
+        </form>
+        {% endif %}
         <form method="post" action="/trades/sync/live" id="live-sync-form">
-          <div class="row syncLaunchCompactRow">
-            <div>
-              <label>Mode</label>
-              <select name="mode">
-                <option value="broker">🏦 Broker fills → trades</option>
-                <option value="balance">🏁 Statement → ending balance snapshot</option>
+          <div class="row">
+            <div class="fieldGrow2">
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Account Ledger</span></label>
+              <select name="selected_account_id" id="live-selected-account-id">
+                <option value="">Select account…</option>
+                {% for account in accounts or [] %}
+                  <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                    {{ account.account_name }} · {{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}
+                  </option>
+                {% endfor %}
               </select>
             </div>
-            <div>
-              <label>From</label>
-              <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
-            </div>
-            <div>
-              <label>To</label>
-              <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
+            <div class="rightActions">
+              <a class="btn" href="/dashboard?account_id=all&scope=all">All History</a>
             </div>
           </div>
-          <div class="row syncCredentialRow">
-            <div class="fieldGrow2">
-              <label>Username</label>
-              <input name="username" placeholder="Vanquish username/email" />
+          <div class="syncAccountInlineSummary">
+            <div class="syncAccountInlineSummaryHead">
+              <span class="syncFieldIcon">{{ app_icon('analytics') }}</span>
+              <strong>{{ selected_account.account_name if selected_account else 'Create or select an account' }}</strong>
+              {% if selected_account and selected_account.display_broker_account_id %}<span class="trendChip">{{ selected_account.display_broker_account_id }}</span>{% endif %}
+              {% if selected_account and selected_account.account_size %}<span class="trendChip positive">{{ money(selected_account.account_size) }}</span>{% endif %}
+              {% if selected_account and selected_account.get('broker_equity') is not none %}<span class="trendChip positive">Equity {{ money(selected_account.get('broker_equity')) }}</span>{% endif %}
+              {% set live_remaining_dd = selected_account.get('broker_remaining_drawdown') if selected_account and selected_account.get('broker_remaining_drawdown') is not none else selected_account.get('max_drawdown') if selected_account else none %}
+              {% if live_remaining_dd is not none %}
+                {% set live_dd_tone = 'positive' if live_remaining_dd > 2250 else 'negative' if live_remaining_dd < 1500 else 'warning' %}
+                <span class="trendChip {{ live_dd_tone }}">DD left {{ money(live_remaining_dd) }}</span>
+              {% endif %}
+              {% if selected_account %}
+                <div class="syncInlineDrawdownForm">
+                  <label class="srOnly" for="live-manual-drawdown-input">Manual remaining drawdown</label>
+                  <input
+                    id="live-manual-drawdown-input"
+                    form="live-drawdown-form"
+                    name="broker_remaining_drawdown"
+                    type="number"
+                    inputmode="decimal"
+                    min="0"
+                    step="0.01"
+                    value="{% if selected_account.get('broker_remaining_drawdown') is not none %}{{ '%.2f'|format(selected_account.get('broker_remaining_drawdown')) }}{% endif %}"
+                    placeholder="Remaining DD"
+                  >
+                  <button class="btn" type="submit" form="live-drawdown-form">Save DD</button>
+                </div>
+              {% endif %}
+              {% if not selected_account %}<span class="trendChip warning">Required before import</span>{% endif %}
             </div>
-            <div class="fieldGrow2">
-              <label>Password</label>
-              <input type="password" name="password" placeholder="Vanquish password" />
-            </div>
+            <div class="tiny line15 syncCredentialHint">Live upload updates equity · remaining drawdown is manual · rollover-aware dedupe</div>
           </div>
           <details class="syncDetails stack10">
-            <summary>⚙️ Advanced Sync Options</summary>
-            <div class="stack10">
-              <div class="row syncLaunchCompactRow">
-                <div class="fieldGrow2">
-                  <label>Base Origin</label>
-                  <input name="base_url" value="{{ broker_cfg.base_url }}" />
-                </div>
-                <div class="fieldGrow2">
-                  <label>Account</label>
-                  <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-                </div>
+            <summary><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>Historical or Snapshot Sync</span></summary>
+            <div class="row syncLaunchCompactRow">
+              <div>
+                <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('trades') }}</span><span>Mode</span></label>
+                <select name="mode">
+                  <option value="broker">Broker fills → trades</option>
+                  <option value="balance">Statement → ending balance snapshot</option>
+                </select>
               </div>
-              <div class="row syncLaunchCompactRow">
-                <div>
-                  <label>Whitelist</label>
-                  <input name="wl" value="{{ broker_cfg.wl }}" />
+              <div>
+                <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>From</span></label>
+                <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
+              </div>
+              <div>
+                <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>To</span></label>
+                <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
+              </div>
+            </div>
+            <div class="tiny line15">Use this only when you intentionally need a prior date or a balance snapshot.</div>
+          </details>
+          <div class="syncCredentialStatusRow">
+            <div class="syncCredentialStatusCard">
+              <div class="syncCredentialStatusHead">
+                <span class="syncFieldIcon">{{ app_icon('ops') }}</span>
+                <strong>Stored securely</strong>
+                <span class="tiny syncCredentialHint">
+                  {% if broker_cfg.password_stored %}
+                  Reuses saved login for quick run.
+                  {% else %}
+                  Save once to unlock quick run.
+                  {% endif %}
+                </span>
+              </div>
+              <div class="syncCredentialStatusMeta">
+                <span class="trendChip {% if broker_cfg.username %}positive{% endif %}">{{ 'Username ready' if broker_cfg.username else 'No saved username' }}</span>
+                <span class="trendChip {% if broker_cfg.password_stored %}positive{% endif %}">{{ 'Password on file' if broker_cfg.password_stored else 'No saved password' }}</span>
+              </div>
+              {% if credential_save_requested %}
+              <div class="syncCredentialOutcome syncCredentialOutcome-{{ credential_save_status or 'idle' }}">
+                <strong>
+                  {% if credential_save_status in ['saved', 'fallback_saved', 'reused'] %}
+                    Quick run ready
+                  {% elif credential_save_status == 'failed' %}
+                    Quick run not ready
+                  {% else %}
+                    Credential state
+                  {% endif %}
+                </strong>
+                <span>{{ credential_save_detail or 'Credential save state will update after the next run.' }}</span>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          <details class="syncDetails stack10"{% if live_credentials_form_open %} open{% endif %}>
+            <summary><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>Edit Credentials</span></summary>
+            <div class="stack10">
+              <div class="row syncCredentialRow">
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>Username Override</span></label>
+                  <input name="username" value="" autocomplete="off" placeholder="{% if broker_cfg.username %}Leave blank to reuse saved username{% else %}Vanquish username/email{% endif %}" />
                 </div>
-                <div>
-                  <label>Timezone</label>
-                  <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
-                </div>
-                <div>
-                  <label>Date Locale</label>
-                  <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
-                </div>
-                <div>
-                  <label>Report Locale</label>
-                  <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('risk') }}</span><span>Password Override</span></label>
+                  <input type="password" name="password" placeholder="{% if broker_cfg.password_stored %}Leave blank to use saved password{% else %}Vanquish password{% endif %}" />
                 </div>
               </div>
               <div class="row syncLaunchCompactRow">
                 <div class="stack12">
-                  <label>Browser Mode</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Credential Storage</span></label>
+                  <label><input type="checkbox" name="remember_credentials" value="1" {% if broker_cfg.username or broker_cfg.password_stored %}checked{% endif %} /> Save username/password securely</label>
+                  <label><input type="checkbox" name="clear_saved_credentials" value="1" /> Clear saved credentials</label>
+                  <div class="tiny syncCredentialPrereq">Required for dashboard Sync Today.</div>
+                </div>
+              </div>
+            </div>
+          </details>
+          <details class="syncDetails stack10"{% if live_account_form_open %} open{% endif %}>
+            <summary><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>{{ 'New Account' if account_form_mode == 'new' else 'Update Account' }}</span></summary>
+            <div class="stack10">
+              <input type="hidden" name="selected_account_id" value="{{ account_form_account.id if account_form_account else '' }}" form="live-account-form" />
+              <input type="hidden" name="rollover_from_account_id" value="{{ rollover_from_account_id or '' }}" form="live-account-form" />
+              <div class="row syncLaunchCompactRow">
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('brief') }}</span><span>Account Name</span></label>
+                  <input name="account_name" value="{{ account_form_account.account_name if account_form_account else '' }}" placeholder="Protect 75k" form="live-account-form" />
+                </div>
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('analytics') }}</span><span>Vanquish Account Number</span></label>
+                  <input name="broker_account_id" value="{{ account_form_account.display_broker_account_id if account_form_account else '' }}" placeholder="OEV0052447" form="live-account-form" />
+                </div>
+                <div>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Account Size</span></label>
+                  <input name="account_size" inputmode="decimal" value="{{ account_form_account.account_size if account_form_account and account_form_account.account_size is not none else '' }}" placeholder="75000" form="live-account-form" />
+                </div>
+              </div>
+              <div class="row syncLaunchCompactRow">
+                <div>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>Starting Balance</span></label>
+                  <input name="starting_balance" inputmode="decimal" value="{{ account_form_account.starting_balance if account_form_account else '' }}" placeholder="75000" form="live-account-form" />
+                </div>
+                <div>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('risk') }}</span><span>Max Drawdown</span></label>
+                  <input name="max_drawdown" inputmode="decimal" value="{{ account_form_account.max_drawdown if account_form_account and account_form_account.max_drawdown is not none else '' }}" placeholder="5000" form="live-account-form" />
+                </div>
+              </div>
+              {% if account_form_mode == 'new' %}
+              <div class="tiny line15 syncCredentialHint">
+                New account mode is blank on purpose. Saving here creates a separate ledger and does not modify the selected account above.
+                {% if rollover_from_account_id %}If this is an OPA performance account, the prior eval account stays linked for dashboard continuity.{% endif %}
+              </div>
+              {% endif %}
+              <div class="rightActions">
+                <button class="btn primary" type="submit" name="intent" value="save_account" form="live-account-form">{{ 'Add Account' if account_form_mode == 'new' else 'Update Account' }}</button>
+                {% if account_form_mode == 'new' %}
+                <a class="btn" href="/trades/upload/statement?ws=live{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">Cancel</a>
+                {% else %}
+                <a class="btn" href="/trades/upload/statement?ws=live&account_editor=new{% if selected_account %}&account_id={{ selected_account.id }}&rollover_from={{ selected_account.id }}{% else %}&account_id=all{% endif %}">New Account</a>
+                {% endif %}
+                {% if selected_account and account_form_mode != 'new' %}
+                <button class="btn" type="submit" form="live-archive-account-form">Archive Account</button>
+                {% endif %}
+              </div>
+            </div>
+          </details>
+          <details class="syncDetails stack10">
+            <summary><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Advanced Sync Options</span></summary>
+            <div class="stack10">
+              <input type="hidden" name="base_url" value="{{ broker_cfg.base_url }}" />
+              <input type="hidden" name="account" value="{{ selected_account.display_broker_account_id if selected_account and selected_account.display_broker_account_id else broker_cfg.account_display }}" />
+              <input type="hidden" name="wl" value="{{ broker_cfg.wl }}" />
+              <input type="hidden" name="time_zone" value="{{ broker_cfg.time_zone }}" />
+              <input type="hidden" name="date_locale" value="{{ broker_cfg.date_locale }}" />
+              <input type="hidden" name="report_locale" value="{{ broker_cfg.report_locale }}" />
+              <div class="row syncLaunchCompactRow">
+                <div class="stack12">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Browser Mode</span></label>
                   <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
                 </div>
                 <div class="stack12">
-                  <label>Diagnostics</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('alert') }}</span><span>Diagnostics</span></label>
                   <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
-                  <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
-                </div>
-                <div class="stack12">
-                  <label>Config</label>
-                  <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
+                  <label><input type="checkbox" name="debug_only" value="1" /> Diagnostic test — no import</label>
                 </div>
               </div>
             </div>
@@ -255,22 +553,38 @@
 
           <div class="hr"></div>
           <div class="syncLaunchActions">
-            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>Run Live Sync</button>
+            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>{{ 'Sync Running' if sync_active else 'Sync Today' }}</button>
             <a class="btn" href="/trades/upload/statement">Reset</a>
           </div>
           <div class="tiny stack10 line15 syncLaunchLoading" id="live-sync-loading" style="display:none;" aria-live="polite">
-            ⏳ Live sync in progress. Login, generate, import.
+            ⏳ Starting live sync. Opening browser, logging in, generating statement, importing trades.
           </div>
-          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
+          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge=initial_runway_badge, label=((active_job.get('message') or active_stage_label) if (sync_active or active_job_status in ['queued', 'running']) else 'Waiting to start live sync...'), visible=True, label_id='live-sync-stage-label') }}
         </form>
+        {% if archived_accounts %}
+        <details class="syncDetails stack10 top12">
+          <summary><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Archived Accounts</span></summary>
+          <div class="stack10">
+            {% for account in archived_accounts %}
+            <div class="row syncLaunchCompactRow">
+              <div class="fieldGrow2">
+                <strong>{{ account.account_name }}</strong>
+                <div class="tiny muted">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</div>
+              </div>
+              <button class="btn" type="submit" form="live-restore-account-form-{{ account.id }}">Restore</button>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
       </div>
     </div>
 
-    <div class="card stack12 syncControlDeck">
+    <div class="card stack12 syncControlDeck{% if startup_active %} syncStartupSuppressed{% endif %}" id="sync-control-deck" {% if startup_active %}hidden{% endif %}>
       <div class="toolbar">
         <div class="pillRow">
           <div class="pill">Operator Deck</div>
-          <div class="trendChip {% if effective_status == 'success' %}positive{% elif effective_status in ['failed', 'stale'] %}negative{% endif %}" id="sync-control-status-chip">
+          <div class="trendChip {% if effective_status in ['completed', 'no_new_trades'] %}positive{% elif effective_status in ['failed', 'needs_recovery'] %}negative{% elif effective_status in ['cancelled', 'diagnostic_only'] %}warning{% endif %}" id="sync-control-status-chip">
             <span id="sync-control-status-value">{{ effective_status|replace('_', ' ')|title }}</span>
           </div>
           <div class="trendChip"><span id="sync-control-updated-value">{{ effective_updated }}</span></div>
@@ -291,32 +605,34 @@
       </div>
     </div>
 
-    <div class="card stack12 syncJobCard{% if compact_job_card %} is-compact{% endif %}" id="sync-job-card" data-job-id="{{ job.get('id', '') }}" {% if not job %}hidden{% endif %}>
+    <div class="card stack12 syncJobCard{% if compact_job_card %} is-compact{% endif %}{% if startup_active %} is-startup-minimal{% endif %}" id="sync-job-card" data-job-id="{{ job.get('id', '') }}" {% if not job %}hidden{% endif %}>
       <div class="toolbar">
         <div class="pill">Sync Job Status</div>
         <div class="workspaceSectionLead">Current run progress and artifacts.</div>
         <div class="syncHealthStrip" id="sync-health-strip">
-          <div class="syncHealthChip syncHealthChipStatus" id="sync-health-status">{{ (job.get('status') or 'idle')|replace('_', ' ')|title }}</div>
-          <div class="syncHealthChip" id="sync-health-stage">{{ (job.get('stage') or 'standby')|replace('_', ' ')|title }}</div>
+          <div class="syncHealthChip syncHealthChipStatus" id="sync-health-status">{{ initial_runway_badge }}</div>
+          <div class="syncHealthChip" id="sync-health-stage">{{ active_stage_label }}</div>
           <div class="syncHealthChip" id="sync-health-updated">
             {% if job.get('updated_at_human') %}Updated {{ job.get('updated_at_human') }}{% elif job.get('updated_at') %}Updated {{ job.get('updated_at') }}{% else %}Waiting for next sync{% endif %}
           </div>
           <div class="syncHealthChip syncHealthChipMuted" id="sync-health-id">{% if job.get('id') %}Job {{ job.get('id')[:8] }}{% else %}No active job{% endif %}</div>
         </div>
         <div class="syncLockBanner{% if not sync_active %} syncLockBannerHidden{% endif %}" id="sync-lock-banner">
-          <strong>Sync lane locked.</strong> One broker sync is already active. Cancel it or wait for completion before starting another run.
+          <strong>Sync lane locked.</strong> One broker sync is already active. Cancel it, or use Force Reset Lane if the login is hung.
         </div>
-        <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
+        <div class="tiny stack8 line15" id="sync-job-message">{{ active_job.get('message') or active_stage_label or 'Queued and waiting to start.' }}</div>
         <div class="row" id="sync-job-actions" {% if (job.get('status') or '') not in ['queued', 'running'] %}hidden{% endif %}>
           <form method="post" id="sync-job-cancel-form" action="/trades/sync/job/{{ job.get('id', '') }}/cancel" onsubmit="return window.confirm('Cancel this sync job? Any late output from this run will be ignored.');">
             <button class="btn danger" type="submit" id="sync-job-cancel-btn">Cancel Sync</button>
           </form>
+          <form method="post" id="sync-job-force-reset-form" action="/trades/sync/job/{{ job.get('id', '') }}/force-reset" onsubmit="return window.confirm('Force reset this sync lane? This closes the current run immediately and unlocks the workspace.');">
+            <button class="btn" type="submit" id="sync-job-force-reset-btn">Force Reset Lane</button>
+          </form>
         </div>
-        <details class="syncJobDetails" id="sync-job-details" {% if not compact_job_card %}open{% endif %}>
+        <details class="syncJobDetails" id="sync-job-details" {% if not compact_job_card and not startup_active %}open{% endif %}>
           <summary class="syncJobSummaryToggle" id="sync-job-toggle">
-            {% if compact_job_card %}Open Full Run Details{% else %}Collapse Run Details{% endif %}
+            {% if startup_active %}Open Run Diagnostics{% elif compact_job_card %}Open Full Run Details{% else %}Collapse Run Details{% endif %}
           </summary>
-          {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
           <div class="statRow">
             <div class="stat">
               <div class="k">Status</div>
@@ -351,6 +667,53 @@
             {{ job.get('result_html', '')|safe }}
           </div>
         </details>
+      </div>
+    </div>
+
+    <div class="card stack12 syncManualRecoveryCard" id="sync-manual-recovery-card" {% if not manual_recovery_visible %}hidden{% endif %}>
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Manual HTML Recovery</div>
+          <div class="trendChip warning">Parser fallback</div>
+        </div>
+        <div class="workspaceSectionLead">When live capture fails, upload or paste the broker statement HTML and import it with the same parser.</div>
+        <form method="post" action="/trades/upload/statement?ws=upload" enctype="multipart/form-data" id="statement-recovery-form" class="stack12">
+          <div class="row syncLaunchCompactRow">
+            <div class="fieldGrow2">
+              <label>Account Ledger</label>
+              <select name="selected_account_id">
+                <option value="">Select account…</option>
+                {% for account in accounts or [] %}
+                  <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                    {{ account.account_name }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Mode</label>
+              <select name="mode">
+                <option value="broker">Broker fills → trades</option>
+                <option value="balance">Statement → ending balance snapshot</option>
+              </select>
+            </div>
+          </div>
+          <div class="stack10">
+            <label>HTML File</label>
+            <input type="file" name="pdf" accept="text/html,.html,.htm" />
+          </div>
+          <div class="stack10">
+            <label>Paste Statement HTML</label>
+            <textarea name="statement_html" rows="8" placeholder="Paste the exported statement HTML here when you do not have a file."></textarea>
+          </div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit" id="statement-recovery-submit">Parse HTML</button>
+            <a class="btn" href="/trades/upload/statement?ws=upload{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">Open Upload Lane</a>
+          </div>
+          <div class="tiny stack8" id="statement-recovery-loading" style="display:none;" aria-live="polite">
+            Processing statement HTML...
+          </div>
+        </form>
       </div>
     </div>
 
@@ -393,7 +756,11 @@
         <div class="workspaceSectionLead">Keep diagnosis short: identify the stage, decide the next move, then retry deliberately.</div>
         <div class="syncGuidePanel">
           <div class="syncGuideHeadline" id="sync-guide-headline">{{ effective_stage|replace('_', ' ')|title }}</div>
-          <div class="syncControlValue" id="sync-guide-message">{{ effective_help or 'No active failure guide. The lane is ready for the next controlled run.' }}</div>
+          <div class="syncControlValue" id="sync-guide-message">
+            {% if effective_status == 'cancelled' %}The prior attempt was cancelled; no import was completed.
+            {% elif effective_status == 'diagnostic_only' %}The diagnostic test completed without importing. Run Normal Import to complete today.
+            {% else %}{{ effective_help or 'No active failure guide. The lane is ready for the next controlled run.' }}{% endif %}
+          </div>
           <div class="syncGuideList" id="sync-guide-list">
             {% if effective_stage in ['system_resource', 'queue_dispatch', 'browser_boot'] %}
             <span>Lower system pressure and retry once before changing credentials or account settings.</span>
@@ -408,9 +775,9 @@
             <span>Open the latest artifact bundle before retrying.</span>
             <span>Do not trust the sync until artifacts and write paths are healthy.</span>
             {% else %}
-            <span>Use Balanced for normal runs.</span>
-            <span>Use Recovery when the last run failed or the broker UI changed.</span>
-            <span>Use Fast only when the lane is already healthy.</span>
+            <span>Use Normal Import for today's broker fills.</span>
+            <span>Use Diagnostic Test — No Import when the broker UI needs inspection.</span>
+            <span>Use Advanced only for historical, snapshot, or recovery work.</span>
             {% endif %}
           </div>
         </div>
@@ -428,7 +795,7 @@
         </div>
         <div class="workspaceSectionLead">Operational tools, diagnostics, artifacts, and reliability in one panel.</div>
         <div class="syncQuickActions syncToolsActions">
-          <button class="btn" type="button" id="quick-retry-btn" {% if not last %}disabled{% endif %}>Reuse Last Request</button>
+          <button class="btn" type="button" id="quick-retry-btn" {% if not last %}disabled{% endif %}>Load Previous Settings</button>
           <a class="btn" href="/ops/alerts">Open Ops</a>
           <a class="btn" href="/analytics?tab=diagnostics">Diagnostics</a>
           <a class="btn" href="/trades/upload/statement">Reset</a>
@@ -479,7 +846,7 @@
         <details class="syncAsideFold">
           <summary>
             <span>Sync Reliability (30D)</span>
-            <span class="syncAsideMeta">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}% success · {{ rel.get('attempts', 0) }} runs</span>
+            <span class="syncAsideMeta">{% if rel.get('success_rate') is not none %}{{ '%.1f'|format(rel.get('success_rate')) }}% import success{% else %}No import attempts{% endif %} · {{ rel.get('attempts', 0) }} runs</span>
           </summary>
           <div class="hr"></div>
           <div class="statRow">
@@ -489,11 +856,15 @@
             </div>
             <div class="stat">
               <div class="k">Success Rate</div>
-              <div class="v">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}%</div>
+              <div class="v">{% if rel.get('success_rate') is not none %}{{ '%.1f'|format(rel.get('success_rate')) }}%{% else %}—{% endif %}</div>
             </div>
             <div class="stat">
               <div class="k">Success / Failed</div>
               <div class="v">{{ rel.get('success', 0) }} / {{ rel.get('failed', 0) }}</div>
+            </div>
+            <div class="stat">
+              <div class="k">Cancelled / Diagnostic</div>
+              <div class="v">{{ rel.get('cancelled', 0) }} / {{ rel.get('diagnostic_only', 0) }}</div>
             </div>
             <div class="stat">
               <div class="k">Avg Runtime</div>
@@ -628,7 +999,7 @@
                   </div>
                   <div class="fieldGrow2">
                     <label>Account</label>
-                    <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
+                    <input name="auto_account" value="{{ auto.get('account_display', broker_cfg.account_display) }}" placeholder="OEV0052447" />
                   </div>
                 </div>
                 <div class="row syncLaunchCompactRow">
@@ -676,6 +1047,8 @@
     </div>
   </aside>
 </div>
+  </div>
+</details>
 {% endif %}
 
 {% if ws == 'reconcile' %}
@@ -758,6 +1131,7 @@
   (function() {
     const jobs = window.McAsyncJobs;
     const syncStageHelp = {{ (sync_stage_help or {}) | tojson }};
+    const syncStageLabels = {{ (sync_stage_labels or {}) | tojson }};
     const syncRunwayTimers = Object.create(null);
 
     function titleizeSyncText(value, fallback) {
@@ -770,7 +1144,8 @@
 
     function syncTone(status) {
       const normalized = String(status || '').toLowerCase();
-      if (normalized === 'success' || normalized === 'debug_only') return 'positive';
+      if (normalized === 'success') return 'positive';
+      if (normalized === 'debug_only' || normalized === 'cancelled') return 'warning';
       if (normalized === 'failed' || normalized === 'stale' || normalized === 'error' || normalized === 'blocked') return 'negative';
       return '';
     }
@@ -787,15 +1162,81 @@
       return job.updated_at_human || job.updated_at || 'No recent run';
     }
 
+    function isSyncStartupStage(stage) {
+      const normalized = String(stage || '').toLowerCase();
+      return ['start', 'queued', 'queue_dispatch', 'system_resource', 'browser_boot', 'open_login'].includes(normalized);
+    }
+
+    function syncStageDisplay(stage, fallback) {
+      const normalized = String(stage || '').toLowerCase();
+      return syncStageLabels[normalized] || titleizeSyncText(normalized, fallback);
+    }
+
+    function syncRunState(status, stage) {
+      const normalizedStatus = String(status || '').toLowerCase();
+      const normalizedStage = String(stage || '').toLowerCase();
+      const terminal = !['queued', 'running'].includes(normalizedStatus);
+      if (terminal) {
+        return {
+          key: ['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus) ? 'failed' : 'success',
+          badge: ['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus) ? 'Failed' : 'Success',
+          title: ['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus) ? 'Sync Failed' : 'Sync Complete',
+          startup: false,
+        };
+      }
+      if (normalizedStage === 'browser_boot') {
+        return { key: 'starting', badge: 'Booting Browser', title: 'Booting Browser', startup: true };
+      }
+      if (normalizedStage === 'open_login') {
+        return { key: 'starting', badge: 'Opening Login', title: 'Opening Login', startup: true };
+      }
+      if (isSyncStartupStage(normalizedStage)) {
+        return { key: 'starting', badge: 'Dispatching', title: 'Dispatching Sync', startup: true };
+      }
+      return { key: 'running', badge: 'Live', title: 'Live Sync Running', startup: false };
+    }
+
     function syncChecklistLines(stage, status, active) {
       const normalizedStage = String(stage || '').toLowerCase();
       const normalizedStatus = String(status || '').toLowerCase();
+      if (active && isSyncStartupStage(normalizedStage)) {
+        return [
+          'Wait for startup to reach broker login.',
+          'Do not start a second sync.',
+          'If dispatch or browser boot stalls, retry once.',
+          'Force reset only if startup stops updating.'
+        ];
+      }
       if (active) {
         return [
           'Wait for the active run.',
           'Do not start a second sync.',
-          'Watch job status only.',
-          'Open artifacts only if it stalls.'
+          'Watch Submit Login for stalls.',
+          'Force reset the lane if it hangs.'
+        ];
+      }
+      if (normalizedStage === 'reset_required') {
+        return [
+          'Lane was reset after a hang.',
+          'Start one fresh controlled run.',
+          'Keep debug capture on.',
+          'Open artifacts only if it stalls again.'
+        ];
+      }
+      if (normalizedStatus === 'cancelled') {
+        return [
+          'The prior attempt was cancelled; no import was completed.',
+          'Confirm the account and today\'s date.',
+          'Run one Normal Import when ready.',
+          'Use recovery only if the next attempt fails.'
+        ];
+      }
+      if (normalizedStatus === 'debug_only') {
+        return [
+          'The diagnostic test completed without importing.',
+          'Review its evidence if needed.',
+          'Run Normal Import to complete today.',
+          'Do not count the test as an import.'
         ];
       }
       if (['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus)) {
@@ -822,7 +1263,7 @@
           'Confirm files write cleanly.'
         ];
       }
-      if (normalizedStatus === 'success' || normalizedStatus === 'debug_only') {
+      if (normalizedStatus === 'success') {
         return [
           'Review imported trades.',
           'Confirm setup tagging.',
@@ -840,6 +1281,13 @@
 
     function syncGuideLines(stage) {
       const normalized = String(stage || '').toLowerCase();
+      if (normalized === 'reset_required') {
+        return [
+          'The prior lane was force-reset because the broker login stalled or stopped updating.',
+          'Run one clean retry before changing account or browser settings.',
+          'If Submit Login stalls again, inspect the latest artifacts immediately.'
+        ];
+      }
       if (['system_resource', 'queue_dispatch', 'browser_boot'].includes(normalized)) {
         return [
           'Lower system pressure and retry once before changing credentials or account settings.',
@@ -862,15 +1310,16 @@
         ];
       }
       return [
-        'Use Balanced for normal runs.',
-        'Use Recovery when the last run failed or the broker UI changed.',
-        'Use Fast only when the lane is already healthy.'
+        'Use Normal Import for today\'s broker fills.',
+        'Use Diagnostic Test — No Import when the broker UI needs inspection.',
+        'Use Advanced only for historical, snapshot, or recovery work.'
       ];
     }
 
     function systemStateLabel(status) {
       const normalized = String(status || 'idle').toLowerCase();
-      if (['success', 'succeeded', 'ok', 'healthy', 'idle', 'debug_only'].includes(normalized)) return 'Healthy';
+      if (['success', 'succeeded', 'ok', 'healthy', 'idle'].includes(normalized)) return 'Healthy';
+      if (normalized === 'debug_only' || normalized === 'cancelled') return 'Needs Attention';
       if (['queued', 'running', 'stale'].includes(normalized)) return 'Warning';
       return 'Failed';
     }
@@ -912,6 +1361,13 @@
       if (topSummary) topSummary.title = `${systemState} · ${message}`;
       if (topUpdatedBadge) topUpdatedBadge.title = updated;
 
+      const primaryState = document.getElementById('live-sync-primary-state');
+      const primaryMessage = document.getElementById('live-sync-primary-message');
+      const primaryMeta = document.getElementById('live-sync-primary-meta');
+      if (primaryState) primaryState.textContent = statusLabel;
+      if (primaryMessage) primaryMessage.textContent = message;
+      if (primaryMeta) primaryMeta.textContent = `${stageLabel} · ${updated}`;
+
       const heroStatusChip = document.getElementById('sync-hero-status-chip');
       const heroStatusValue = document.getElementById('sync-hero-status-value');
       const heroUpdatedValue = document.getElementById('sync-hero-updated-value');
@@ -941,7 +1397,13 @@
       const guideMessage = document.getElementById('sync-guide-message');
       const guideList = document.getElementById('sync-guide-list');
       if (guideHeadline) guideHeadline.textContent = stageLabel;
-      if (guideMessage) guideMessage.textContent = stageHelp || 'No active failure guide. The lane is ready for the next controlled run.';
+      if (guideMessage) {
+        guideMessage.textContent = status === 'cancelled'
+          ? 'The prior attempt was cancelled; no import was completed.'
+          : status === 'debug_only'
+            ? 'The diagnostic test completed without importing. Run Normal Import to complete today.'
+            : stageHelp || 'No active failure guide. The lane is ready for the next controlled run.';
+      }
       if (guideList) {
         guideList.innerHTML = syncGuideLines(stage).map((line) => `<span>${line}</span>`).join('');
       }
@@ -987,6 +1449,13 @@
         const shouldShowFeedback = terminal || Number(feedbackSummary.inserted || 0) || Number(feedbackSummary.warn_count || 0) || Number(feedbackSummary.error_count || 0);
         feedbackCard.hidden = !shouldShowFeedback;
       }
+      const manualRecovery = document.getElementById('sync-manual-recovery-card');
+      if (manualRecovery) {
+        manualRecovery.hidden = !(
+          ['failed', 'stale'].includes(status) ||
+          ['capture_statement_html', 'auth_required'].includes(stage)
+        );
+      }
     }
 
     function syncRunwayIdForJob(job) {
@@ -1002,12 +1471,13 @@
       if (!runway) return;
       const status = String(job.status || '').toLowerCase();
       const stage = String(job.stage || 'start');
+      const runState = syncRunState(status, stage);
       const terminal = !['queued', 'running'].includes(status);
-      const failed = ['failed', 'stale', 'error', 'blocked'].includes(status);
-      const stageLabel = titleizeSyncText(stage, 'Start');
+      const failed = runState.key === 'failed';
+      const stageLabel = syncStageDisplay(stage, 'Start');
       clearSyncRunwayTimer(runwayId);
       jobs.setRunwayState(runway, {
-        badge: failed ? 'Failed' : (terminal ? 'Success' : 'Live'),
+        badge: runState.badge,
         label: job.message || stageLabel,
         stepIndex: terminal ? 3 : syncStepIndex(stage),
         complete: terminal,
@@ -1021,6 +1491,7 @@
       const loading = document.getElementById(loadingId);
       if (!form || !submitBtn || !loading) return;
       form.addEventListener('submit', function() {
+        if (form.dataset.asyncSubmit === '1') return;
         submitBtn.disabled = true;
         submitBtn.textContent = busyText;
         loading.style.display = 'block';
@@ -1081,10 +1552,15 @@
       if (!card || !job) return;
       card.hidden = false;
       if (job.id) card.setAttribute('data-job-id', String(job.id));
-      const statusText = String(job.status || 'queued').replaceAll('_', ' ');
-      const stageText = String(job.stage || 'start').replaceAll('_', ' ');
-      const terminal = !['queued', 'running'].includes(String(job.status || ''));
+      const rawStatus = String(job.status || 'queued');
+      const rawStage = String(job.stage || 'start');
+      const statusText = rawStatus.replaceAll('_', ' ');
+      const stageText = rawStage.replaceAll('_', ' ');
+      const terminal = !['queued', 'running'].includes(rawStatus);
+      const runState = syncRunState(rawStatus, rawStage);
       const summary = job.summary || {};
+      const stageTitle = syncStageDisplay(rawStage, 'Start');
+      const statusTitle = runState.badge;
       const statusEl = document.getElementById('sync-job-status');
       const badgeEl = document.getElementById('sync-job-badge');
       const stageEl = document.getElementById('sync-job-stage');
@@ -1098,24 +1574,42 @@
       const actionsEl = document.getElementById('sync-job-actions');
       const cancelBtn = document.getElementById('sync-job-cancel-btn');
       const cancelForm = document.getElementById('sync-job-cancel-form');
+      const forceResetForm = document.getElementById('sync-job-force-reset-form');
       const healthStatusEl = document.getElementById('sync-health-status');
       const healthStageEl = document.getElementById('sync-health-stage');
       const updatedEl = document.getElementById('sync-health-updated');
       const healthIdEl = document.getElementById('sync-health-id');
       if (cancelForm && job.id) cancelForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/cancel`;
-      if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
-      if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
-      if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
-      if (healthStatusEl) healthStatusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
-      if (healthStageEl) healthStageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      if (forceResetForm && job.id) forceResetForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/force-reset`;
+      if (statusEl) statusEl.textContent = statusTitle;
+      if (stageEl) stageEl.textContent = stageTitle;
+      if (healthStatusEl) healthStatusEl.textContent = statusTitle;
+      if (healthStageEl) healthStageEl.textContent = stageTitle;
       if (updatedEl) updatedEl.textContent = job.updated_at_human ? `Updated ${job.updated_at_human}` : (job.updated_at ? `Updated ${job.updated_at}` : 'Waiting for next sync');
       if (healthIdEl) healthIdEl.textContent = job.id ? `Job ${String(job.id).slice(0, 8)}` : 'No active job';
-      if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
-      if (messageEl) messageEl.textContent = job.message || 'Working...';
+      if (stageLabelEl) stageLabelEl.textContent = job.message || stageTitle;
+      if (messageEl) messageEl.textContent = job.message || stageTitle || 'Working...';
       if (actionsEl) actionsEl.hidden = terminal;
       if (cancelBtn) cancelBtn.disabled = terminal;
+      const activeInline = document.getElementById('sync-active-inline');
+      const activeTitle = document.getElementById('sync-active-title');
+      const activeMessage = document.getElementById('sync-active-message');
+      const activeActions = document.getElementById('sync-active-actions');
+      const activeCancelBtn = document.getElementById('sync-active-cancel-btn');
+      const activeResetBtn = document.getElementById('sync-active-reset-btn');
+      if (activeInline) activeInline.classList.toggle('syncActiveInlineHidden', terminal);
+      if (activeTitle) activeTitle.textContent = terminal ? `${statusTitle} · ${stageTitle}` : runState.title;
+      if (activeMessage) activeMessage.textContent = job.message || (terminal ? 'Run finished.' : stageTitle);
+      if (activeActions) activeActions.hidden = terminal;
+      if (activeCancelBtn) activeCancelBtn.disabled = terminal;
+      if (activeResetBtn) activeResetBtn.disabled = terminal;
+      setLiveSyncStatus(
+        terminal ? runState.key : runState.key,
+        terminal ? runState.title : runState.title,
+        job.message || (terminal ? 'Run finished.' : stageTitle)
+      );
       applySyncLockState(!terminal);
-      applySyncJobCardMode(String(job.status || ''));
+      applySyncJobCardMode(rawStatus, rawStage);
       if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
       if (insertedEl) insertedEl.textContent = String(summary.inserted || 0);
       if (summaryEl) {
@@ -1135,7 +1629,7 @@
       updateSyncSummary(job);
       const steps = Array.from(card.querySelectorAll('.syncStep'));
       const trackBar = card.querySelector('.syncTrackBar');
-      const idx = syncStepIndex(String(job.stage || 'start'));
+      const idx = syncStepIndex(rawStage);
       steps.forEach((step, stepIdx) => {
         const done = stepIdx < idx || ['success', 'debug_only'].includes(String(job.status || ''));
         const active = !done && stepIdx === idx && !['success', 'failed', 'debug_only'].includes(String(job.status || ''));
@@ -1189,16 +1683,35 @@
       }
     }
 
-    function applySyncJobCardMode(status) {
+    function applySyncJobCardMode(status, stage) {
       const card = document.getElementById('sync-job-card');
       const details = document.getElementById('sync-job-details');
       const toggle = document.getElementById('sync-job-toggle');
+      const controlDeck = document.getElementById('sync-control-deck');
       if (!card || !details || !toggle) return;
       const normalized = String(status || '').toLowerCase();
-      const compact = normalized === 'success' || normalized === 'debug_only';
+      const startup = ['queued', 'running'].includes(normalized) && isSyncStartupStage(stage);
+      const compact = startup || normalized === 'success' || normalized === 'debug_only';
       card.classList.toggle('is-compact', compact);
-      details.open = !compact;
-      toggle.textContent = compact ? 'Open Full Run Details' : 'Collapse Run Details';
+      card.classList.toggle('is-startup-minimal', startup);
+      details.open = !compact && !startup;
+      toggle.textContent = startup ? 'Open Run Diagnostics' : (compact ? 'Open Full Run Details' : 'Collapse Run Details');
+      if (controlDeck) controlDeck.hidden = startup;
+    }
+
+    function setLiveSyncStatus(state, title, message) {
+      const statusCard = document.getElementById('live-sync-status');
+      const statusTitle = document.getElementById('live-sync-status-title');
+      const statusText = document.getElementById('live-sync-status-text');
+      if (statusCard) {
+        statusCard.classList.remove('is-idle', 'is-starting', 'is-running', 'is-failed', 'is-success');
+        statusCard.classList.add(`is-${state || 'idle'}`);
+      }
+      if (statusTitle) statusTitle.textContent = title || 'Ready to Run';
+      if (statusText) {
+        statusText.textContent =
+          message || 'Run Live Sync to start broker login, statement generation, and import.';
+      }
     }
 
     function setSyncSubmitState(button, loading, busy, busyText, idleText) {
@@ -1209,9 +1722,30 @@
       if (loading) {
         loading.style.display = busy ? 'block' : 'none';
       }
+      setLiveSyncStatus(
+        busy ? 'starting' : 'idle',
+        busy ? 'Dispatching Sync' : 'Ready to Run',
+        busy
+          ? 'Worker dispatch has started. The runway will advance once browser startup begins.'
+          : 'Run Live Sync to start broker login, statement generation, and import.'
+      );
+      const runway = document.getElementById('live-sync-runway');
+      const jobs = window.McAsyncJobs;
+      if (runway && jobs && typeof jobs.setRunwayState === 'function') {
+        jobs.setRunwayState(runway, {
+          badge: busy ? 'Dispatching' : 'Ready',
+          label: busy
+            ? 'Dispatching sync worker.'
+            : 'Waiting to start live sync...',
+          stepIndex: 0,
+          complete: false,
+          failed: false
+        });
+      }
     }
 
     function resetSyncControls() {
+      setSyncSubmitState(document.getElementById('live-sync-primary-submit'), document.getElementById('live-sync-primary-loading'), false, 'Starting Sync...', 'Sync Today');
       setSyncSubmitState(document.getElementById('live-sync-submit'), document.getElementById('live-sync-loading'), false, '⏳ Syncing...', 'Run Live Sync');
       setSyncSubmitState(document.getElementById('auto-sync-run-submit'), document.getElementById('auto-sync-run-loading'), false, '⏳ Running...', 'Run Now');
       applySyncLockState(false);
@@ -1242,13 +1776,24 @@
       const button = document.getElementById(submitId);
       const loading = document.getElementById(loadingId);
       if (!form || !button || !loading) return;
+      form.dataset.asyncSubmit = '1';
       form.addEventListener('submit', function(e) {
         e.preventDefault();
         setSyncSubmitState(button, loading, true, busyText, idleText);
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+        const csrfInput = form.querySelector('input[name="csrf_token"]');
+        const headers = { 'Accept': 'application/json' };
+        if (csrfInput && csrfInput.value) {
+          headers['X-CSRFToken'] = csrfInput.value;
+          headers['X-CSRF-Token'] = csrfInput.value;
+        }
         fetch(form.action + '?async=1', {
           method: 'POST',
-          headers: { 'Accept': 'application/json' },
-          body: new FormData(form)
+          headers: headers,
+          credentials: 'same-origin',
+          body: new FormData(form),
+          signal: controller.signal
         })
           .then(parseAsyncJson)
           .then((payload) => {
@@ -1263,7 +1808,10 @@
             pollJobCard(String(payload.job.id));
           })
           .catch((err) => {
-            const message = err && err.message ? String(err.message) : 'Could not start the sync job.';
+            const aborted = err && err.name === 'AbortError';
+            const message = aborted
+              ? 'Sync start timed out before the server accepted the job. Try Force Reset Lane, wait a few seconds, then retry once.'
+              : (err && err.message ? String(err.message) : 'Could not start the sync job.');
             const hasActiveJob = !!(err && err.payload && err.payload.job && err.payload.job.id);
             if (err && err.payload && err.payload.job && err.payload.job.id) {
               updateJobCard(err.payload.job);
@@ -1288,6 +1836,9 @@
               loading.style.display = 'block';
               loading.textContent = message;
             }
+          })
+          .finally(() => {
+            window.clearTimeout(timeoutId);
           });
       });
     }
@@ -1322,7 +1873,9 @@
     }
 
     bindLoading('statement-upload-form', 'statement-upload-submit', 'statement-upload-loading', '⏳ Processing...');
+    bindLoading('statement-recovery-form', 'statement-recovery-submit', 'statement-recovery-loading', 'Processing...');
     bindLoading('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...');
+    bindLoading('live-sync-primary-form', 'live-sync-primary-submit', 'live-sync-primary-loading', 'Starting Sync...');
     bindLoading('auto-sync-config-form', 'auto-sync-config-submit', 'auto-sync-config-loading', '⏳ Saving...');
     bindLoading('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...');
     bindSyncRunway(
@@ -1339,6 +1892,7 @@
     );
 
     startAsyncSync('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...', 'Run Live Sync');
+    startAsyncSync('live-sync-primary-form', 'live-sync-primary-submit', 'live-sync-primary-loading', 'Starting Sync...', 'Sync Today');
     startAsyncSync('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...', 'Run Now');
 
     const quickRetryBtn = document.getElementById('quick-retry-btn');
@@ -1377,8 +1931,8 @@
       const debugOnly = liveForm.querySelector('[name="debug_only"]');
       const rememberConnection = liveForm.querySelector('[name="remember_connection"]');
       const noteMap = {
-        balanced: 'Balanced keeps debug capture on and performs a full import.',
-        recovery: 'Recovery keeps diagnostics on and switches to debug-only so you can inspect the broker flow before importing again.',
+        balanced: 'Normal Import captures evidence and imports trades.',
+        recovery: 'Diagnostic Test captures evidence and stops before import.',
         fast: 'Fast minimizes artifact capture for a clean lane when reliability is already stable.'
       };
       if (headless) headless.checked = true;

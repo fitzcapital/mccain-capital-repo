@@ -57,6 +57,22 @@
               </select>
             </label>
             <label>
+              Market Pulse Default
+              <select name="market_pulse_default_ticker">
+                {% for ticker in ["SPX", "SPY", "QQQ"] %}
+                  <option value="{{ ticker }}" {% if profile.market_pulse_default_ticker == ticker %}selected{% endif %}>{{ ticker }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Trading Dashboard Default
+              <select name="dashboard_default_ticker">
+                {% for ticker in ["SPX", "SPY", "QQQ"] %}
+                  <option value="{{ ticker }}" {% if profile.dashboard_default_ticker == ticker %}selected{% endif %}>{{ ticker }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
               Profile Photo
               <input type="file" name="photo" accept="image/png,image/jpeg,image/webp,image/gif" data-profile-photo-input>
               <input type="hidden" name="photo_data_url" data-profile-photo-data>

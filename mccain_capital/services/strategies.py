@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List
 
-from flask import abort, flash, redirect, render_template, render_template_string, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 
 from mccain_capital.services import core as core_svc
 from mccain_capital.services.ui import render_page
@@ -16,41 +16,8 @@ from mccain_capital.services.viewmodels import StateBadgeViewModel
 
 
 def _strategy_form(title: str, t: str, body: str, errors: List[str]) -> str:
-    return render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📌 {{ title }}</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.6">
-            Keep it executable. If it’s too complex, you won’t follow it. ✅
-          </div>
-
-          {% if errors %}
-            <div class="hr"></div>
-            <div class="tiny" style="color:#ff8f8f">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
-          {% endif %}
-
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div style="flex:2 1 320px">
-                <label>Title</label>
-                <input name="title" value="{{ t }}" placeholder="e.g. Fitz Midday CE Strike">
-              </div>
-            </div>
-
-            <div style="margin-top:12px">
-              <label>Body</label>
-              <textarea name="body" placeholder="Entry trigger… Invalidation… Size… Stops… Targets…">{{ body }}</textarea>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/strategies">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    return render_template(
+        "strategies/form.html",
         title=title,
         t=t,
         body=body,

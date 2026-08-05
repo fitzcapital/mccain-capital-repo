@@ -76,8 +76,18 @@ jobs:
       - name: Smoke test container endpoints
         run: |
           docker run -d --name mccain-capital-smoke -p 5001:5001 mccain-capital-app:ci
-          sleep 3
-          curl -fsS http://127.0.0.1:5001/healthz
+          ready=0
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:5001/healthz >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs --tail 120 mccain-capital-smoke
+            exit 1
+          fi
           for path in /dashboard /journal /analytics; do
             ok=0
             for i in 1 2 3 4 5; do
@@ -118,8 +128,18 @@ jobs:
         run: |
           docker build -t mccain-capital-app:visual -f Containerfile .
           docker run -d --name mccain-capital-visual -p 5001:5001 mccain-capital-app:visual
-          sleep 3
-          curl -fsS http://127.0.0.1:5001/healthz
+          ready=0
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:5001/healthz >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs --tail 120 mccain-capital-visual
+            exit 1
+          fi
 
       - name: Capture desktop/mobile visual smoke screenshots
         run: |

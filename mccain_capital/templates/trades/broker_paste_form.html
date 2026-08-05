@@ -1,0 +1,19 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">🏦 Paste Broker Fills (BUY/SELL legs)</div>
+  <div class="tiny stack10 line15">
+    Paste the raw fills. This importer pairs BUY+SELL into one completed trade (FIFO). ✅
+  </div>
+  <div class="hr"></div>
+  <form method="post">
+    <input type="hidden" name="selected_account_id" value="{{ selected_account_id }}" />
+    <div class="stack12">
+      <label>📎 Paste here</label>
+      <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
+    </div>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">🚀 Convert + Import</button>
+      <a class="btn" href="/trades">← Back</a>
+    </div>
+  </form>
+</div></div>

@@ -1,0 +1,100 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">➕ Manual Trade Entry</div>
+  <div class="tiny stack8">First trade of the day now requires a short gate so execution starts from an actual plan.</div>
+  {% if gate_error %}
+    <div class="integrityAlert integrityAlert-warn">{{ gate_error }}</div>
+  {% endif %}
+  <div class="hr"></div>
+  <form method="post">
+    <div class="card supportCard subtleCard">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Trade Gate</div>
+          {% if gate.passed %}
+            <span class="trendChip positive">Passed</span>
+          {% elif gate.required %}
+            <span class="trendChip negative">Required</span>
+          {% else %}
+            <span class="trendChip">Optional</span>
+          {% endif %}
+        </div>
+        <div class="supportLead">{{ gate.summary }}</div>
+        <div class="row stack10">
+          <div>
+            <label>Setup Type</label>
+            <input name="gate_setup_type" list="strategy-options" value="{{ gate.values.setup_type }}" placeholder="ORB, continuation, fade, reclaim"/>
+          </div>
+          <div class="fieldGrow2">
+            <label>Invalidation</label>
+            <input name="gate_invalidation" value="{{ gate.values.invalidation }}" placeholder="What level or condition proves this trade wrong?"/>
+          </div>
+          <div>
+            <label>Max Risk</label>
+            <input name="gate_max_risk" value="{{ gate.values.max_risk }}" placeholder="$150 or 10 pts"/>
+          </div>
+        </div>
+        <div class="stack10">
+          <label>Focus Note</label>
+          <textarea name="gate_focus" placeholder="Why is this trade allowed today?">{{ gate.values.focus }}</textarea>
+        </div>
+        <div class="row stack10">
+          <div class="stack10"><label><input type="checkbox" name="gate_market_ready" value="1" {% if gate.checks.market_ready %}checked{% endif %}/> Structure is aligned with my setup</label></div>
+          <div class="stack10"><label><input type="checkbox" name="gate_macro_clear" value="1" {% if gate.checks.macro_clear %}checked{% endif %}/> I am clear of the macro risk window</label></div>
+          <div class="stack10"><label><input type="checkbox" name="gate_risk_confirmed" value="1" {% if gate.checks.risk_confirmed %}checked{% endif %}/> Size, stop, and max loss are defined</label></div>
+        </div>
+      </div>
+    </div>
+    <div class="hr"></div>
+    <div class="row">
+      <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ values.get('trade_date', today) }}"/></div>
+      <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM" value="{{ values.get('entry_time', '') }}"/></div>
+      <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM" value="{{ values.get('exit_time', '') }}"/></div>
+    </div>
+    <div class="row stack10">
+      <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX" value="{{ values.get('ticker', '') }}"/></div>
+      <div>
+        <label>📌 Type</label>
+        <select name="opt_type">
+          <option value="CALL" {% if values.get('opt_type', 'CALL') == 'CALL' %}selected{% endif %}>CALL</option>
+          <option value="PUT" {% if values.get('opt_type') == 'PUT' %}selected{% endif %}>PUT</option>
+        </select>
+      </div>
+      <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940" value="{{ values.get('strike', '') }}"/></div>
+    </div>
+    <div class="row stack10">
+      <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ values.get('contracts', '1') }}"/></div>
+      <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20" value="{{ values.get('entry_price', '') }}"/></div>
+      <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30" value="{{ values.get('exit_price', '') }}"/></div>
+    </div>
+    <div class="row stack10">
+      <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV" value="{{ values.get('strategy_label', values.get('setup_tag', '')) }}"/></div>
+      <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM" value="{{ values.get('session_tag', '') }}"/></div>
+      <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100" value="{{ values.get('checklist_score', '') }}"/></div>
+    </div>
+    <datalist id="strategy-options">
+      {% for strategy in strategy_options %}
+        <option value="{{ strategy['title'] }}"></option>
+      {% endfor %}
+    </datalist>
+    <div class="row stack10">
+      <div class="fieldGrow2">
+        <label>🧱 Critical Checklist Gate</label>
+        <div class="tiny stack8 line16">
+          {% for item in critical_items %}
+            <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
+              <input type="checkbox" name="critical_item" value="{{ item }}" {% if item in selected_critical_items %}checked{% endif %}> {{ item }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="row stack10">
+      <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="{{ values.get('comm', '0.70') }}"/></div>
+    </div>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">💾 Save Trade</button>
+      <a class="btn" href="/trades">← Back</a>
+    </div>
+  </form>
+</div></div>

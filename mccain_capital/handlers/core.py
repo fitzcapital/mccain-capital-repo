@@ -70,6 +70,10 @@ def favicon():
     return svc.favicon()
 
 
+def executive_dashboard():
+    return svc.executive_dashboard()
+
+
 def dashboard():
     return svc.dashboard()
 
@@ -100,6 +104,10 @@ def market_pulse_news_feed_api():
 
 def market_pulse_context_api():
     return svc.market_pulse_context_api()
+
+
+def gamma_ladder_api():
+    return svc.gamma_ladder_api()
 
 
 def market_pulse_tape_api():
@@ -140,6 +148,26 @@ def command_calendar_page():
 
 def dashboard_recompute_balances():
     return svc.dashboard_recompute_balances()
+
+
+def dashboard_refresh_account_metrics():
+    return svc.dashboard_refresh_account_metrics()
+
+
+def dashboard_seed_vanquish_session():
+    return svc.dashboard_seed_vanquish_session()
+
+
+def dashboard_manual_drawdown_update():
+    return svc.dashboard_manual_drawdown_update()
+
+
+def dashboard_manual_broker_metrics_update():
+    return svc.dashboard_manual_broker_metrics_update()
+
+
+def dashboard_manual_equity_update():
+    return svc.dashboard_manual_equity_update()
 
 
 def dashboard_milestone_update():

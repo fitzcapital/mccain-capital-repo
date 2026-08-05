@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_pill %}
 <div class="journalWeeklyPage">
 <div class="metricStrip">
   <div class="metric"><div class="label">Week</div><div class="value">{{ week_start }} → {{ week_end }}</div></div>
@@ -10,7 +11,7 @@
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">📘 Weekly Review</div>
+        {{ app_pill('review', 'Weekly Review') }}
         <h2 class="pageTitle">Weekly Coach</h2>
         <div class="pageSub">{{ coach.headline }}</div>
       </div>
@@ -33,17 +34,17 @@
 
 <div class="dashboardSupportGrid coachGrid">
   <div class="card supportCard dashboardPriorityCard"><div class="toolbar">
-    <div class="pill">Strongest Setup</div>
+    {{ app_pill('strategy', 'Strongest Setup') }}
     <div class="supportLead">{{ coach.strongest_setup }}</div>
     <div class="supportBody">This is the pattern worth earning the right to press again next week.</div>
   </div></div>
   <div class="card supportCard dashboardPriorityCard"><div class="toolbar">
-    <div class="pill">Biggest Leak</div>
+    {{ app_pill('alert', 'Biggest Leak') }}
     <div class="supportLead">{{ coach.biggest_leak }}</div>
     <div class="supportBody">Your recurring drag deserves more attention than any one red trade.</div>
   </div></div>
   <div class="card supportCard dashboardPriorityCard"><div class="toolbar">
-    <div class="pill">One Rule</div>
+    {{ app_pill('self', 'One Rule') }}
     <div class="supportLead">{{ coach.one_rule }}</div>
     <div class="supportBody">Keep it singular. If you can’t enforce one rule, five rules won’t help.</div>
   </div></div>
@@ -51,25 +52,25 @@
 
 <div class="dashboardSupportGrid coachGrid">
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Consistency</div>
+    {{ app_pill('analytics', 'Consistency') }}
     <div class="supportLead">{{ coach.consistency }}</div>
     <div class="supportBody">Best day: {{ coach.best_day }}</div>
     <div class="supportBody">Worst day: {{ coach.worst_day }}</div>
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Mood Signal</div>
+    {{ app_pill('life', 'Mood Signal') }}
     <div class="supportLead">{{ top_mood }}</div>
     <div class="supportBody">Average {{ money(top_mood_avg) }} when this mood was logged.</div>
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Repeated Rule Breaks</div>
+    {{ app_pill('alert', 'Repeated Rule Breaks') }}
     <div class="supportLead">{{ top_break }}</div>
     <div class="supportBody">{% if top_break_count %}{{ top_break_count }} times this week.{% else %}No repeated break tagged yet.{% endif %}</div>
   </div></div>
 </div>
 
 <div class="card"><div class="toolbar">
-  <div class="pill">Week Pulse</div>
+  {{ app_pill('calendar', 'Week Pulse') }}
   <div class="grid replayRail">
     {% for row in day_rollups %}
       <div class="replayRailItem replayRailItem-trade">
@@ -93,7 +94,7 @@
 
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">📌 Best Setups</div>
+    {{ app_pill('strategy', 'Best Setups') }}
     <div class="tableWrap desktopOnly"><table class="tableDense">
       <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
       <tbody>
@@ -106,7 +107,7 @@
   </div></div>
 
   <div class="card"><div class="toolbar">
-    <div class="pill">😶‍🌫️ Mood vs PnL</div>
+    {{ app_pill('life', 'Mood vs PnL') }}
     <div class="tableWrap desktopOnly"><table class="tableDense">
       <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
       <tbody>
@@ -120,7 +121,7 @@
 </div>
 
 <div class="card stack12"><div class="toolbar">
-  <div class="pill">⚠️ Repeated Rule Breaks</div>
+  {{ app_pill('alert', 'Repeated Rule Breaks') }}
   <div class="tableWrap desktopOnly"><table class="tableDense">
     <thead><tr><th>Tag</th><th>Count</th></tr></thead>
     <tbody>

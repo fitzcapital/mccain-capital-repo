@@ -2,16 +2,12 @@ from mccain_capital import runtime
 from mccain_capital.services import budget as budget_service
 
 
-def test_budget_page_renders_and_nav_links(client, tmp_path, monkeypatch):
+def test_budget_page_redirects_to_executive(client, tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "PERSISTENT_DATA_DIR", str(tmp_path))
 
-    resp = client.get("/budget", follow_redirects=True)
-    assert resp.status_code == 200
-    body = resp.get_data(as_text=True)
-    assert "Budget Command Center" in body
-    assert "Tell your money where to go" in body
-    assert "js/budget.js" in body
-    assert 'href="/budget"' in body
+    resp = client.get("/budget", follow_redirects=False)
+    assert resp.status_code in {301, 302, 303, 307, 308}
+    assert resp.headers["Location"].endswith("/executive")
 
 
 def test_budget_profile_and_items_persist_and_summarize(client, tmp_path, monkeypatch):
@@ -50,7 +46,12 @@ def test_budget_profile_and_items_persist_and_summarize(client, tmp_path, monkey
 
     goal = client.post(
         "/api/budget/goal",
-        json={"name": "Emergency Fund", "target_amount": 5000, "current_amount": 500, "monthly_contribution": 250},
+        json={
+            "name": "Emergency Fund",
+            "target_amount": 5000,
+            "current_amount": 500,
+            "monthly_contribution": 250,
+        },
     )
     assert goal.status_code == 200
 
@@ -77,7 +78,9 @@ def test_budget_delete_and_monthly_review(client, tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "PERSISTENT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(budget_service, "today_iso", lambda: "2026-04-29")
 
-    created = client.post("/api/budget/charge", json={"name": "Leak", "amount": 80, "need_or_want": "leak"})
+    created = client.post(
+        "/api/budget/charge", json={"name": "Leak", "amount": 80, "need_or_want": "leak"}
+    )
     item_id = created.get_json()["item"]["id"]
     assert client.delete(f"/api/budget/charge/{item_id}").status_code == 200
     assert client.get("/api/budget/data").get_json()["data"]["charges"] == []
@@ -106,7 +109,11 @@ def test_budget_fitz_seed_math_and_paycheck_map(client, tmp_path, monkeypatch):
     monkeypatch.setattr(budget_service, "today_iso", lambda: "2026-04-29")
     client.post(
         "/api/budget/profile",
-        json={"monthly_take_home": 7269.66, "pay_frequency": "biweekly", "target_extra_monthly_income": 4000},
+        json={
+            "monthly_take_home": 7269.66,
+            "pay_frequency": "biweekly",
+            "target_extra_monthly_income": 4000,
+        },
     )
     rows = [
         ("Rent 1st payment", 1320.00, 1, "housing", "bill", "any", ""),
@@ -121,7 +128,15 @@ def test_budget_fitz_seed_math_and_paycheck_map(client, tmp_path, monkeypatch):
         ("ATT Internet", 66.00, 16, "utilities", "bill", "any", ""),
         ("Car note", 740.00, 23, "auto", "bill", "any", ""),
         ("Subscriptions", 120.00, None, "subscriptions", "subscription", "any", "monthly"),
-        ("Food", 1200.00, None, "food", "food", "split", "$500/$500 set aside per pay period, plus buffer"),
+        (
+            "Food",
+            1200.00,
+            None,
+            "food",
+            "food",
+            "split",
+            "$500/$500 set aside per pay period, plus buffer",
+        ),
         ("IRS", 380.00, 29, "debt", "debt", "any", ""),
         ("Renter Insurance", 30.99, 12, "insurance", "bill", "any", ""),
         ("Life Insurance", 14.00, 1, "insurance", "bill", "any", ""),
@@ -144,7 +159,14 @@ def test_budget_fitz_seed_math_and_paycheck_map(client, tmp_path, monkeypatch):
 
     duplicate = client.post(
         "/api/budget/bill",
-        json={"name": "Gas", "amount": 55.00, "due_day": None, "category": "gas", "type": "gas", "notes": "monthly"},
+        json={
+            "name": "Gas",
+            "amount": 55.00,
+            "due_day": None,
+            "category": "gas",
+            "type": "gas",
+            "notes": "monthly",
+        },
     )
     assert duplicate.status_code == 200
 
@@ -163,7 +185,14 @@ def test_budget_fitz_seed_math_and_paycheck_map(client, tmp_path, monkeypatch):
     first_names = {item["name"] for item in allocation["first_check"]["items"]}
     second_names = {item["name"] for item in allocation["second_check"]["items"]}
     flexible_names = {item["name"] for item in allocation["flexible"]["items"]}
-    assert {"Rent 1st payment", "Power", "Concord", "Capital One", "Renter Insurance", "Life Insurance"} <= first_names
+    assert {
+        "Rent 1st payment",
+        "Power",
+        "Concord",
+        "Capital One",
+        "Renter Insurance",
+        "Life Insurance",
+    } <= first_names
     assert {
         "Rent 2nd payment",
         "Chase",

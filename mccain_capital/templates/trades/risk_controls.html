@@ -1,0 +1,25 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">🛡️ Risk Controls</div>
+  <div class="tiny stack8">
+    Today's net: {{ money(state.day_net) }} · Max loss: {{ money(state.daily_max_loss) }} ·
+    Status: {% if state.locked %}<b class="statusLock">LOCKED</b>{% else %}<b class="statusActive">ACTIVE</b>{% endif %}
+  </div>
+  <div class="hr"></div>
+  <form method="post">
+    <div class="row">
+      <div><label>Daily Max Loss ($)</label><input name="daily_max_loss" inputmode="decimal" value="{{ rc.daily_max_loss }}"></div>
+      <div>
+        <label>Enforce Lockout</label>
+        <select name="enforce_lockout">
+          <option value="0" {% if not rc.enforce_lockout %}selected{% endif %}>Off</option>
+          <option value="1" {% if rc.enforce_lockout %}selected{% endif %}>On</option>
+        </select>
+      </div>
+    </div>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">Save Risk Controls</button>
+      <a class="btn" href="/trades">Trades</a>
+    </div>
+  </form>
+</div></div>

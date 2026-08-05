@@ -117,6 +117,37 @@ def test_get_intraday_bars_includes_extended_hours_for_qqq_after_hours(monkeypat
     assert payload["bars"][-1]["close"] == 451.0
 
 
+def test_get_intraday_bars_uses_last_open_day_when_market_closed_for_holiday(monkeypatch):
+    now_et = datetime(2026, 6, 20, 12, 0, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    prior_rows = [
+        {
+            "ts": "2026-06-18T15:55:00-04:00",
+            "open": 740.0,
+            "high": 741.0,
+            "low": 739.5,
+            "close": 740.62,
+            "volume": 100,
+        },
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: [])
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="QQQ", interval="5min")
+
+    assert len(payload["bars"]) == 1
+    assert payload["bars"][0]["close"] == 740.62
+    assert payload["current_session_day"] == "2026-06-18"
+    assert payload["session_metadata"]["current_session_day"] == "2026-06-18"
+    assert payload["latest_bar_time"] == "2026-06-18T15:55:00-04:00"
+
+
 def test_get_intraday_bars_includes_premarket_for_spy_open_session(monkeypatch):
     now_et = datetime(2026, 4, 8, 10, 5, 0, tzinfo=app_runtime.TZ)
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
@@ -411,7 +442,7 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
     monkeypatch.setattr(
         hero_service,
         "get_intraday_bars",
-        lambda symbol="QQQ", interval="5min": {
+        lambda symbol="SPX", interval="5min": {
             "symbol": symbol,
             "interval": interval,
             "bars": [
@@ -429,7 +460,7 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["symbol"] == "QQQ"
+    assert payload["symbol"] == "SPY"
     assert payload["bars"][0]["close"] == 1.5
     assert payload["opening_session_mode"] is True
     assert payload["live_session_bar_count"] == 2

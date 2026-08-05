@@ -1,12 +1,15 @@
 from mccain_capital.services import core
 
 
-def test_get_supported_playbook_ticker_defaults_to_qqq():
-    assert core.get_supported_playbook_ticker(None) == "QQQ"
-    assert core.get_supported_playbook_ticker("") == "QQQ"
+def test_get_supported_playbook_ticker_defaults_to_spy():
+    assert core.get_supported_playbook_ticker(None) == "SPY"
+    assert core.get_supported_playbook_ticker("") == "SPY"
     assert core.get_supported_playbook_ticker("spx") == "SPX"
     assert core.get_supported_playbook_ticker("qqq") == "QQQ"
     assert core.get_supported_playbook_ticker("SPY") == "SPY"
+    assert core.get_supported_playbook_ticker("nvda") == "SPY"
+    assert core.get_supported_playbook_ticker("BRK.B") == "SPY"
+    assert core.get_supported_playbook_ticker("bad!") == "SPY"
 
 
 def test_market_pulse_renders_spx_ticker_switch(client):
@@ -16,8 +19,36 @@ def test_market_pulse_renders_spx_ticker_switch(client):
     body = resp.get_data(as_text=True)
     assert 'href="/market-pulse?ticker=SPX"' in body
     assert 'data-playbook-ticker-switch="SPX"' in body
+    assert "data-playbook-symbol-search-control" in body
+    assert "data-symbol-search-input" in body
     assert 'class="marketPulseTickerSwitch is-active"' in body
     assert "SPX PLAYBOOK" in body
+    assert 'id="marketPulseHeaderSpot"' in body
+    assert 'data-default-symbol="SPX"' in body
+    assert 'data-symbol="SPX"' in body
+    assert "<strong data-gamma-symbol>SPX</strong>" in body
+
+
+def test_market_pulse_defaults_to_spy_playbook(client):
+    resp = client.get("/market-pulse", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "SPY PLAYBOOK" in body
+    assert '"ticker": "SPY"' in body
+    assert 'value="SPY"' in body
+    assert 'data-default-symbol="SPY"' in body
+    assert "<strong data-gamma-symbol>SPY</strong>" in body
+
+
+def test_market_pulse_rejects_unsupported_ticker_search(client):
+    resp = client.get("/market-pulse?ticker=NVDA", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "SPY PLAYBOOK" in body
+    assert 'value="SPY"' in body
+    assert 'data-playbook-ticker-switch="QQQ"' in body
 
 
 def test_scaled_gamma_snapshot_scales_levels_and_localizes_warning():
@@ -52,3 +83,24 @@ def test_scaled_gamma_snapshot_scales_levels_and_localizes_warning():
     assert payload["void_zone"] == {"start": 499.2, "end": 500.6}
     assert payload["warnings"][0] == "SPY snapshot warning"
     assert any("SPY playbook levels are currently scaled" in item for item in payload["warnings"])
+
+
+def test_scaled_gamma_snapshot_uses_gamma_spot_when_spx_quote_missing():
+    payload = core._market_pulse_scaled_gamma_snapshot(
+        ticker="QQQ",
+        base_gamma_snapshot={
+            "spot_price_used": 7400.0,
+            "gamma_flip_combined_basket": 7420.0,
+            "local_flip_aggregated_gamma": 7390.0,
+            "call_wall_aggregated_gamma": 7450.0,
+            "put_wall_aggregated_gamma": 7350.0,
+        },
+        base_quote={},
+        target_quote={"price": 740.0, "provider": "market_worker"},
+    )
+
+    assert payload["proxy_source"] == "scaled_from_spx_gamma_snapshot"
+    assert payload["proxy_scale_ratio"] == 0.1
+    assert payload["gamma_flip_combined_basket"] == 742.0
+    assert payload["call_wall_aggregated_gamma"] == 745.0
+    assert payload["put_wall_aggregated_gamma"] == 735.0

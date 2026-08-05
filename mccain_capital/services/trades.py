@@ -7,6 +7,7 @@ import sqlite3
 import json
 import base64
 import hashlib
+import inspect
 import urllib
 import shutil
 import tempfile
@@ -14,7 +15,7 @@ import threading
 import time
 import queue
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 from uuid import uuid4
 
@@ -25,7 +26,6 @@ from flask import (
     jsonify,
     redirect,
     render_template,
-    render_template_string,
     request,
     send_file,
     url_for,
@@ -143,7 +143,9 @@ _SYNC_CANCEL_LOCK = threading.Lock()
 _SYNC_JOB_QUEUE: "queue.Queue[Optional[Dict[str, Any]]]" = queue.Queue()
 _SYNC_DISPATCH_THREAD_STARTED = False
 _SYNC_DISPATCH_THREAD_LOCK = threading.Lock()
-SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "1200") or 1200)
+SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "300") or 300)
+SYNC_JOB_QUEUED_STALE_SECONDS = int(os.environ.get("SYNC_JOB_QUEUED_STALE_SECONDS", "120") or 120)
+SYNC_JOB_UI_STAGE_STALE_SECONDS = int(os.environ.get("SYNC_JOB_UI_STAGE_STALE_SECONDS", "75") or 75)
 
 
 class SyncJobCancelled(RuntimeError):
@@ -250,42 +252,47 @@ _AUDIT_ACTION_META = {
 }
 
 SYNC_STAGE_HELP = {
-    "queue_dispatch": "The sync worker queue could not accept or start the job. Retry once; if it repeats, inspect app resource limits.",
-    "system_resource": "The container hit a temporary resource limit while starting sync work. Retry after load settles or reduce worker pressure.",
+    "queue_dispatch": "The worker accepted the request but has not started the broker session yet. If it sits here, treat it as a dispatch stall and retry once.",
+    "system_resource": "System resources were not available while launching sync startup. Retry after load settles or reduce worker pressure.",
     "storage_io": "Sync could not write required files under uploads/debug storage. Check mounted volume permissions and free space.",
-    "browser_boot": "Chromium could not start or keep its first page open. Retry once, then inspect container resources and Playwright logs.",
-    "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
+    "browser_boot": "The browser session did not start cleanly. Retry once, then inspect container resources and Playwright logs.",
+    "open_login": "Broker login did not open cleanly. Check Base Origin and network.",
     "locate_username": "Could not find the username input. Broker UI likely changed.",
     "locate_password": "Could not find the password input. Broker login form likely changed.",
     "submit_login": "Login did not complete. Validate credentials or check for MFA/CAPTCHA.",
+    "auth_required": "Broker returned a login page instead of statement HTML. Refresh credentials/session or use manual statement upload for this run.",
     "open_workspace_menu": "Could not open the app menu after login. Workspace may still be loading.",
     "open_statement_dialog": "Could not open Account Statement from the menu.",
     "configure_statement_period": "Could not set statement date range in the dialog.",
     "generate_statement": "Generate Statement did not complete as expected.",
     "capture_statement_html": "Statement page loaded but HTML capture/parse failed.",
     "stale": "The sync worker stopped updating. Retry the run and inspect logs if it stalls again.",
+    "reset_required": "The sync lane was force-reset after a hang. Retry one clean run and inspect artifacts only if it stalls again.",
 }
 
 SYNC_STAGE_LABELS = {
-    "start": "Queued and preparing sync run.",
-    "queue_dispatch": "Starting sync worker.",
-    "system_resource": "Waiting for system resources.",
+    "start": "Dispatching sync request.",
+    "queue_dispatch": "Dispatching sync worker.",
+    "system_resource": "Waiting for startup resources.",
     "storage_io": "Writing sync artifacts.",
-    "browser_boot": "Starting Chromium session.",
-    "open_login": "Opening broker login page.",
+    "browser_boot": "Booting browser session.",
+    "open_login": "Opening broker login.",
     "locate_username": "Finding username field.",
     "fill_username": "Entering username.",
     "locate_password": "Finding password field.",
     "submit_login": "Submitting broker login.",
+    "auth_required": "Broker session required.",
     "open_workspace_menu": "Opening workspace menu.",
     "open_statement_dialog": "Opening statement dialog.",
     "configure_statement_period": "Setting statement date range.",
     "generate_statement": "Generating statement HTML.",
     "capture_statement_html": "Capturing statement HTML.",
     "stale": "Sync stalled before completion.",
+    "reset_required": "Lane reset after hang.",
     "parse_statement_html": "Parsing statement rows.",
     "reconcile_gate": "Running reconcile guardrails.",
     "import_trades": "Importing trades.",
+    "capture_account_metrics": "Capturing account metrics.",
     "import_complete": "Import complete.",
 }
 
@@ -293,6 +300,19 @@ SYNC_STAGE_LABELS = {
 def _sync_stage_label(stage: str) -> str:
     key = str(stage or "").strip()
     return SYNC_STAGE_LABELS.get(key, key.replace("_", " ").strip().title() or "Working...")
+
+
+def _is_sync_startup_stage(stage: str) -> bool:
+    normalized = str(stage or "").strip().lower()
+    return normalized in {
+        "",
+        "start",
+        "queued",
+        "queue_dispatch",
+        "system_resource",
+        "browser_boot",
+        "open_login",
+    }
 
 
 def _create_bg_job(kind: str, title: str, requested: Dict[str, Any]) -> Dict[str, Any]:
@@ -308,11 +328,37 @@ def _get_bg_job(job_id: str) -> Dict[str, Any]:
 
 
 def _stale_sync_job_message(stage: str) -> str:
+    normalized = str(stage or "").strip().lower()
     stage_label = _sync_stage_label(stage or "start")
+    if normalized in {"", "start", "queued", "queue_dispatch"}:
+        return (
+            "Sync startup stalled before broker login during worker dispatch. "
+            "The lane was unlocked so you can start a fresh run."
+        )
+    if normalized in {"system_resource", "browser_boot", "open_login"}:
+        return (
+            f"Sync startup stalled during {stage_label}. "
+            "The lane was unlocked so you can retry after load settles."
+        )
+    if normalized in {"open_workspace_menu", "open_statement_dialog"}:
+        return (
+            f"Broker UI stalled during {stage_label}. "
+            "The lane was unlocked so you can retry or inspect the latest debug artifacts."
+        )
     return (
         f"Sync job became stale before completion during {stage_label}. "
         "The worker likely stopped or the app restarted. Start a new sync run."
     )
+
+
+def _sync_job_stale_after(status: str, stage: str) -> float:
+    normalized_status = str(status or "").strip().lower()
+    normalized_stage = str(stage or "").strip().lower()
+    if normalized_status == "queued" or _is_sync_startup_stage(normalized_stage):
+        return float(SYNC_JOB_QUEUED_STALE_SECONDS)
+    if normalized_stage in {"open_workspace_menu", "open_statement_dialog"}:
+        return float(SYNC_JOB_UI_STAGE_STALE_SECONDS)
+    return float(SYNC_JOB_STALE_SECONDS)
 
 
 def _mark_last_sync_status_stale(job: Dict[str, Any], *, message: str, duration_sec: float) -> None:
@@ -349,7 +395,8 @@ def _reconcile_stale_sync_job(job: Dict[str, Any]) -> Dict[str, Any]:
     if updated_epoch is None:
         return job
     elapsed = time.time() - updated_epoch
-    if elapsed < float(SYNC_JOB_STALE_SECONDS):
+    stale_after = _sync_job_stale_after(status, str(job.get("stage") or ""))
+    if elapsed < stale_after:
         return job
     created_epoch = _parse_iso_epoch(str(job.get("created_at") or "")) or updated_epoch
     duration_sec = round(max(0.0, time.time() - created_epoch), 2)
@@ -394,8 +441,9 @@ def _reconcile_stale_sync_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _latest_active_sync_job() -> Dict[str, Any]:
+    job_dir = str(BG_JOB_DIR or _upload_file(".bg_jobs"))
     try:
-        names = sorted(os.listdir(BG_JOB_DIR))
+        names = sorted(os.listdir(job_dir))
     except OSError:
         return {}
     candidates: List[Dict[str, Any]] = []
@@ -425,8 +473,9 @@ def _latest_active_sync_job() -> Dict[str, Any]:
 def _reconcile_sync_runtime_state() -> Dict[str, Any]:
     reconciled = 0
     active = {}
+    job_dir = str(BG_JOB_DIR or _upload_file(".bg_jobs"))
     try:
-        names = sorted(os.listdir(BG_JOB_DIR))
+        names = sorted(os.listdir(job_dir))
     except OSError:
         names = []
     for name in names:
@@ -518,6 +567,63 @@ def _cancel_sync_job(job_id: str) -> Dict[str, Any]:
             happened="The sync run was cancelled manually.",
             changed="No further result from this run will update the workspace card.",
             next_action="Retry once the broker page is responsive again.",
+            actions=[
+                {
+                    "label": "Open Live Sync",
+                    "href": "/trades/upload/statement?ws=live",
+                    "kind": "primary",
+                }
+            ],
+        ),
+    )
+
+
+def _force_reset_sync_job(job_id: str) -> Dict[str, Any]:
+    job = _get_bg_job(job_id)
+    if not job:
+        return {}
+    status = str(job.get("status") or "").strip().lower()
+    stage = str(job.get("stage") or "").strip().lower()
+    resettable_failed_startup = status == "failed" and stage == "system_resource"
+    if status in {"success", "debug_only", "cancelled"} or (
+        status == "failed" and not resettable_failed_startup
+    ):
+        return job
+    _sync_cancel_event(job_id).set()
+    vanquish_live_sync.reset_browser_boot_lane()
+    summary = {
+        "message": "Sync lane force-reset. Late output from the prior run will be ignored.",
+        "warn_count": 0,
+        "error_count": max(1, int(((job.get("summary") or {}).get("error_count")) or 0)),
+        "inserted": int(((job.get("summary") or {}).get("inserted")) or 0),
+        "artifacts_rel": list(((job.get("summary") or {}).get("artifacts_rel") or []))[:20],
+        "statement_file": str(((job.get("summary") or {}).get("statement_file") or "")).strip(),
+    }
+    _save_last_sync_status(
+        {
+            "job_id": str(job.get("id") or ""),
+            "status": "cancelled",
+            "stage": "reset_required",
+            "message": summary["message"],
+            "stage_help": SYNC_STAGE_HELP.get("reset_required", ""),
+            "requested": job.get("requested") or {},
+            "artifacts_rel": summary["artifacts_rel"],
+            "statement_file": summary["statement_file"],
+            "updated_at": now_iso(),
+        }
+    )
+    return _update_bg_job(
+        job_id,
+        status="cancelled",
+        stage="reset_required",
+        message=summary["message"],
+        summary=summary,
+        result_summary=_build_action_result_summary(
+            tone="warning",
+            title="Live Sync Lane Reset",
+            happened="The active sync lock was cleared after the lane appeared hung.",
+            changed="No further result from that run will update the workspace card.",
+            next_action="Start one fresh sync run. If it hangs again, open the latest artifacts and inspect the login stage.",
             actions=[
                 {
                     "label": "Open Live Sync",
@@ -842,109 +948,8 @@ def _render_manual_trade_entry_form(
     trade_date = str(values.get("trade_date") or today_iso()).strip() or today_iso()
     strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
     gate = _trade_gate_viewmodel(trade_date, values)
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">➕ Manual Trade Entry</div>
-          <div class="tiny stack8">First trade of the day now requires a short gate so execution starts from an actual plan.</div>
-          {% if gate_error %}
-            <div class="integrityAlert integrityAlert-warn">{{ gate_error }}</div>
-          {% endif %}
-          <div class="hr"></div>
-          <form method="post">
-            <div class="card supportCard subtleCard">
-              <div class="toolbar">
-                <div class="pillRow">
-                  <div class="pill">Trade Gate</div>
-                  {% if gate.passed %}
-                    <span class="trendChip positive">Passed</span>
-                  {% elif gate.required %}
-                    <span class="trendChip negative">Required</span>
-                  {% else %}
-                    <span class="trendChip">Optional</span>
-                  {% endif %}
-                </div>
-                <div class="supportLead">{{ gate.summary }}</div>
-                <div class="row stack10">
-                  <div>
-                    <label>Setup Type</label>
-                    <input name="gate_setup_type" list="strategy-options" value="{{ gate.values.setup_type }}" placeholder="ORB, continuation, fade, reclaim"/>
-                  </div>
-                  <div class="fieldGrow2">
-                    <label>Invalidation</label>
-                    <input name="gate_invalidation" value="{{ gate.values.invalidation }}" placeholder="What level or condition proves this trade wrong?"/>
-                  </div>
-                  <div>
-                    <label>Max Risk</label>
-                    <input name="gate_max_risk" value="{{ gate.values.max_risk }}" placeholder="$150 or 10 pts"/>
-                  </div>
-                </div>
-                <div class="stack10">
-                  <label>Focus Note</label>
-                  <textarea name="gate_focus" placeholder="Why is this trade allowed today?">{{ gate.values.focus }}</textarea>
-                </div>
-                <div class="row stack10">
-                  <div class="stack10"><label><input type="checkbox" name="gate_market_ready" value="1" {% if gate.checks.market_ready %}checked{% endif %}/> Structure is aligned with my setup</label></div>
-                  <div class="stack10"><label><input type="checkbox" name="gate_macro_clear" value="1" {% if gate.checks.macro_clear %}checked{% endif %}/> I am clear of the macro risk window</label></div>
-                  <div class="stack10"><label><input type="checkbox" name="gate_risk_confirmed" value="1" {% if gate.checks.risk_confirmed %}checked{% endif %}/> Size, stop, and max loss are defined</label></div>
-                </div>
-              </div>
-            </div>
-            <div class="hr"></div>
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ values.get('trade_date', today) }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM" value="{{ values.get('entry_time', '') }}"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM" value="{{ values.get('exit_time', '') }}"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX" value="{{ values.get('ticker', '') }}"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type">
-                  <option value="CALL" {% if values.get('opt_type', 'CALL') == 'CALL' %}selected{% endif %}>CALL</option>
-                  <option value="PUT" {% if values.get('opt_type') == 'PUT' %}selected{% endif %}>PUT</option>
-                </select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940" value="{{ values.get('strike', '') }}"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ values.get('contracts', '1') }}"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20" value="{{ values.get('entry_price', '') }}"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30" value="{{ values.get('exit_price', '') }}"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV" value="{{ values.get('strategy_label', values.get('setup_tag', '')) }}"/></div>
-              <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM" value="{{ values.get('session_tag', '') }}"/></div>
-              <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100" value="{{ values.get('checklist_score', '') }}"/></div>
-            </div>
-            <datalist id="strategy-options">
-              {% for strategy in strategy_options %}
-                <option value="{{ strategy['title'] }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="row stack10">
-              <div class="fieldGrow2">
-                <label>🧱 Critical Checklist Gate</label>
-                <div class="tiny stack8 line16">
-                  {% for item in critical_items %}
-                    <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
-                      <input type="checkbox" name="critical_item" value="{{ item }}" {% if item in selected_critical_items %}checked{% endif %}> {{ item }}
-                    </label>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-            <div class="row stack10">
-              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="{{ values.get('comm', '0.70') }}"/></div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Trade</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/manual_trade_entry.html",
         today=today_iso(),
         values=values,
         gate=gate,
@@ -1074,15 +1079,20 @@ def _load_broker_sync_config() -> Dict[str, str]:
         "time_zone": os.environ.get("VANQUISH_TIME_ZONE", "America/New_York"),
         "date_locale": os.environ.get("VANQUISH_DATE_LOCALE", "en-US"),
         "report_locale": os.environ.get("VANQUISH_REPORT_LOCALE", "en"),
+        "username": "",
+        "password": "",
+        "password_enc": "",
     }
     try:
         with open(_broker_sync_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return defaults
+        parsed = {}
     for key in defaults:
         val = parsed.get(key, defaults[key])
         defaults[key] = str(val).strip() if val is not None else defaults[key]
+    defaults["keyring_available"] = _keyring_client() is not None
+    defaults["password_stored"] = bool(_get_auto_sync_password(defaults))
     return defaults
 
 
@@ -1111,7 +1121,10 @@ def _safe_write_json(path: str, payload: Any) -> None:
 
 
 def _save_broker_sync_config(data: Dict[str, str]) -> None:
-    _safe_write_json(_broker_sync_config_path(), data)
+    to_save = dict(data)
+    to_save.pop("keyring_available", None)
+    to_save.pop("password_stored", None)
+    _safe_write_json(_broker_sync_config_path(), to_save)
 
 
 def _humanize_et_timestamp(raw: str) -> str:
@@ -1153,7 +1166,8 @@ def _load_last_sync_status() -> Dict[str, Any]:
     status = str(parsed.get("status") or "").strip().lower()
     updated_epoch = _parse_iso_epoch(str(parsed.get("updated_at") or ""))
     if status in {"queued", "running"} and updated_epoch is not None:
-        if (time.time() - updated_epoch) >= float(SYNC_JOB_STALE_SECONDS):
+        stale_after = _sync_job_stale_after(status, str(parsed.get("stage") or ""))
+        if (time.time() - updated_epoch) >= stale_after:
             message = _stale_sync_job_message(str(parsed.get("stage") or "start"))
             parsed = {
                 **parsed,
@@ -1168,10 +1182,30 @@ def _load_last_sync_status() -> Dict[str, Any]:
     return parsed
 
 
+def _reset_browser_boot_lane_after_resource_failure(payload: Dict[str, Any]) -> None:
+    status = str(payload.get("status") or "").strip().lower()
+    stage = str(payload.get("stage") or "").strip().lower()
+    if status != "failed" or stage != "system_resource":
+        return
+    message = str(payload.get("message") or "").strip().lower()
+    if not (
+        "chromium" in message
+        or "browser boot" in message
+        or "startup resources" in message
+        or "resource temporarily unavailable" in message
+        or "can't start new thread" in message
+        or "cannot start new thread" in message
+        or "pthread_create" in message
+    ):
+        return
+    vanquish_live_sync.reset_browser_boot_lane()
+
+
 def _save_last_sync_status(payload: Dict[str, Any]) -> None:
+    _reset_browser_boot_lane_after_resource_failure(payload)
     _safe_write_json(_broker_sync_status_path(), payload)
     status = str(payload.get("status") or "").strip().lower()
-    if status not in {"success", "failed", "debug_only"}:
+    if status not in {"success", "failed", "debug_only", "cancelled"}:
         return
     history = _load_sync_history()
     requested = payload.get("requested") if isinstance(payload.get("requested"), dict) else {}
@@ -1185,6 +1219,8 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
             "message": str(payload.get("message") or ""),
             "source": source,
             "mode": mode,
+            "requested": requested,
+            "inserted": payload.get("inserted"),
             "duration_sec": (
                 float(payload.get("duration_sec"))
                 if payload.get("duration_sec") is not None
@@ -1386,10 +1422,29 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
             row["_ts"] = ts
             recent.append(row)
     recent.sort(key=lambda x: x["_ts"])
+
+    def category(entry: Dict[str, Any]) -> str:
+        status = str(entry.get("status") or "").strip().lower()
+        requested = entry.get("requested") if isinstance(entry.get("requested"), dict) else {}
+        if status == "debug_only" or bool(requested.get("debug_only")):
+            return "diagnostic_only"
+        if status == "success":
+            return "success"
+        if status == "failed":
+            return "failed"
+        if status == "cancelled":
+            return "cancelled"
+        return "unknown"
+
+    categories = [category(entry) for entry in recent]
+    success = categories.count("success")
+    failed = categories.count("failed")
+    cancelled = categories.count("cancelled")
+    diagnostic_only = categories.count("diagnostic_only")
+    unknown = categories.count("unknown")
+    import_attempts = success + failed
     attempts = len(recent)
-    success = len([e for e in recent if str(e.get("status")) == "success"])
-    failed = len([e for e in recent if str(e.get("status")) == "failed"])
-    success_rate = (success / attempts * 100.0) if attempts else 0.0
+    success_rate = (success / import_attempts * 100.0) if import_attempts else None
     durations = [
         float(e.get("duration_sec"))
         for e in recent
@@ -1411,17 +1466,28 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
     by_source: Dict[str, Dict[str, int]] = {}
     for e in recent:
         src = str(e.get("source") or "unknown")
-        bucket = by_source.setdefault(src, {"attempts": 0, "success": 0, "failed": 0})
+        bucket = by_source.setdefault(
+            src,
+            {
+                "attempts": 0,
+                "success": 0,
+                "failed": 0,
+                "cancelled": 0,
+                "diagnostic_only": 0,
+                "unknown": 0,
+            },
+        )
         bucket["attempts"] += 1
-        if str(e.get("status")) == "success":
-            bucket["success"] += 1
-        elif str(e.get("status")) == "failed":
-            bucket["failed"] += 1
+        bucket[category(e)] += 1
     return {
         "days": int(days),
         "attempts": attempts,
+        "import_attempts": import_attempts,
         "success": success,
         "failed": failed,
+        "cancelled": cancelled,
+        "diagnostic_only": diagnostic_only,
+        "unknown": unknown,
         "success_rate": success_rate,
         "avg_duration_sec": avg_duration_sec,
         "top_failure_stage": top_failure_stage,
@@ -1694,10 +1760,19 @@ def _debug_relative(path: str) -> str:
 def _classify_sync_stage(raw_error: str, fallback_stage: str = "unknown") -> str:
     text = str(raw_error or "").strip().lower()
     if (
+        "login page instead of statement html" in text
+        or "broker login page instead of statement html" in text
+        or "received login page" in text
+    ):
+        return "auth_required"
+    if (
         "resource temporarily unavailable" in text
         or "[errno 11]" in text
         or "can't start new thread" in text
         or "cannot start new thread" in text
+        or "pthread_create" in text
+        or "startup resources are busy" in text
+        or "another browser boot is still active" in text
     ):
         return "system_resource"
     if "permission denied" in text or "[errno 13]" in text:
@@ -1745,15 +1820,163 @@ def _normalize_iso_date(raw: str, fallback: str) -> str:
         return fallback
 
 
-def _handle_statement_html_import(path: str, mode: str, source_label: str):
+def _coerce_account_id(raw: Any) -> int | None:
+    text = str(raw or "").strip()
+    if not text or text.lower() in {"all", "none"}:
+        return None
+    try:
+        return int(text)
+    except Exception:
+        return None
+
+
+def _selected_account(raw: Any = None) -> Dict[str, Any] | None:
+    account_id = _coerce_account_id(raw)
+    if account_id:
+        return repo.get_account(account_id)
+    snapshot = repo.account_scope_snapshot()
+    account_id = _coerce_account_id(snapshot.get("account_id"))
+    if account_id:
+        return repo.get_account(account_id)
+    return None
+
+
+def _require_import_account(raw: Any = None) -> Dict[str, Any] | None:
+    account = _selected_account(raw)
+    if account:
+        return account
+    flash("Please select an account before uploading trades.", "warn")
+    return None
+
+
+def _sync_account(raw: Any = None, broker_account_id: str = "") -> Dict[str, Any] | None:
+    account = _selected_account(raw)
+    if account:
+        return account
+    normalized = repo.normalize_broker_account_id(broker_account_id)
+    if not normalized:
+        return None
+    for row in repo.list_accounts():
+        if repo.normalize_broker_account_id(row.get("broker_account_id")) == normalized:
+            return row
+    return None
+
+
+def _import_broker_paste_with_report(
+    text: str,
+    *,
+    account_id: int,
+    upload_id: int,
+    ending_balance: Optional[float] = None,
+    commit: bool = True,
+    import_batch_id: str = "",
+) -> Tuple[int, List[str], Dict[str, Any]]:
+    func = importing.insert_trades_from_broker_paste_with_report
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        sig = None
+    kwargs: Dict[str, Any] = {
+        "ending_balance": ending_balance,
+        "commit": commit,
+        "import_batch_id": import_batch_id,
+    }
+    if sig is None:
+        kwargs["account_id"] = account_id
+        kwargs["upload_id"] = upload_id
+    else:
+        params = sig.parameters
+        if "account_id" in params:
+            kwargs["account_id"] = account_id
+        if "upload_id" in params:
+            kwargs["upload_id"] = upload_id
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            kwargs["account_id"] = account_id
+            kwargs["upload_id"] = upload_id
+    return func(text, **kwargs)
+
+
+def _capture_account_metrics_for_sync(
+    *,
+    account_id: int,
+    broker_account_id: str,
+    headless: bool,
+    debug_dir: Optional[str],
+    progress_cb: Optional[Callable[[str, str], None]],
+) -> Dict[str, Any]:
+    if account_id <= 0:
+        return {"metrics": None, "warns": ["Skipped account metrics: no selected account."]}
+    metrics, warns, artifacts_abs, meta = vanquish_live_sync.fetch_account_metrics_via_dashboard(
+        account=broker_account_id,
+        headless=headless,
+        debug_dir=debug_dir,
+        progress_cb=progress_cb,
+    )
+    if metrics:
+        repo.update_account_broker_metrics(
+            account_id,
+            broker_equity=metrics.get("broker_equity"),
+            broker_equity_peak=metrics.get("broker_equity_peak"),
+            broker_remaining_drawdown=metrics.get("broker_remaining_drawdown"),
+            broker_max_loss=metrics.get("broker_max_loss"),
+        )
+    return {
+        "metrics": metrics,
+        "warns": warns,
+        "artifacts_abs": artifacts_abs,
+        "meta": meta,
+    }
+
+
+def _sync_account_broker_equity_from_statement(
+    *,
+    account_id: int,
+    statement_ending_balance: float | None,
+) -> bool:
+    if account_id <= 0 or statement_ending_balance is None:
+        return False
+    repo.update_account_broker_equity_from_statement(
+        account_id,
+        broker_equity=float(statement_ending_balance),
+    )
+    return True
+
+
+def _handle_statement_html_import(
+    path: str,
+    mode: str,
+    source_label: str,
+    *,
+    account: Dict[str, Any],
+    filename: str,
+):
     paste_text, balance_val, warns = importing.parse_statement_html_to_broker_paste(path)
 
     if mode == "broker":
         if not paste_text:
             if balance_val is not None:
                 batch_id = _new_import_batch_id("bal")
-                importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
-                ledger_balance = latest_balance_overall()
+                upload_id = repo.create_upload(
+                    account_id=int(account["id"]),
+                    filename=filename,
+                    source=source_label,
+                    import_batch_id=batch_id,
+                )
+                importing.insert_balance_snapshot(
+                    today_iso(),
+                    balance_val,
+                    account_id=int(account["id"]),
+                    upload_id=upload_id,
+                    raw_line=source_label,
+                )
+                _sync_account_broker_equity_from_statement(
+                    account_id=int(account["id"]),
+                    statement_ending_balance=balance_val,
+                )
+                ledger_balance = latest_balance_overall(
+                    account_id=int(account["id"]),
+                    starting_balance=float(account.get("starting_balance") or 0.0),
+                )
                 _record_import_batch(
                     batch_id=batch_id,
                     source=source_label,
@@ -1772,22 +1995,8 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
                     message="No trade rows found; imported statement ending balance snapshot.",
                 )
                 return render_page(
-                    render_template_string(
-                        """
-                        <div class="card"><div class="toolbar">
-                          <div class="pill">🧾 Balance Snapshot Imported ✅</div>
-                          <div class="stack10">No trade rows were present in this statement window. Imported ending balance <b>{{ money(balance_val) }}</b>.</div>
-                          {% if warns %}
-                            <div class="hr"></div>
-                            <div class="tiny metaBlue line16">
-                              {% for m in warns %}• {{ m }}<br>{% endfor %}
-                            </div>
-                          {% endif %}
-                          <div class="hr"></div>
-                          <a class="btn primary" href="/trades">Trades</a>
-                          <a class="btn" href="/trades/upload/statement">Upload Another</a>
-                        </div></div>
-                        """,
+                    render_template(
+                        "trades/import_balance_snapshot_result.html",
                         warns=warns or [],
                         balance_val=balance_val,
                         money=money,
@@ -1795,26 +2004,24 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
                     active="trades",
                 )
             return render_page(
-                render_template_string(
-                    """
-                    <div class="card"><div class="toolbar">
-                      <div class="pill">⛔ HTML parsed, but no trade rows found</div>
-                      <div class="hr"></div>
-                      <div class="tiny metaBlue line16">
-                        {% for m in warns %}• {{ m }}<br>{% endfor %}
-                      </div>
-                      <div class="hr"></div>
-                      <a class="btn" href="/trades/upload/statement">Back</a>
-                    </div></div>
-                    """,
+                render_template(
+                    "trades/import_no_trade_rows.html",
                     warns=warns or [],
                 ),
                 active="trades",
             )
 
         batch_id = _new_import_batch_id("stmt")
+        upload_id = repo.create_upload(
+            account_id=int(account["id"]),
+            filename=filename,
+            source=source_label,
+            import_batch_id=batch_id,
+        )
         _, _, pre_report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
+            account_id=int(account["id"]),
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=False,
             import_batch_id=batch_id,
@@ -1842,21 +2049,8 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
                     },
                 )
                 return render_page(
-                    render_template_string(
-                        """
-                        <div class="card"><div class="toolbar">
-                          <div class="pill">⛔ Reconciliation Gate Blocked Import</div>
-                          <div class="stack10">This import was not committed.</div>
-                          <div class="tiny metaRed line16">
-                            {% for r in reasons %}• {{ r }}<br>{% endfor %}
-                          </div>
-                          <div class="hr"></div>
-                          {{ reconciliation_html|safe }}
-                          <div class="hr"></div>
-                          <a class="btn" href="/trades/upload/statement?ws=reconcile">Open Reconcile Workspace</a>
-                          <a class="btn" href="/trades/upload/statement">Back</a>
-                        </div></div>
-                        """,
+                    render_template(
+                        "trades/import_reconcile_gate_blocked.html",
                         reasons=gate["reasons"],
                         reconciliation_html=_reconciliation_block(pre_report),
                     ),
@@ -1865,9 +2059,15 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
 
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
+            account_id=int(account["id"]),
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=True,
             import_batch_id=batch_id,
+        )
+        _sync_account_broker_equity_from_statement(
+            account_id=int(account["id"]),
+            statement_ending_balance=balance_val,
         )
         _record_import_batch(
             batch_id=batch_id,
@@ -1881,25 +2081,8 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
         msgs = (warns or []) + (errors or [])
 
         return render_page(
-            render_template_string(
-                """
-                <div class="card"><div class="toolbar">
-                  <div class="pill">🧾 HTML → Trades ✅</div>
-                  <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
-                  {% if msgs %}
-                    <div class="hr"></div>
-                    <div class="tiny metaBlue line16">
-                      {% for m in msgs %}• {{ m }}<br>{% endfor %}
-                    </div>
-                  {% endif %}
-                  {{ reconciliation_html|safe }}
-                  <div class="hr"></div>
-                  <a class="btn primary" href="/trades">Trades 📅</a>
-                  <a class="btn" href="/analytics?tab=performance">Analyze Session 📈</a>
-                  <a class="btn" href="/journal/new?d={{ review_day }}&entry_type=trade_debrief&link_all_day=1">Journal This Session 📝</a>
-                  <a class="btn" href="/trades/upload/statement">Upload Another</a>
-                </div></div>
-                """,
+            render_template(
+                "trades/import_html_result.html",
                 inserted=inserted,
                 msgs=msgs,
                 reconciliation_html=reconciliation_html,
@@ -1910,26 +2093,33 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
 
     if balance_val is None:
         return render_page(
-            render_template_string(
-                """
-                <div class="card"><div class="toolbar">
-                  <div class="pill">⛔ Balance not found in HTML</div>
-                  <div class="hr"></div>
-                  <div class="tiny metaBlue line16">
-                    {% for m in warns %}• {{ m }}<br>{% endfor %}
-                  </div>
-                  <div class="hr"></div>
-                  <a class="btn" href="/trades/upload/statement">Back</a>
-                </div></div>
-                """,
+            render_template(
+                "trades/import_balance_missing.html",
                 warns=warns or [],
             ),
             active="trades",
         )
 
-    importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
+    batch_id = _new_import_batch_id("bal")
+    upload_id = repo.create_upload(
+        account_id=int(account["id"]),
+        filename=filename,
+        source=source_label,
+        import_batch_id=batch_id,
+    )
+    importing.insert_balance_snapshot(
+        today_iso(),
+        balance_val,
+        account_id=int(account["id"]),
+        upload_id=upload_id,
+        raw_line=source_label,
+    )
+    _sync_account_broker_equity_from_statement(
+        account_id=int(account["id"]),
+        statement_ending_balance=balance_val,
+    )
     _record_import_batch(
-        batch_id=_new_import_batch_id("bal"),
+        batch_id=batch_id,
         source=source_label,
         mode="balance",
         report={
@@ -1939,8 +2129,17 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
             "errors_count": 0,
             "warnings_count": len(warns or []),
             "statement_ending_balance": balance_val,
-            "ledger_ending_balance": latest_balance_overall(),
-            "balance_delta": (latest_balance_overall() - float(balance_val)),
+            "ledger_ending_balance": latest_balance_overall(
+                account_id=int(account["id"]),
+                starting_balance=float(account.get("starting_balance") or 0.0),
+            ),
+            "balance_delta": (
+                latest_balance_overall(
+                    account_id=int(account["id"]),
+                    starting_balance=float(account.get("starting_balance") or 0.0),
+                )
+                - float(balance_val)
+            ),
         },
         status="success",
         message="Imported statement ending balance snapshot.",
@@ -1951,40 +2150,8 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
 def _reconciliation_block(report: Optional[dict]) -> str:
     if not report:
         return ""
-    return render_template_string(
-        """
-        <div class="hr"></div>
-        <div class="pill">🧾 Import Reconciliation</div>
-        <div class="hr"></div>
-        <table>
-          <tbody>
-            <tr><td>Fills Parsed</td><td>{{ report.fills_parsed }}</td></tr>
-            <tr><td>Round-Trips Paired</td><td>{{ report.pairs_completed }}</td></tr>
-            <tr><td>Inserted Trades</td><td>{{ report.inserted_trades }}</td></tr>
-            <tr><td>Duplicates Skipped</td><td>{{ report.duplicates_skipped }}</td></tr>
-            <tr><td>Open Contracts Remaining</td><td>{{ report.open_contracts }}</td></tr>
-            <tr><td>Errors / Warnings</td><td>{{ report.errors_count }} / {{ report.warnings_count }}</td></tr>
-            <tr>
-              <td>Statement Ending Balance</td>
-              <td>
-                {% if report.statement_ending_balance is not none %}{{ money(report.statement_ending_balance) }}{% else %}Not provided{% endif %}
-              </td>
-            </tr>
-            <tr>
-              <td>Ledger Ending Balance</td>
-              <td>
-                {% if report.ledger_ending_balance is not none %}{{ money(report.ledger_ending_balance) }}{% else %}Not available{% endif %}
-              </td>
-            </tr>
-            <tr>
-              <td>Balance Delta (Ledger - Statement)</td>
-              <td>
-                {% if report.balance_delta is not none %}{{ money(report.balance_delta) }}{% else %}Not computed{% endif %}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      """,
+    return render_template(
+        "trades/_import_reconciliation.html",
         report=report,
         money=money,
     )
@@ -2152,12 +2319,23 @@ def trades_paste():
             )
         text = request.form.get("text", "")
         fmt = detect_paste_format(text)
+        selected_account = _require_import_account(request.form.get("selected_account_id"))
+        if not selected_account:
+            return redirect(url_for("trades_paste"))
 
         reconciliation_html = ""
         if fmt == "broker":
             batch_id = _new_import_batch_id("paste")
+            upload_id = repo.create_upload(
+                account_id=int(selected_account["id"]),
+                filename=f"paste_{batch_id}.txt",
+                source="PASTE TRADES",
+                import_batch_id=batch_id,
+            )
             inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
                 text,
+                account_id=int(selected_account["id"]),
+                upload_id=upload_id,
                 commit=True,
                 import_batch_id=batch_id,
             )
@@ -2173,27 +2351,8 @@ def trades_paste():
         else:
             inserted, errors = importing.insert_trades_from_paste(text)
 
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">📋 Paste Trades</div>
-              <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }} ✅</div>
-              {% if errors %}
-                <div class="hr"></div>
-                <div class="tiny metaRed">
-                  {% for e in errors %}• {{ e }}<br/>{% endfor %}
-                </div>
-              {% endif %}
-              {{ reconciliation_html|safe }}
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/dashboard">Calendar 📊</a>
-                <a class="btn" href="/calculator">Calculator 🧮</a>
-                <a class="btn" href="/trades/paste">Paste More 🔁</a>
-              </div>
-            </div></div>
-            """,
+        content = render_template(
+            "trades/paste_result.html",
             inserted=inserted,
             errors=errors,
             reconciliation_html=reconciliation_html,
@@ -2201,30 +2360,10 @@ def trades_paste():
         return render_page(content, active="trades")
 
     example = "1/29\t9:35 AM\t9:37 AM\tSPX\tPUT\t6940\t$6.20\t$7.30\t3\t$1,860.00\t20\t30\t$4.96\t$8.06\t$374.10\t$2.10\t$330.00\t$327.90\t17.74%\t$50,924.40"
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📋 Paste Trades (tabs please ✅)</div>
-          <div class="tiny stack10 line15">
-            Pro tip: copy straight from your sheet/log, keep the tabs.
-            <div class="hr"></div>
-            Example:<br/><code class="preWrapMuted">{{ example }}</code>
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="stack12">
-              <label>📎 Paste here</label>
-              <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Import</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/paste_form.html",
         example=example,
+        selected_account_id=str(_selected_account().get("id") if _selected_account() else ""),
     )
     return render_page(content, active="trades")
 
@@ -2268,74 +2407,8 @@ def trades_playbook():
         return redirect(url_for("trades_playbook"))
 
     setup_rows = analytics_repo.group_table(analytics_repo.fetch_analytics_rows(), "setup_tag")
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📘 Playbook Engine</div>
-          <div class="tiny stack10 line16">Enforce pre-trade rules from your edge stats (size caps, blocked windows, quality floor).</div>
-          <div class="tiny stack8 line16">Why this matters: rules prevent emotional drift and preserve consistency under pressure.</div>
-          <div class="tiny stack8 line16">Next best action: keep this enabled, set a realistic checklist floor, then expand advanced controls only if needed.</div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label><input type="checkbox" name="enabled" value="1" {% if cfg.enabled %}checked{% endif %}/> Enable playbook enforcement</label></div>
-            </div>
-            <div class="row">
-              <div>
-                <label>Minimum Checklist Score</label>
-                <input type="number" min="0" max="100" name="min_checklist_score" value="{{ cfg.min_checklist_score }}" />
-              </div>
-              <div>
-                <label>Max Size (% of balance by total spend)</label>
-                <input type="number" min="1" max="100" step="0.1" name="max_size_pct" value="{{ cfg.max_size_pct }}" />
-              </div>
-            </div>
-            <details class="syncDetails stack10">
-              <summary>Advanced Rule Controls</summary>
-              <div class="hr"></div>
-              <div class="row">
-                <div><label><input type="checkbox" name="require_positive_setup_expectancy" value="1" {% if cfg.require_positive_setup_expectancy %}checked{% endif %}/> Require positive setup expectancy</label></div>
-                <div><label><input type="checkbox" name="require_critical_checklist" value="1" {% if cfg.require_critical_checklist %}checked{% endif %}/> Require critical checklist items</label></div>
-              </div>
-              <div class="row">
-                <div class="fieldGrow2">
-                  <label>Blocked Time Blocks (comma-separated)</label>
-                  <input name="blocked_time_blocks" value="{{ cfg.blocked_time_blocks|join(', ') }}" placeholder="09:30-10:00, 15:00-16:00" />
-                </div>
-              </div>
-              <div class="row">
-                <div class="fieldGrow2">
-                  <label>Critical Checklist Items (comma-separated)</label>
-                  <input name="critical_items" value="{{ cfg.critical_items|join(', ') }}" placeholder="Bias Confirmed, Risk Defined, Stop Planned" />
-                </div>
-              </div>
-            </details>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">Save Playbook Rules</button>
-              <a class="btn" href="/trades">Trades</a>
-            </div>
-          </form>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">📈 Setup Expectancy Snapshot</div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Expectancy</th></tr></thead>
-            <tbody>
-            {% for r in setup_rows[:20] %}
-              <tr>
-                <td>{{ r.k or 'Unlabeled' }}</td>
-                <td>{{ r.count }}</td>
-                <td>{{ '%.1f'|format(r.win_rate) }}%</td>
-                <td>{{ money(r.expectancy) }}</td>
-              </tr>
-            {% else %}
-              <tr><td colspan="4">No setup data yet.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/playbook.html",
         cfg=cfg,
         setup_rows=setup_rows,
         money=money,
@@ -2493,9 +2566,20 @@ def trades_paste_broker():
                 active="trades",
             )
         text = request.form.get("text", "")
+        selected_account = _require_import_account(request.form.get("selected_account_id"))
+        if not selected_account:
+            return redirect(url_for("trades_paste_broker"))
         batch_id = _new_import_batch_id("brokerpaste")
+        upload_id = repo.create_upload(
+            account_id=int(selected_account["id"]),
+            filename=f"broker_paste_{batch_id}.txt",
+            source="BROKER PASTE",
+            import_batch_id=batch_id,
+        )
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             text,
+            account_id=int(selected_account["id"]),
+            upload_id=upload_id,
             commit=True,
             import_batch_id=batch_id,
         )
@@ -2508,25 +2592,8 @@ def trades_paste_broker():
             message=f"Inserted {inserted} trade(s) via broker paste.",
         )
         reconciliation_html = _reconciliation_block(report)
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">🏦 Broker Paste Import</div>
-              <div class="stack10">Inserted <b>{{ inserted }}</b> round-trip trade{{ '' if inserted==1 else 's' }} ✅</div>
-              {% if errors %}
-                <div class="hr"></div><div class="tiny metaRed">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
-              {% endif %}
-              {{ reconciliation_html|safe }}
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/analytics?tab=performance">Analyze Session 📈</a>
-                <a class="btn" href="/journal/new?d={{ review_day }}&entry_type=trade_debrief&link_all_day=1">Journal This Session 📝</a>
-                <a class="btn" href="/dashboard">Calendar 📊</a>
-                <a class="btn" href="/trades/paste/broker">Paste More 🔁</a>
-              </div>
-            </div></div>
-            """,
+        content = render_template(
+            "trades/broker_paste_result.html",
             inserted=inserted,
             errors=errors,
             reconciliation_html=reconciliation_html,
@@ -2534,27 +2601,9 @@ def trades_paste_broker():
         )
         return render_page(content, active="trades")
 
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🏦 Paste Broker Fills (BUY/SELL legs)</div>
-          <div class="tiny stack10 line15">
-            Paste the raw fills. This importer pairs BUY+SELL into one completed trade (FIFO). ✅
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="stack12">
-              <label>📎 Paste here</label>
-              <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Convert + Import</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """
+    content = render_template(
+        "trades/broker_paste_form.html",
+        selected_account_id=str(_selected_account().get("id") if _selected_account() else ""),
     )
     return render_page(content, active="trades")
 
@@ -2563,7 +2612,138 @@ def trades_upload_pdf():
     workspace = (request.args.get("ws") or "live").strip().lower()
     if workspace not in {"upload", "live", "reconcile"}:
         workspace = "live"
+    account_editor_mode = (request.args.get("account_editor") or "").strip().lower()
+    credentials_panel_mode = (request.args.get("credentials") or "").strip().lower()
+    query_account_id = _coerce_account_id(request.args.get("account_id"))
+    if query_account_id:
+        if repo.get_account(query_account_id):
+            repo.set_active_account(query_account_id)
+    elif str(request.args.get("account_id") or "").strip().lower() == "all":
+        repo.set_active_account(None)
     if request.method == "POST":
+        form_intent = (request.form.get("intent") or "import").strip().lower()
+        if form_intent == "save_account":
+            prior_scope = repo.account_scope_snapshot()
+            prior_account_id = _coerce_account_id(
+                request.form.get("rollover_from_account_id") or prior_scope.get("account_id")
+            )
+            account_name = (request.form.get("account_name") or "").strip()
+            broker_account_id = (request.form.get("broker_account_id") or "").strip()
+            account_size = parse_float(request.form.get("account_size") or "")
+            starting_balance = parse_float(request.form.get("starting_balance") or "")
+            max_drawdown = parse_float(request.form.get("max_drawdown") or "")
+            target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
+            if not account_name or starting_balance is None:
+                flash("Account name and starting balance are required.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            if target_account_id:
+                repo.update_account(
+                    target_account_id,
+                    prop_firm=repo.DEFAULT_PROP_FIRM,
+                    account_name=account_name,
+                    broker_account_id=broker_account_id,
+                    account_size=account_size,
+                    starting_balance=float(starting_balance),
+                    max_drawdown=max_drawdown,
+                )
+                repo.set_active_account(target_account_id)
+                if repo.maybe_link_rollover_account(int(target_account_id), prior_account_id):
+                    flash("Linked prior eval account for dashboard continuity.", "success")
+                flash("Account updated.", "success")
+            else:
+                existing_account = repo.find_account_by_broker_account_id(broker_account_id)
+                if existing_account:
+                    created = int(existing_account["id"])
+                    repo.update_account(
+                        created,
+                        prop_firm=repo.DEFAULT_PROP_FIRM,
+                        account_name=account_name,
+                        broker_account_id=broker_account_id,
+                        account_size=account_size,
+                        starting_balance=float(starting_balance),
+                        max_drawdown=max_drawdown,
+                    )
+                    if repo.maybe_link_rollover_account(int(created), prior_account_id):
+                        flash("Linked prior eval account for dashboard continuity.", "success")
+                    flash("Account updated.", "success")
+                else:
+                    created = repo.create_account(
+                        prop_firm=repo.DEFAULT_PROP_FIRM,
+                        account_name=account_name,
+                        broker_account_id=broker_account_id,
+                        account_size=account_size,
+                        starting_balance=float(starting_balance),
+                        max_drawdown=max_drawdown,
+                    )
+                    flash("Account created.", "success")
+                    if repo.maybe_link_rollover_account(int(created), prior_account_id):
+                        flash("Linked prior eval account for dashboard continuity.", "success")
+                repo.set_active_account(int(created))
+            return redirect(url_for("trades_upload_pdf", ws=workspace, account_id=""))
+        if form_intent == "archive_account":
+            target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
+            target_account = repo.get_account(target_account_id) if target_account_id else None
+            if not target_account:
+                flash("Select an active account to archive.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            repo.archive_account(int(target_account["id"]))
+            remaining_accounts = repo.list_accounts()
+            fallback_account = next(
+                (
+                    row
+                    for row in remaining_accounts
+                    if int(row.get("id") or 0) != int(target_account["id"])
+                ),
+                None,
+            )
+            (
+                repo.set_active_account(int(fallback_account["id"]))
+                if fallback_account
+                else repo.set_active_account(None)
+            )
+            flash(f"Archived {target_account['account_name']}.", "success")
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
+        if form_intent == "bulk_archive_accounts":
+            seen_ids: set[int] = set()
+            target_ids: List[int] = []
+            for raw_id in request.form.getlist("account_ids"):
+                account_id = _coerce_account_id(raw_id)
+                if account_id and account_id not in seen_ids:
+                    seen_ids.add(account_id)
+                    target_ids.append(account_id)
+            active_scope = repo.account_scope_snapshot()
+            active_account_id = _coerce_account_id(active_scope.get("account_id"))
+            archived_count = 0
+            archived_ids: set[int] = set()
+            for account_id in target_ids:
+                target_account = repo.get_account(account_id)
+                if not target_account:
+                    continue
+                repo.archive_account(int(target_account["id"]))
+                archived_count += 1
+                archived_ids.add(int(target_account["id"]))
+            if not archived_count:
+                flash("Select at least one account to archive.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            if active_account_id in archived_ids:
+                remaining_accounts = repo.list_accounts()
+                fallback_account = next(iter(remaining_accounts), None)
+                repo.set_active_account(int(fallback_account["id"]) if fallback_account else None)
+            flash(
+                f"Archived {archived_count} account{'s' if archived_count != 1 else ''}.",
+                "success",
+            )
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
+        if form_intent == "restore_account":
+            target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
+            if not target_account_id:
+                flash("Select an archived account to restore.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            repo.restore_account(target_account_id)
+            repo.set_active_account(target_account_id)
+            flash("Archived account restored.", "success")
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
+
         guardrail = trade_lockout_state(today_iso())
         if guardrail["locked"]:
             return render_page(
@@ -2575,9 +2755,27 @@ def trades_upload_pdf():
             )
         f = request.files.get("pdf")
         mode = (request.form.get("mode") or "broker").strip()  # broker | balance
+        pasted_html = (request.form.get("statement_html") or "").strip()
+        selected_account = _require_import_account(request.form.get("selected_account_id"))
+        if not selected_account:
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
 
-        if not f or not f.filename:
+        if (not f or not f.filename) and not pasted_html:
             return render_page(simple_msg("Please upload a file."), active="trades")
+
+        if pasted_html and (not f or not f.filename):
+            filename = f"statement_paste_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            path = os.path.join(_upload_dir(), filename)
+            os.makedirs(_upload_dir(), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as out:
+                out.write(pasted_html)
+            return _handle_statement_html_import(
+                path,
+                mode=mode,
+                source_label="STATEMENT HTML PASTE",
+                account=selected_account,
+                filename=filename,
+            )
 
         filename = secure_filename(f.filename)
         _, ext = os.path.splitext(filename.lower())
@@ -2591,7 +2789,11 @@ def trades_upload_pdf():
         # ✅ HTML path (no OCR)
         if ext in (".html", ".htm"):
             return _handle_statement_html_import(
-                path, mode=mode, source_label="STATEMENT HTML UPLOAD"
+                path,
+                mode=mode,
+                source_label="STATEMENT HTML UPLOAD",
+                account=selected_account,
+                filename=filename,
             )
 
         # --- PDF path (keep your OCR behavior for now) ---
@@ -2620,33 +2822,27 @@ def trades_upload_pdf():
                     ocr_warns = (ocr_warns or []) + [f"OCR debug error: {e}"]
 
                 return render_page(
-                    render_template_string(
-                        """
-                        <div class="card"><div class="toolbar">
-                          <div class="pill">⛔ OCR rows not parseable</div>
-                          <div class="hr"></div>
-                          <div class="tiny metaBlue line16">
-                            {% for m in warns %}• {{ m }}<br>{% endfor %}
-                          </div>
-                          <div class="hr"></div>
-                          <div class="tiny">Stitched rows (first 30):</div>
-                          <pre class="preWrapMuted">{{ dump }}</pre>
-                          <div class="hr"></div>
-                          <a class="btn" href="/trades/upload/statement">Back</a>
-                        <a class="btn" href="/trades/upload/statement">Upload Another</a>
-
-                        </div></div>
-                        """,
+                    render_template(
+                        "trades/import_ocr_rows_unparseable.html",
                         warns=ocr_warns,
                         dump="\n".join(stitched[:30]),
                     ),
                     active="trades",
                 )
 
+            batch_id = _new_import_batch_id("pdfocr")
+            upload_id = repo.create_upload(
+                account_id=int(selected_account["id"]),
+                filename=filename,
+                source="STATEMENT PDF OCR",
+                import_batch_id=batch_id,
+            )
             inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
                 paste_text,
+                account_id=int(selected_account["id"]),
+                upload_id=upload_id,
                 commit=True,
-                import_batch_id=_new_import_batch_id("pdfocr"),
+                import_batch_id=batch_id,
             )
             _record_import_batch(
                 batch_id=str(report.get("import_batch_id") or ""),
@@ -2659,23 +2855,8 @@ def trades_upload_pdf():
             reconciliation_html = _reconciliation_block(report)
             msgs = (ocr_warns or []) + (errors or [])
             return render_page(
-                render_template_string(
-                    """
-                    <div class="card"><div class="toolbar">
-                      <div class="pill">📄 PDF → OCR → Trades ✅</div>
-                      <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
-                      {% if msgs %}
-                        <div class="hr"></div>
-                        <div class="tiny metaBlue line16">
-                          {% for m in msgs %}• {{ m }}<br>{% endfor %}
-                        </div>
-                      {% endif %}
-                      {{ reconciliation_html|safe }}
-                      <div class="hr"></div>
-                      <a class="btn primary" href="/trades">Trades 📅</a>
-                     <a class="btn" href="/trades/upload/statement">Upload Another</a>
-                    </div></div>
-                    """,
+                render_template(
+                    "trades/import_pdf_ocr_result.html",
                     inserted=inserted,
                     msgs=msgs,
                     reconciliation_html=reconciliation_html,
@@ -2688,26 +2869,50 @@ def trades_upload_pdf():
         bal = importing.extract_statement_balance(text)
         if bal is None:
             return render_page(
-                render_template_string(
-                    """<div class="card"><div class="toolbar">
-                       <div class="pill">⛔ Could not find ending balance</div>
-                       <div class="hr"></div>
-                       <div class="tiny">Dump (first 1200 chars):</div>
-                       <pre class="preWrapMuted">{{ dump }}</pre>
-                       <div class="hr"></div>
-                       <a class="btn" href="/trades/upload/statement">Back</a>
-                       </div></div>""",
+                render_template(
+                    "trades/import_pdf_balance_missing.html",
                     dump=(text or "")[:1200],
                 ),
                 active="trades",
             )
 
-        importing.insert_balance_snapshot(today_iso(), bal, raw_line="STATEMENT PDF UPLOAD")
+        batch_id = _new_import_batch_id("pdfbal")
+        upload_id = repo.create_upload(
+            account_id=int(selected_account["id"]),
+            filename=filename,
+            source="STATEMENT PDF UPLOAD",
+            import_batch_id=batch_id,
+        )
+        importing.insert_balance_snapshot(
+            today_iso(),
+            bal,
+            account_id=int(selected_account["id"]),
+            upload_id=upload_id,
+            raw_line="STATEMENT PDF UPLOAD",
+        )
         return redirect(url_for("trades_page"))
 
     # GET
+    selected_account = _selected_account(request.args.get("account_id"))
+    rollover_from_account_id = _coerce_account_id(request.args.get("rollover_from"))
+    account_form_mode = (
+        "new"
+        if workspace == "live" and account_editor_mode == "new"
+        else "edit" if selected_account else "new"
+    )
+    account_form_account = None if account_form_mode == "new" else selected_account
+    accounts = repo.list_accounts()
+    archived_accounts = [
+        row
+        for row in repo.list_accounts(include_archived=True)
+        if int(row.get("archived") or 0) == 1
+    ]
     broker_cfg = _load_broker_sync_config()
+    broker_cfg["account_display"] = repo.display_broker_account_id(broker_cfg.get("account", ""))
     auto_sync_cfg = _load_auto_sync_config()
+    auto_sync_cfg["account_display"] = repo.display_broker_account_id(
+        auto_sync_cfg.get("account", "")
+    )
     default_day = today_iso()
     sync_status = _load_last_sync_status()
     sync_history = _load_sync_history()
@@ -2718,6 +2923,9 @@ def trades_upload_pdf():
     sync_job = _get_bg_job(sync_job_id) if sync_job_id else {}
     if not sync_job:
         sync_job = _latest_active_sync_job()
+    from mccain_capital.services import trades_sync as sync_orchestration
+
+    live_sync_state = sync_orchestration.dashboard_live_sync_state()
     content = render_template(
         "trades/upload_statement.html",
         workspace=workspace,
@@ -2734,9 +2942,19 @@ def trades_upload_pdf():
         ),
         sync_reliability=sync_reliability,
         sync_job=sync_job,
+        live_sync_state=live_sync_state,
         reconcile_summary=reconcile_summary,
         import_history=list(reversed(import_history[-40:])),
         sync_stage_help=SYNC_STAGE_HELP,
+        sync_stage_labels=SYNC_STAGE_LABELS,
+        accounts=accounts,
+        archived_accounts=archived_accounts,
+        selected_account=selected_account,
+        account_form_mode=account_form_mode,
+        account_form_account=account_form_account,
+        rollover_from_account_id=rollover_from_account_id,
+        live_account_form_open=(workspace == "live" and account_editor_mode in {"edit", "new"}),
+        live_credentials_form_open=(workspace == "live" and credentials_panel_mode == "edit"),
         money=money,
     )
     return render_page(content, active="trades")
@@ -2744,6 +2962,7 @@ def trades_upload_pdf():
 
 def _run_live_sync_once(
     *,
+    selected_account_id: int | None,
     mode: str,
     username: str,
     password: str,
@@ -2762,6 +2981,12 @@ def _run_live_sync_once(
     progress_cb: Optional[Callable[[str, str], None]] = None,
     cancel_cb: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
+    selected_account = (
+        repo.get_account(int(selected_account_id))
+        if selected_account_id not in (None, "", 0)
+        else None
+    )
+    account_id = int(selected_account["id"]) if selected_account else 0
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
         os.path.join(_broker_debug_dir(), f"live_{from_date}_{to_date}_{stamp}")
@@ -2859,10 +3084,32 @@ def _run_live_sync_once(
         if not paste_text:
             if balance_for_snapshot is not None:
                 balance_batch_id = _new_import_batch_id("livebal")
-                importing.insert_balance_snapshot(
-                    today_iso(), balance_for_snapshot, raw_line=source_label
+                upload_id = (
+                    repo.create_upload(
+                        account_id=account_id,
+                        filename=filename,
+                        source=source_label,
+                        import_batch_id=balance_batch_id,
+                    )
+                    if account_id > 0
+                    else 0
                 )
-                ledger_balance = latest_balance_overall()
+                if account_id > 0:
+                    importing.insert_balance_snapshot(
+                        today_iso(),
+                        balance_for_snapshot,
+                        account_id=account_id,
+                        upload_id=upload_id,
+                        raw_line=source_label,
+                    )
+                ledger_balance = (
+                    latest_balance_overall(
+                        account_id=account_id,
+                        starting_balance=float(selected_account.get("starting_balance") or 0.0),
+                    )
+                    if selected_account
+                    else None
+                )
                 _record_import_batch(
                     batch_id=balance_batch_id,
                     source=source_label,
@@ -2880,6 +3127,21 @@ def _run_live_sync_once(
                     status="success",
                     message="No trade rows found; imported statement ending balance snapshot.",
                 )
+                metrics_result = _capture_account_metrics_for_sync(
+                    account_id=account_id,
+                    broker_account_id=account,
+                    headless=headless,
+                    debug_dir=debug_dir,
+                    progress_cb=progress_cb,
+                )
+                warns_all = warns_all + list(metrics_result.get("warns") or [])
+                artifacts_rel = artifacts_rel + [
+                    _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
+                ]
+                _sync_account_broker_equity_from_statement(
+                    account_id=account_id,
+                    statement_ending_balance=balance_for_snapshot,
+                )
                 result.update(
                     {
                         "ok": True,
@@ -2890,6 +3152,8 @@ def _run_live_sync_once(
                         "artifacts_rel": artifacts_rel,
                         "statement_path": path,
                         "batch_id": balance_batch_id,
+                        "account_metrics": metrics_result.get("metrics"),
+                        "account_metrics_meta": metrics_result.get("meta"),
                     }
                 )
                 return result
@@ -2904,8 +3168,20 @@ def _run_live_sync_once(
                 }
             )
             return result
-        _, _, pre_report = importing.insert_trades_from_broker_paste_with_report(
+        upload_id = (
+            repo.create_upload(
+                account_id=account_id,
+                filename=filename,
+                source=source_label,
+                import_batch_id=batch_id,
+            )
+            if account_id > 0
+            else 0
+        )
+        _, _, pre_report = _import_broker_paste_with_report(
             paste_text,
+            account_id=account_id,
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=False,
             import_batch_id=batch_id,
@@ -2943,11 +3219,28 @@ def _run_live_sync_once(
         if progress_cb:
             progress_cb("import_trades", "Importing trades.")
         ensure_active()
-        inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
+        inserted, errors, report = _import_broker_paste_with_report(
             paste_text,
+            account_id=account_id,
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=True,
             import_batch_id=batch_id,
+        )
+        metrics_result = _capture_account_metrics_for_sync(
+            account_id=account_id,
+            broker_account_id=account,
+            headless=headless,
+            debug_dir=debug_dir,
+            progress_cb=progress_cb,
+        )
+        warns_all = warns_all + list(metrics_result.get("warns") or [])
+        artifacts_rel = artifacts_rel + [
+            _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
+        ]
+        _sync_account_broker_equity_from_statement(
+            account_id=account_id,
+            statement_ending_balance=balance_val,
         )
         msg = f"{source_label}: inserted {inserted} trade(s)."
         if errors:
@@ -2964,6 +3257,8 @@ def _run_live_sync_once(
                 "artifacts_rel": artifacts_rel,
                 "statement_path": path,
                 "batch_id": batch_id,
+                "account_metrics": metrics_result.get("metrics"),
+                "account_metrics_meta": metrics_result.get("meta"),
             }
         )
         return result
@@ -2987,7 +3282,34 @@ def _run_live_sync_once(
             }
         )
         return result
-    importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
+    upload_id = repo.create_upload(
+        account_id=int(selected_account["id"]),
+        filename=filename,
+        source=source_label,
+        import_batch_id=batch_id,
+    )
+    importing.insert_balance_snapshot(
+        today_iso(),
+        balance_val,
+        account_id=int(selected_account["id"]),
+        upload_id=upload_id,
+        raw_line=source_label,
+    )
+    metrics_result = _capture_account_metrics_for_sync(
+        account_id=int(selected_account["id"]),
+        broker_account_id=account,
+        headless=headless,
+        debug_dir=debug_dir,
+        progress_cb=progress_cb,
+    )
+    warns_all = warns_all + list(metrics_result.get("warns") or [])
+    artifacts_rel = artifacts_rel + [
+        _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
+    ]
+    _sync_account_broker_equity_from_statement(
+        account_id=int(selected_account["id"]),
+        statement_ending_balance=balance_val,
+    )
     result.update(
         {
             "ok": True,
@@ -2997,6 +3319,8 @@ def _run_live_sync_once(
             "artifacts_rel": artifacts_rel,
             "statement_path": path,
             "batch_id": batch_id,
+            "account_metrics": metrics_result.get("metrics"),
+            "account_metrics_meta": metrics_result.get("meta"),
         }
     )
     return result
@@ -3042,6 +3366,7 @@ def _execute_sync_job(
     app,
     job: Dict[str, Any],
     cancel_event: threading.Event,
+    selected_account_id: int,
     title: str,
     source_label: str,
     record_source: str,
@@ -3083,6 +3408,7 @@ def _execute_sync_job(
         with app.app_context():
             progress("queue_dispatch", "Sync worker picked up the job.")
             run = _run_live_sync_once(
+                selected_account_id=selected_account_id,
                 mode=mode,
                 username=username,
                 password=password,
@@ -3119,6 +3445,8 @@ def _execute_sync_job(
                 "warn_count": len(run.get("warns") or []),
                 "error_count": len(run.get("errors") or []),
                 "inserted": int(run.get("inserted") or 0),
+                "account_metrics": run.get("account_metrics"),
+                "account_metrics_meta": run.get("account_metrics_meta"),
                 "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
                 "statement_file": (
                     _debug_relative(run.get("statement_path", ""))
@@ -3143,6 +3471,8 @@ def _execute_sync_job(
                     "stage_help": SYNC_STAGE_HELP.get(stage, ""),
                     "requested": requested,
                     "sync_meta": run.get("sync_meta", {}),
+                    "account_metrics": run.get("account_metrics"),
+                    "account_metrics_meta": run.get("account_metrics_meta"),
                     "artifacts_rel": summary["artifacts_rel"],
                     "statement_file": summary["statement_file"],
                     "duration_sec": duration_sec,
@@ -3300,8 +3630,20 @@ def ensure_sync_dispatcher_started(app) -> None:
         _SYNC_DISPATCH_THREAD_STARTED = True
 
 
+def _start_sync_job_thread(app, worker_payload: Dict[str, Any]) -> threading.Thread:
+    t = threading.Thread(
+        target=_execute_sync_job,
+        kwargs={"app": app, **worker_payload},
+        daemon=True,
+        name=f"sync-job-{str(((worker_payload.get('job') or {}).get('id')) or 'worker')[:12]}",
+    )
+    t.start()
+    return t
+
+
 def _start_sync_job(
     *,
+    selected_account_id: int | None,
     title: str,
     source_label: str,
     record_source: str,
@@ -3324,36 +3666,41 @@ def _start_sync_job(
     app = current_app._get_current_object()
     job = _create_bg_job("sync", title, requested)
     cancel_event = _sync_cancel_event(job["id"])
+    worker_payload = {
+        "job": job,
+        "cancel_event": cancel_event,
+        "selected_account_id": (
+            int(selected_account_id) if selected_account_id not in (None, "", 0) else None
+        ),
+        "title": title,
+        "source_label": source_label,
+        "record_source": record_source,
+        "mode": mode,
+        "username": username,
+        "password": password,
+        "base_url": base_url,
+        "account": account,
+        "wl": wl,
+        "time_zone": time_zone,
+        "date_locale": date_locale,
+        "report_locale": report_locale,
+        "from_date": from_date,
+        "to_date": to_date,
+        "headless": headless,
+        "debug_capture": debug_capture,
+        "debug_only": debug_only,
+        "requested": requested,
+    }
     try:
-        ensure_sync_dispatcher_started(app)
-        _SYNC_JOB_QUEUE.put_nowait(
-            {
-                "job": job,
-                "cancel_event": cancel_event,
-                "title": title,
-                "source_label": source_label,
-                "record_source": record_source,
-                "mode": mode,
-                "username": username,
-                "password": password,
-                "base_url": base_url,
-                "account": account,
-                "wl": wl,
-                "time_zone": time_zone,
-                "date_locale": date_locale,
-                "report_locale": report_locale,
-                "from_date": from_date,
-                "to_date": to_date,
-                "headless": headless,
-                "debug_capture": debug_capture,
-                "debug_only": debug_only,
-                "requested": requested,
-            }
-        )
+        _start_sync_job_thread(app, worker_payload)
     except Exception as e:
         raw_message = str(e)
         fail_message = _strip_stage_prefix(raw_message)
         stage = _classify_sync_stage(raw_message, "queue_dispatch")
+        if stage == "system_resource":
+            fail_message = (
+                "Chromium startup resources are busy. Another browser boot is still active."
+            )
         _save_last_sync_status(
             {
                 "job_id": job["id"],
@@ -3383,8 +3730,11 @@ def _start_sync_job(
                 tone="danger",
                 title="Live Sync Failed",
                 happened=fail_message,
-                changed="The sync job could not be handed off to the background dispatcher.",
-                next_action="Retry once load settles. If it repeats, inspect app resource limits.",
+                changed="No trade import was committed.",
+                next_action=(
+                    "Click Force Reset Lane, wait a few seconds, then retry once. "
+                    "Use manual statement upload if startup remains busy."
+                ),
                 actions=[
                     {
                         "label": "Open Live Sync",
@@ -3403,23 +3753,29 @@ def _start_sync_job(
 def trades_sync_live():
     if request.method != "POST":
         return redirect(url_for("trades_upload_pdf"))
+    wants_async = (request.args.get("async") or "").strip() == "1"
 
     mode = (request.form.get("mode") or "broker").strip()
     guardrail = trade_lockout_state(today_iso())
     if guardrail["locked"] and mode == "broker":
-        return render_page(
-            simple_msg(
-                f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
-            ),
-            active="trades",
+        message = (
+            f"Daily max-loss guardrail is active for {guardrail['day']}. "
+            f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
         )
+        if wants_async:
+            return jsonify({"ok": False, "message": message}), 409
+        return render_page(simple_msg(message), active="trades")
 
     cfg = _load_broker_sync_config()
-    username = (request.form.get("username") or "").strip()
+    remembered_username = str(cfg.get("username") or "").strip()
+    username = (request.form.get("username") or "").strip() or remembered_username
     password = (request.form.get("password") or "").strip()
+    remember_credentials = request.form.get("remember_credentials") == "1"
+    clear_saved_credentials = request.form.get("clear_saved_credentials") == "1"
     base_url = (request.form.get("base_url") or "").strip() or cfg.get("base_url", "")
-    account = (request.form.get("account") or "").strip() or cfg.get("account", "")
+    account = repo.normalize_broker_account_id(
+        (request.form.get("account") or "").strip() or cfg.get("account", "")
+    )
     wl = (request.form.get("wl") or "").strip() or cfg.get("wl", "vanquishtrader")
     time_zone = (request.form.get("time_zone") or "").strip() or cfg.get(
         "time_zone", "America/New_York"
@@ -3432,22 +3788,66 @@ def trades_sync_live():
     debug_capture = request.form.get("debug_capture") == "1"
     debug_only = request.form.get("debug_only") == "1"
     remember_connection = request.form.get("remember_connection") == "1"
+    stored_password = _get_auto_sync_password({"username": username}) if username else ""
 
-    if not username or not password:
-        return render_page(
-            simple_msg("Username and password are required for live login sync."),
-            active="trades",
-        )
+    if clear_saved_credentials and username:
+        _clear_auto_sync_password(username)
+        cfg["username"] = ""
+        cfg["password"] = ""
+        cfg["password_enc"] = ""
+        cfg["password_stored"] = False
+        _save_broker_sync_config(cfg)
+        flash("Saved live sync credentials cleared.", "success")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+
+    active_job = _latest_active_sync_job()
+    if active_job:
+        message = "A live sync job is already active. Force Reset Lane before starting another run."
+        if wants_async:
+            return (
+                jsonify(
+                    {"ok": False, "message": message, "job": _job_response_payload(active_job)}
+                ),
+                409,
+            )
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live", job=active_job["id"]))
+
+    password_for_run = password or stored_password
+
+    if not username or not password_for_run:
+        message = "Username and password are required for live login sync."
+        if wants_async:
+            return jsonify({"ok": False, "message": message}), 400
+        return render_page(simple_msg(message), active="trades")
     if not base_url or not account:
-        return render_page(
-            simple_msg("Base origin and account are required for live login sync."),
-            active="trades",
-        )
+        message = "Base origin and account are required for live login sync."
+        if wants_async:
+            return jsonify({"ok": False, "message": message}), 400
+        return render_page(simple_msg(message), active="trades")
 
     from_date = _normalize_iso_date(request.form.get("from_date") or "", today_iso())
     to_date = _normalize_iso_date(request.form.get("to_date") or "", today_iso())
     if from_date > to_date:
         from_date, to_date = to_date, from_date
+    selected_account = _require_import_account(request.form.get("selected_account_id"))
+    if not selected_account:
+        if wants_async:
+            return (
+                jsonify(
+                    {"ok": False, "message": "Please select an account before uploading trades."}
+                ),
+                400,
+            )
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+    selected_broker_account = repo.normalize_broker_account_id(
+        selected_account.get("display_broker_account_id")
+        or repo.display_broker_account_id(selected_account.get("broker_account_id"))
+        or selected_account.get("broker_account_id")
+        or ""
+    )
+    if selected_broker_account:
+        account = selected_broker_account
 
     requested = _sync_requested_payload(
         source="manual_live",
@@ -3466,8 +3866,10 @@ def trades_sync_live():
         username=username,
     )
     requested["remember_connection"] = remember_connection
+    requested["remember_credentials"] = remember_credentials
+    requested["stored_password_reused"] = bool(not password and stored_password)
 
-    if remember_connection:
+    if remember_connection or remember_credentials:
         cfg.update(
             {
                 "base_url": base_url,
@@ -3476,16 +3878,27 @@ def trades_sync_live():
                 "time_zone": time_zone,
                 "date_locale": date_locale,
                 "report_locale": report_locale,
+                "username": username if remember_credentials else remembered_username,
             }
         )
+        if remember_credentials and password:
+            saved = _set_auto_sync_password(username, password)
+            if not saved and AUTO_SYNC_PASSWORD_FALLBACK:
+                cfg["password_enc"] = _encrypt_fallback_password(password)
+                cfg["password"] = ""
+                cfg["password_stored"] = True
+            else:
+                cfg.pop("password_enc", None)
+                cfg["password_stored"] = saved
         _save_broker_sync_config(cfg)
     job = _start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Live Sync",
         source_label="LIVE LOGIN HTML",
         record_source="LIVE LOGIN HTML",
         mode=mode,
         username=username,
-        password=password,
+        password=password_for_run,
         base_url=base_url,
         account=account,
         wl=wl,
@@ -3499,6 +3912,8 @@ def trades_sync_live():
         debug_only=debug_only,
         requested=requested,
     )
+    if wants_async:
+        return jsonify({"ok": True, "job": _job_response_payload(job)})
     flash("Live sync started. Progress and result will update below.", "success")
     return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 
@@ -3519,7 +3934,7 @@ def trades_sync_auto_config():
     cfg["base_url"] = (request.form.get("auto_base_url") or "").strip() or cfg.get(
         "base_url", "https://trade.vanquishtrader.com"
     )
-    cfg["account"] = (request.form.get("auto_account") or "").strip()
+    cfg["account"] = repo.normalize_broker_account_id(request.form.get("auto_account") or "")
     cfg["wl"] = (request.form.get("auto_wl") or "").strip() or cfg.get("wl", "vanquishtrader")
     cfg["time_zone"] = (request.form.get("auto_time_zone") or "").strip() or cfg.get(
         "time_zone", "America/New_York"
@@ -3588,6 +4003,10 @@ def trades_sync_auto_config():
 
 def trades_sync_auto_run_now():
     cfg = _load_auto_sync_config()
+    selected_account = _selected_account()
+    if not selected_account:
+        flash("Please select an account before uploading trades.", "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
     auto_password = _get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
         flash(
@@ -3613,6 +4032,7 @@ def trades_sync_auto_run_now():
         username=str(cfg.get("username") or ""),
     )
     job = _start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Auto Sync Run",
         source_label="AUTO SYNC HTML",
         record_source="AUTO SYNC MANUAL RUN",
@@ -3713,8 +4133,21 @@ def _auto_sync_worker(app) -> None:
                 continue
             try:
                 with app.app_context():
+                    selected_account = _selected_account()
+                    if not selected_account:
+                        _save_last_sync_status(
+                            {
+                                "status": "failed",
+                                "stage": "account_scope",
+                                "message": "Please select an account before uploading trades.",
+                                "updated_at": now_iso(),
+                            }
+                        )
+                        time.sleep(60)
+                        continue
                     started = time.time()
                     run = _run_live_sync_once(
+                        selected_account_id=int(selected_account["id"]),
                         mode=str(cfg.get("mode") or "broker"),
                         username=str(cfg.get("username") or ""),
                         password=auto_password,
@@ -4703,52 +5136,8 @@ def trades_open_positions():
     total_contracts = sum(int(r["contracts"]) for r in grouped_rows)
     total_spent = sum(float(r["total_spent"]) for r in grouped_rows)
 
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Open Buckets</div><div class="value">{{ grouped_rows|length }}</div></div>
-          <div class="metric"><div class="label">Open Contracts</div><div class="value">{{ total_contracts }}</div></div>
-          <div class="metric"><div class="label">Capital In Open Lots</div><div class="value">{{ money(total_spent) }}</div></div>
-          <div class="metric"><div class="label">Candidate Rows</div><div class="value">{{ rows|length }}</div></div>
-        </div>
-
-        <div class="card"><div class="toolbar">
-          <div class="pill">📂 Open Positions (Unmatched / Incomplete)</div>
-          <div class="tiny stack10 line15">Derived from trades missing close info (no exit time, no exit price, or no net P/L).</div>
-          <div class="hr"></div>
-          <form method="get" class="row">
-            <div><label>As of Date</label><input type="date" name="as_of" value="{{ as_of }}"></div>
-            <div class="fieldGrow2"><label>Filter</label><input name="q" value="{{ q }}" placeholder="SPX, CALL, raw note..."></div>
-            <div class="actionRow">
-              <button class="btn" type="submit">Apply</button>
-              <a class="btn" href="/trades/open-positions">Reset</a>
-              <a class="btn" href="/trades">Trades</a>
-            </div>
-          </form>
-        </div></div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">🧾 Position Summary</div>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Symbol</th><th>Open Trades</th><th>Contracts</th><th>Capital</th><th>Latest</th></tr></thead>
-            <tbody>
-            {% for r in grouped_rows %}
-              <tr>
-                <td>{{ r.symbol }}</td>
-                <td>{{ r.trades }}</td>
-                <td>{{ r.contracts }}</td>
-                <td>{{ money(r.total_spent) }}</td>
-                <td>{{ r.latest_date }}</td>
-              </tr>
-            {% endfor %}
-            {% if grouped_rows|length == 0 %}
-              <tr><td colspan="5">No open-position candidates found.</td></tr>
-            {% endif %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/open_positions.html",
         grouped_rows=grouped_rows,
         total_contracts=total_contracts,
         total_spent=total_spent,

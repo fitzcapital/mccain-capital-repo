@@ -46,6 +46,7 @@ EOF
 
 chmod 644 "${PLIST_PATH}"
 launchctl bootout system/com.mccain.selfcontrolhosts >/dev/null 2>&1 || true
+launchctl enable system/com.mccain.selfcontrolhosts >/dev/null 2>&1 || true
 launchctl bootstrap system "${PLIST_PATH}"
 launchctl enable system/com.mccain.selfcontrolhosts >/dev/null 2>&1 || true
 launchctl kickstart -k system/com.mccain.selfcontrolhosts

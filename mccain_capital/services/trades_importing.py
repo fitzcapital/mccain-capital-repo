@@ -6,6 +6,7 @@ depending on the legacy ``app_core`` module.
 
 from __future__ import annotations
 
+import html as html_lib
 import re
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -20,11 +21,19 @@ from mccain_capital.runtime import (
     parse_int,
     split_row,
 )
+from mccain_capital.repositories import trades as trades_repo
 
 DEFAULT_FEE_PER_CONTRACT = 0.70
 
 # OCR helpers
 PLACEHOLDERS = {"-", "—", "–", "_", "—-", "—_"}
+
+
+def _dedupe_account_ids(account_id: int) -> list[int]:
+    continuity_ids = trades_repo.account_continuity_ids(int(account_id))
+    if continuity_ids:
+        return continuity_ids
+    return [int(account_id)]
 
 
 def normalize_ocr(s: str) -> str:
@@ -146,10 +155,21 @@ BROKER_OCR_RE = re.compile(
 
 
 def _pick_col(df, want: str) -> Optional[str]:
-    for name in COL_ALIASES.get(want, [want]):
-        if name in df.columns:
-            return name
+    wanted = {_normalize_col_label(name) for name in COL_ALIASES.get(want, [want])}
+    for col in df.columns:
+        if _normalize_col_label(col) in wanted:
+            return col
     return None
+
+
+def _normalize_col_label(col: Any) -> str:
+    if isinstance(col, tuple):
+        parts = [str(part) for part in col if str(part) and not str(part).startswith("Unnamed:")]
+        col = " ".join(parts)
+    label = str(col or "").replace("\u202f", " ").replace("\u00a0", " ")
+    label = re.sub(r"Unnamed:\s*\d+(?:_level_\d+)?", " ", label, flags=re.IGNORECASE)
+    label = re.sub(r"[^a-z0-9]+", " ", label.lower())
+    return " ".join(label.split())
 
 
 def _clean_money(tok: str) -> Optional[float]:
@@ -295,6 +315,84 @@ def parse_vanquish_statement_table_to_broker_paste(text: str) -> Tuple[str, List
     return "\n".join(out), warnings
 
 
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        if value != value:
+            return ""
+    except Exception:
+        pass
+    return str(value).replace("\u202f", " ").replace("\u00a0", " ").strip()
+
+
+def _broker_paste_from_statement_rows(rows: List[str]) -> str:
+    out: List[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        raw = normalize_ocr(row)
+        if not raw or looks_like_header(raw):
+            continue
+
+        trade = parse_vanquish_trade_line(raw)
+        parsed = parse_broker_line_any(raw)
+        if trade:
+            fee = trade.get("commission") or DEFAULT_FEE_PER_CONTRACT
+            line = (
+                f"{trade['instrument']} | {trade['time']} | {trade['side']} | "
+                f"{trade['size']} | {trade['price']} | {fee}"
+            )
+            if parsed and parsed.get("balance") is not None:
+                line = f"{line} | {parsed['balance']}"
+        elif parsed:
+            fee = parsed.get("fee")
+            fee = DEFAULT_FEE_PER_CONTRACT if fee is None else fee
+            line = (
+                f"{parsed['desc']} | {parsed['dt']} | {parsed['side']} | "
+                f"{parsed['qty']} | {parsed['price']} | {fee}"
+            )
+            if parsed.get("balance") is not None:
+                line = f"{line} | {parsed['balance']}"
+        else:
+            continue
+
+        key = normalize_broker_raw_line(line)
+        if key not in seen:
+            seen.add(key)
+            out.append(line)
+    return "\n".join(out)
+
+
+def _statement_rows_from_tables(tables: List[Any]) -> List[str]:
+    rows: List[str] = []
+    for tbl in tables:
+        try:
+            for _, row in tbl.iterrows():
+                cells = [_cell_text(value) for value in list(row.values)]
+                cells = [cell for cell in cells if cell]
+                if cells:
+                    rows.append("\t".join(cells))
+        except Exception:
+            continue
+    return rows
+
+
+def _statement_rows_from_html(html_text: str) -> List[str]:
+    text = html_text or ""
+    text = re.sub(r"(?i)</t[dh]>", "\t", text)
+    text = re.sub(r"(?i)</tr>", "\n", text)
+    text = re.sub(r"(?is)<script\b.*?</script>|<style\b.*?</style>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    rows = []
+    for line in text.splitlines():
+        line = normalize_ocr(line)
+        line = re.sub(r"[ \t]+", "\t", line) if "\t" in line else re.sub(r"\s{2,}", "\t", line)
+        if line:
+            rows.append(line)
+    return rows
+
+
 def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[float], List[str]]:
     warnings: List[str] = []
 
@@ -376,6 +474,20 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
             break
 
     if tx_tbl is None:
+        fallback_rows = _statement_rows_from_tables(tables)
+        fallback_text = _broker_paste_from_statement_rows(fallback_rows)
+        if not fallback_text:
+            try:
+                with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+                    fallback_text = _broker_paste_from_statement_rows(
+                        _statement_rows_from_html(f.read())
+                    )
+            except Exception:
+                fallback_text = ""
+        if fallback_text:
+            warnings.append("Parsed transaction rows using statement row fallback.")
+            return fallback_text, balance_val, warnings
+
         found_cols = [list(map(str, t.columns)) for t in tables[:3]]
         warnings.append("Could not locate a transactions table with expected columns.")
         warnings.append(f"Sample columns from first tables: {found_cols}")
@@ -411,6 +523,10 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
             continue
 
     if not lines:
+        fallback_text = _broker_paste_from_statement_rows(_statement_rows_from_tables([tx_tbl]))
+        if fallback_text:
+            warnings.append("Parsed transaction rows using statement row fallback.")
+            return fallback_text, balance_val, warnings
         warnings.append("Found a transactions table but no usable transaction rows parsed.")
 
     return "\n".join(lines), balance_val, warnings
@@ -712,6 +828,9 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
 
 def insert_trades_from_broker_paste_with_report(
     text: str,
+    *,
+    account_id: int,
+    upload_id: int,
     ending_balance: Optional[float] = None,
     commit: bool = True,
     import_batch_id: str = "",
@@ -722,6 +841,8 @@ def insert_trades_from_broker_paste_with_report(
             0,
             ["Nothing to import."],
             {
+                "account_id": int(account_id),
+                "upload_id": int(upload_id),
                 "fills_parsed": 0,
                 "pairs_completed": 0,
                 "inserted_trades": 0,
@@ -803,6 +924,8 @@ def insert_trades_from_broker_paste_with_report(
 
     if not fills:
         report = {
+            "account_id": int(account_id),
+            "upload_id": int(upload_id),
             "fills_parsed": 0,
             "pairs_completed": 0,
             "inserted_trades": 0,
@@ -816,15 +939,22 @@ def insert_trades_from_broker_paste_with_report(
         }
         return 0, (errors or ["No valid fills to import."]), report
 
-    def side_rank(s: str) -> int:
-        return 0 if s == "BUY" else 1
+    dated_fills = [f for f in fills if f.get("dt_obj") is not None]
+    descending_source_order = False
+    if len(dated_fills) >= 2:
+        first_dt = dated_fills[0]["dt_obj"]
+        last_dt = dated_fills[-1]["dt_obj"]
+        descending_source_order = bool(first_dt and last_dt and first_dt > last_dt)
+
+    def same_minute_rank(f: Dict[str, Any]) -> int:
+        line_no = int(f.get("line_no") or 0)
+        return -line_no if descending_source_order else line_no
 
     fills_sorted = sorted(
         fills,
         key=lambda f: (
             f["dt_obj"] if f["dt_obj"] else datetime.max,
-            side_rank(f["side"]),
-            f["line_no"],
+            same_minute_rank(f),
         ),
     )
 
@@ -864,7 +994,9 @@ def insert_trades_from_broker_paste_with_report(
             entry_fee = (
                 float(lot["fee_remaining"]) * (take / lot_qty_before) if lot_qty_before > 0 else 0.0
             )
-            close_fee = close_fee_remaining * (take / remaining_before) if remaining_before > 0 else 0.0
+            close_fee = (
+                close_fee_remaining * (take / remaining_before) if remaining_before > 0 else 0.0
+            )
             lot["fee_remaining"] = max(0.0, float(lot["fee_remaining"]) - entry_fee)
             close_fee_remaining = max(0.0, close_fee_remaining - close_fee)
             if close_side == "BUY":
@@ -948,12 +1080,16 @@ def insert_trades_from_broker_paste_with_report(
         )
 
     with db() as conn:
+        dedupe_account_ids = _dedupe_account_ids(int(account_id))
+        dedupe_marks = ",".join(["?"] * len(dedupe_account_ids))
         existing_rows = conn.execute(
-            """
+            f"""
             SELECT trade_date, entry_time, exit_time, ticker, opt_type, strike,
                    entry_price, exit_price, contracts, comm, gross_pl, net_pl, raw_line
             FROM trades
-            """
+            WHERE account_id IN ({dedupe_marks})
+            """,
+            dedupe_account_ids,
         ).fetchall()
         existing = {db_trade_identity(r) for r in existing_rows}
         to_insert: List[Dict[str, Any]] = []
@@ -978,11 +1114,11 @@ def insert_trades_from_broker_paste_with_report(
                 """
                 SELECT balance
                 FROM trades
-                WHERE trade_date < ? AND balance IS NOT NULL
+                WHERE trade_date < ? AND balance IS NOT NULL AND account_id = ?
                 ORDER BY trade_date DESC, id DESC
                 LIMIT 1
                 """,
-                (first_day,),
+                (first_day, int(account_id)),
             ).fetchone()
             balance = float(row["balance"]) if row and row["balance"] is not None else 50000.0
 
@@ -1005,8 +1141,8 @@ def insert_trades_from_broker_paste_with_report(
                         entry_price, exit_price, contracts, total_spent,
                         stop_pct, target_pct, stop_price, take_profit,
                         risk, comm, gross_pl, net_pl, result_pct, balance,
-                        raw_line, created_at, import_batch_id, trade_source
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        raw_line, created_at, import_batch_id, trade_source, account_id, upload_id
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         tr["trade_date"],
@@ -1033,6 +1169,8 @@ def insert_trades_from_broker_paste_with_report(
                         created,
                         import_batch_id or "",
                         "Statement Import",
+                        int(account_id),
+                        int(upload_id),
                     ),
                 )
                 trade_id = int(cur.lastrowid)
@@ -1082,11 +1220,11 @@ def insert_trades_from_broker_paste_with_report(
                 """
                 SELECT balance
                 FROM trades
-                WHERE trade_date <= ? AND balance IS NOT NULL
+                WHERE trade_date <= ? AND balance IS NOT NULL AND account_id = ?
                 ORDER BY trade_date DESC, id DESC
                 LIMIT 1
                 """,
-                (import_end_date,),
+                (import_end_date, int(account_id)),
             ).fetchone()
             if row and row["balance"] is not None:
                 ledger_ending_balance = float(row["balance"])
@@ -1096,6 +1234,8 @@ def insert_trades_from_broker_paste_with_report(
         balance_delta = ledger_ending_balance - float(ending_balance)
 
     report = {
+        "account_id": int(account_id),
+        "upload_id": int(upload_id),
         "fills_parsed": len(fills),
         "pairs_completed": len(completed),
         "inserted_trades": inserted,
@@ -1104,6 +1244,8 @@ def insert_trades_from_broker_paste_with_report(
         "errors_count": len(errors),
         "warnings_count": len(warnings),
         "statement_ending_balance": ending_balance,
+        "statement_start_date": min((str(tr["trade_date"]) for tr in completed), default=""),
+        "statement_end_date": max((str(tr["trade_date"]) for tr in completed), default=""),
         "ledger_ending_balance": ledger_ending_balance,
         "balance_delta": balance_delta,
         "import_batch_id": import_batch_id or "",
@@ -1113,10 +1255,15 @@ def insert_trades_from_broker_paste_with_report(
 
 
 def insert_trades_from_broker_paste(
-    text: str, ending_balance: Optional[float] = None
+    text: str, *, account_id: int, upload_id: int, ending_balance: Optional[float] = None
 ) -> Tuple[int, List[str]]:
     inserted, messages, _ = insert_trades_from_broker_paste_with_report(
-        text, ending_balance=ending_balance, commit=True, import_batch_id=""
+        text,
+        account_id=account_id,
+        upload_id=upload_id,
+        ending_balance=ending_balance,
+        commit=True,
+        import_batch_id="",
     )
     return inserted, messages
 
@@ -1249,7 +1396,14 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
     return inserted, errors
 
 
-def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "") -> None:
+def insert_balance_snapshot(
+    trade_date: str,
+    balance: float,
+    *,
+    account_id: int,
+    upload_id: int,
+    raw_line: str = "",
+) -> None:
     created = now_iso()
     with db() as conn:
         conn.execute(
@@ -1259,8 +1413,8 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
                 entry_price, exit_price, contracts, total_spent,
                 stop_pct, target_pct, stop_price, take_profit,
                 risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at, trade_source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                raw_line, created_at, trade_source, account_id, upload_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 trade_date,
@@ -1286,5 +1440,7 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
                 raw_line or "BALANCE SNAPSHOT",
                 created,
                 "Balance Snapshot",
+                int(account_id),
+                int(upload_id),
             ),
         )

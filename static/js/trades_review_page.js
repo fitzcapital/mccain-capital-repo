@@ -12,6 +12,13 @@
   const setupCustom = document.getElementById("reviewSetupCustom");
   const reviewedRiskPercentInput = document.getElementById("reviewedRiskPercentInput");
   const planGradeInput = document.getElementById("planGradeInput");
+  const completionCard = document.getElementById("tradesReviewCompletionCard");
+  const completionStateNode = document.getElementById("tradesReviewCompletionState");
+  const completionPctNode = document.getElementById("tradesReviewCompletionPct");
+  const completionLeadNode = document.getElementById("tradesReviewCompletionLead");
+  const completionChipNode = document.getElementById("tradesReviewCompletionChip");
+  const completionMeterFill = document.getElementById("tradesReviewCompletionMeterFill");
+  const completionChecklist = document.getElementById("tradesReviewCompletionChecklist");
 
   const parseTagValue = (value) =>
     String(value || "")
@@ -20,6 +27,104 @@
       .filter(Boolean);
 
   const serializeTagValue = (items) => Array.from(new Set(items.filter(Boolean))).join(", ");
+  const textPresent = (...values) => values.some((value) => String(value || "").trim().length > 0);
+  const selectValue = (name) => {
+    const input = root.querySelector(`[name="${name}"]`);
+    return input ? String(input.value || "").trim() : "";
+  };
+  const inputValue = (name) => {
+    const input = root.querySelector(`[name="${name}"]`);
+    return input ? String(input.value || "").trim() : "";
+  };
+
+  const computeCompletion = () => {
+    const setupIdentified = textPresent(setupInput?.value) && String(setupInput.value).trim() !== "Unknown";
+    const thesisPresent = textPresent(inputValue("thesis_note"));
+    const reviewPresent = textPresent(inputValue("review_note"), inputValue("improvement_note"));
+    const plannedRisk = inputValue("planned_risk_dollars");
+    const reviewedRisk = inputValue("reviewed_risk_dollars");
+    const reviewedRiskPct = inputValue("reviewed_risk_percent");
+    const riskCaptured = textPresent(plannedRisk, reviewedRisk, reviewedRiskPct);
+    const stopCaptured = textPresent(inputValue("reviewed_stop_price"));
+    const targetCaptured = textPresent(inputValue("reviewed_target_price"));
+    const executionReviewed = textPresent(
+      inputValue("entry_quality_note"),
+      inputValue("exit_quality_note"),
+      inputValue("execution_grade"),
+      selectValue("reviewed_execution_quality"),
+    );
+    const finalGradePresent = true;
+    const classificationPresent = true;
+    const planVerdictPresent = textPresent(
+      inputValue("size_rule_note"),
+      selectValue("reviewed_sizing_quality"),
+      selectValue("reviewed_stop_discipline"),
+      selectValue("reviewed_within_plan"),
+    );
+    const items = [
+      { key: "setup", label: "Setup identified", done: setupIdentified },
+      { key: "thesis", label: "Thesis present", done: thesisPresent },
+      { key: "reflection", label: "Review reflection present", done: reviewPresent },
+      { key: "risk", label: "Risk captured", done: riskCaptured },
+      { key: "stop", label: "Stop captured", done: stopCaptured },
+      { key: "target", label: "Target captured", done: targetCaptured },
+      { key: "execution", label: "Execution reviewed", done: executionReviewed },
+      { key: "final_grade", label: "Final grade present", done: finalGradePresent },
+      { key: "classification", label: "Classification present", done: classificationPresent },
+      { key: "plan_verdict", label: "Sizing / plan verdict present", done: planVerdictPresent },
+    ];
+    const pct = Math.round((items.filter((item) => item.done).length / items.length) * 100);
+    let label = "Not Reviewed";
+    let tone = "warn";
+    if (pct >= 84) {
+      label = "Fully Reviewed";
+      tone = "positive";
+    } else if (pct >= 42) {
+      label = "Partially Reviewed";
+      tone = "info";
+    }
+    const shortMap = {
+      "Setup identified": "setup",
+      "Thesis present": "thesis",
+      "Review reflection present": "review note",
+      "Risk captured": "risk",
+      "Stop captured": "stop",
+      "Target captured": "target",
+      "Execution reviewed": "execution review",
+      "Final grade present": "final grade",
+      "Classification present": "classification",
+      "Sizing / plan verdict present": "plan verdict",
+    };
+    const missing = items.filter((item) => !item.done).map((item) => shortMap[item.label] || item.label.toLowerCase());
+    const missingSummary = missing.length
+      ? `Missing ${missing.slice(0, 2).join(" + ")}${missing.length > 2 ? ` + ${missing.length - 2} more` : ""}`
+      : "All core review checks logged.";
+    return { items, pct, label, tone, missingSummary };
+  };
+
+  const renderCompletion = () => {
+    if (!completionCard || !completionChecklist) return;
+    const model = computeCompletion();
+    completionCard.classList.remove("tradesReviewCompletionCard-positive", "tradesReviewCompletionCard-info", "tradesReviewCompletionCard-warn");
+    completionCard.classList.add(`tradesReviewCompletionCard-${model.tone}`);
+    completionCard.dataset.reviewCompletionPct = String(model.pct);
+    completionCard.dataset.reviewStateLabel = model.label;
+    if (completionStateNode) completionStateNode.textContent = model.label;
+    if (completionPctNode) completionPctNode.textContent = `${model.pct}%`;
+    if (completionLeadNode) completionLeadNode.textContent = model.missingSummary;
+    if (completionChipNode) {
+      completionChipNode.textContent = model.label;
+      completionChipNode.classList.remove("tradeReviewState-positive", "tradeReviewState-info", "tradeReviewState-warn", "tradeReviewState-negative");
+      completionChipNode.classList.add(`tradeReviewState-${model.tone}`);
+    }
+    if (completionMeterFill) completionMeterFill.style.width = `${model.pct}%`;
+    model.items.forEach((item) => {
+      const node = completionChecklist.querySelector(`[data-review-check="${item.key}"]`);
+      if (!node) return;
+      node.classList.toggle("is-done", item.done);
+      node.classList.toggle("is-missing", !item.done);
+    });
+  };
 
   const syncSingleChipGroup = (rack) => {
     const targetId = rack.getAttribute("data-chip-single-target");
@@ -190,6 +295,14 @@
       if (letterInput) letterInput.value = "";
       if (classificationInput) classificationInput.value = "";
       if (reasonInput) reasonInput.value = "";
+      renderCompletion();
     });
   }
+
+  root.addEventListener("input", renderCompletion);
+  root.addEventListener("change", renderCompletion);
+  root.addEventListener("click", () => {
+    window.requestAnimationFrame(renderCompletion);
+  });
+  renderCompletion();
 })();

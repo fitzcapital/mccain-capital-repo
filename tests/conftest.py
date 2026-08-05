@@ -11,6 +11,9 @@ if str(ROOT) not in sys.path:
 
 from mccain_capital import create_app  # noqa: E402
 from mccain_capital import app_core as core  # noqa: E402
+from mccain_capital import runtime  # noqa: E402
+from mccain_capital.repositories import journal as journal_repo  # noqa: E402
+from mccain_capital.repositories import self_control as self_control_repo  # noqa: E402
 
 
 @pytest.fixture()
@@ -25,6 +28,11 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(core, "DB_PATH", str(db_path))
     monkeypatch.setattr(core, "UPLOAD_DIR", str(uploads_dir))
     monkeypatch.setattr(core, "BOOKS_DIR", str(books_dir))
+    monkeypatch.setattr(runtime, "DB_PATH", str(db_path))
+    monkeypatch.setattr(runtime, "UPLOAD_DIR", str(uploads_dir))
+    monkeypatch.setattr(runtime, "BOOKS_DIR", str(books_dir))
+    monkeypatch.setattr(journal_repo, "DB_PATH", str(db_path))
+    monkeypatch.setattr(self_control_repo, "DB_PATH", str(db_path))
     monkeypatch.setattr(core, "APP_PASSWORD", "")
     monkeypatch.setattr(core, "APP_PASSWORD_HASH", "")
 

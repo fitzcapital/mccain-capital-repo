@@ -36,11 +36,11 @@
       <div class="dashboardFoundationTopbar">
         <div class="dashboardFoundationHead">
           <div class="dashboardPrimaryBandHeader">
-            <span class="dashboardPrimaryBandEyebrow">Alignment Before Action</span>
+            <span class="dashboardPrimaryBandEyebrow dashboardFoundationEyebrow"><span class="dashboardLabelIcon dashboardFoundationEyebrowIcon">{{ dashboard_icon('align') }}</span><span>Alignment Before Action</span></span>
             <span class="dashboardPrimaryBandSubhead">Anchor before pressure.</span>
           </div>
           <div class="dashboardFoundationSummaryLine">
-            <strong id="dashboardFoundationSummary">Structure first.</strong>
+            <strong id="dashboardFoundationSummary"><span class="dashboardFoundationSummaryIcon">{{ dashboard_icon('pressure') }}</span><span>Structure first.</span></strong>
             <span class="trendChip" id="dashboardFoundationSummaryChip">Foundation live</span>
           </div>
         </div>
@@ -51,20 +51,20 @@
             data-urgency-trigger="foundation"
             aria-haspopup="dialog"
             aria-controls="dashboardResetModal"
-          >Urgency Check</button>
+          ><span class="dashboardButtonIcon">{{ dashboard_icon('pressure') }}</span><span>Urgency Check</span></button>
         </div>
       </div>
 
       <div class="dashboardFoundationGrid dashboardFoundationGrid-compact">
         <div class="dashboardFoundationModule dashboardFoundationModule-scripture">
           <div class="dashboardFoundationModuleHead">
-            <div class="pill">Scripture Anchor</div>
+            <div class="pill dashboardFoundationPill"><span class="dashboardPillIcon">{{ dashboard_icon('scripture') }}</span><span>Scripture Anchor</span></div>
             <span class="dashboardFoundationModuleTone">James 1:22-24</span>
           </div>
           <div class="dashboardFoundationExcerpt">“Be doers of the word, and not hearers only...”</div>
           <div class="dashboardFoundationCitation">Truth over self-deception.</div>
           <details class="dashboardFoundationFold" data-dashboard-optional="foundation-scripture">
-            <summary>Full passage</summary>
+            <summary><span class="dashboardLabelIcon">{{ dashboard_icon('brief') }}</span><span>Full passage</span></summary>
             <div class="dashboardFoundationFoldBody">
               <p>“But be doers of the word, and not hearers only, deceiving yourselves.”</p>
               <p>“For if anyone is a hearer of the word and not a doer, he is like a man who looks intently at his natural face in a mirror.”</p>
@@ -75,11 +75,11 @@
 
         <div class="dashboardFoundationModule dashboardFoundationModule-intention">
           <div class="dashboardFoundationModuleHead">
-            <div class="pill">Daily Intention</div>
+            <div class="pill dashboardFoundationPill"><span class="dashboardPillIcon">{{ dashboard_icon('intention') }}</span><span>Daily Intention</span></div>
             <span class="dashboardFoundationModuleTone" id="dashboardIntentionStatus">Today I will…</span>
           </div>
           <details class="dashboardFoundationFold dashboardFoundationFold-subtle" data-dashboard-optional="foundation-intention-controls">
-            <summary>Change intention</summary>
+            <summary><span class="dashboardLabelIcon">{{ dashboard_icon('next') }}</span><span>Change intention</span></summary>
             <div class="dashboardFoundationFoldBody">
               <div class="dashboardIntentionPresetRow" role="list" aria-label="Daily intention presets">
                 {% for value, label in intention_presets %}
@@ -102,13 +102,13 @@
 
       <details class="dashboardFoundationDetailFold" data-dashboard-optional="foundation-tools">
         <summary class="dashboardFoundationDetailSummary">
-          <span>Creed and Prayer</span>
+          <span class="dashboardFoundationDetailTitle"><span class="dashboardLabelIcon">{{ dashboard_icon('prayer') }}</span><span>Creed and Prayer</span></span>
           <span class="dashboardFoundationDetailMeta">Execution identity and session prayer</span>
         </summary>
         <div class="dashboardFoundationDetailGrid">
           <div class="dashboardFoundationModule dashboardFoundationModule-creed">
             <div class="dashboardFoundationModuleHead">
-              <div class="pill">Alignment Creed</div>
+              <div class="pill dashboardFoundationPill"><span class="dashboardPillIcon">{{ dashboard_icon('align') }}</span><span>Alignment Creed</span></div>
               <span class="dashboardFoundationModuleTone">Execution identity</span>
             </div>
             <div class="dashboardFoundationCreedList" role="list">
@@ -123,11 +123,11 @@
 
           <div class="dashboardFoundationModule dashboardFoundationModule-prayer">
             <div class="dashboardFoundationModuleHead">
-              <div class="pill">Prayer / Reflection</div>
+              <div class="pill dashboardFoundationPill"><span class="dashboardPillIcon">{{ dashboard_icon('prayer') }}</span><span>Prayer / Reflection</span></div>
               <span class="dashboardFoundationModuleTone">Secondary panel</span>
             </div>
             <details class="dashboardFoundationFold" data-dashboard-optional="foundation-prayer">
-              <summary>Open session prayer</summary>
+              <summary><span class="dashboardLabelIcon">{{ dashboard_icon('review') }}</span><span>Open session prayer</span></summary>
               <div class="dashboardFoundationFoldBody">
                 <p>Most High, guide my actions today. Keep me patient, disciplined, and aligned.</p>
                 <p>Let me not move from emotion, but from truth, structure, and obedience.</p>
@@ -142,7 +142,7 @@
         <summary class="dashboardRoutineStripSummary">
           <div class="dashboardRoutineStripHead">
             <div>
-              <div class="pill">Daily Routine</div>
+              <div class="pill dashboardFoundationPill"><span class="dashboardPillIcon">{{ dashboard_icon('routine') }}</span><span>Daily Routine</span></div>
               <div class="supportLead">Ritual before, during, and after risk.</div>
             </div>
             <div class="dashboardRoutineProgress">
@@ -154,34 +154,34 @@
         <div class="dashboardRoutineGrid">
           <section class="dashboardRoutinePhase" aria-labelledby="dashboardRoutinePhase-before">
             <div class="dashboardRoutinePhaseHead">
-              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-before">Before Market</span>
+              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-before"><span class="dashboardLabelIcon dashboardRoutinePhaseIcon dashboardRoutinePhaseIcon-before">{{ dashboard_icon('phase-before') }}</span><span>Before Market</span></span>
               <span class="dashboardRoutinePhaseMeta">Anchor before pressure.</span>
             </div>
             <div class="dashboardRoutineChecklist" role="list">
               {% for key, label in foundation_routine.before %}
-                <button type="button" class="dashboardRoutineItem" data-routine-check="{{ key }}" role="listitem">{{ label }}</button>
+                <button type="button" class="dashboardRoutineItem dashboardRoutineItem-before" data-routine-check="{{ key }}" role="listitem"><span class="dashboardRoutineItemIcon">{{ dashboard_icon('phase-before') }}</span><span>{{ label }}</span></button>
               {% endfor %}
             </div>
           </section>
           <section class="dashboardRoutinePhase" aria-labelledby="dashboardRoutinePhase-during">
             <div class="dashboardRoutinePhaseHead">
-              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-during">During Market</span>
+              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-during"><span class="dashboardLabelIcon dashboardRoutinePhaseIcon dashboardRoutinePhaseIcon-during">{{ dashboard_icon('phase-during') }}</span><span>During Market</span></span>
               <span class="dashboardRoutinePhaseMeta">Interrupt urgency. Honor the plan.</span>
             </div>
             <div class="dashboardRoutineChecklist" role="list">
               {% for key, label in foundation_routine.during %}
-                <button type="button" class="dashboardRoutineItem" data-routine-check="{{ key }}" role="listitem">{{ label }}</button>
+                <button type="button" class="dashboardRoutineItem dashboardRoutineItem-during" data-routine-check="{{ key }}" role="listitem"><span class="dashboardRoutineItemIcon">{{ dashboard_icon('phase-during') }}</span><span>{{ label }}</span></button>
               {% endfor %}
             </div>
           </section>
           <section class="dashboardRoutinePhase" aria-labelledby="dashboardRoutinePhase-after">
             <div class="dashboardRoutinePhaseHead">
-              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-after">After Market</span>
+              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-after"><span class="dashboardLabelIcon dashboardRoutinePhaseIcon dashboardRoutinePhaseIcon-after">{{ dashboard_icon('phase-after') }}</span><span>After Market</span></span>
               <span class="dashboardRoutinePhaseMeta">Close with truth, not mood.</span>
             </div>
             <div class="dashboardRoutineChecklist" role="list">
               {% for key, label in foundation_routine.after %}
-                <button type="button" class="dashboardRoutineItem" data-routine-check="{{ key }}" role="listitem">{{ label }}</button>
+                <button type="button" class="dashboardRoutineItem dashboardRoutineItem-after" data-routine-check="{{ key }}" role="listitem"><span class="dashboardRoutineItemIcon">{{ dashboard_icon('phase-after') }}</span><span>{{ label }}</span></button>
               {% endfor %}
             </div>
           </section>

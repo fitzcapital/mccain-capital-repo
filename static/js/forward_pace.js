@@ -41,12 +41,25 @@
   function renderProjection(projection) {
     latestProjection = projection;
     const weeklyTax = Number(projection.weekly.federal_tax || 0) + Number(projection.weekly.state_tax || 0);
+    const totalNet = Number(projection.totals.net || 0);
+    const balanceTone = totalNet >= 0 ? "positive" : "negative";
+    const projectionEnd = projection.schedule?.length ? projection.schedule[projection.schedule.length - 1].end : projection.inputs.start_date;
     setText("forwardPaceHeadline", `${money(projection.weekly.net)} / week`);
+    setText("forwardPaceWeeklyNetHero", money(projection.weekly.net));
+    setText("forwardPaceWeeklyNetSignal", money(projection.weekly.net));
     setText("forwardPaceProjectedBalance", money(projection.totals.projected_balance));
+    setText("forwardPaceProjectedProfit", money(totalNet));
+    setText("forwardPaceProjectedBalanceMeta", `${money(projection.inputs.base_balance)} base + net pace projection.`);
+    setText("forwardPaceProjectedProfitMeta", `${projection.inputs.weeks} weeks of projected net after tax and buffer.`);
     setText(
       "forwardPaceProjectedMeta",
       `${projection.inputs.weeks} weeks · ${projection.inputs.state} · ${projection.inputs.payouts_per_week} payouts/week`
     );
+    setText("forwardPaceProjectionHorizon", `${projection.inputs.weeks} weeks`);
+    setText("forwardPaceRunwayLabel", `${projection.inputs.weeks} trading weeks`);
+    setText("forwardPaceProjectionEnd", projectionEnd || "--");
+    setText("forwardPaceProjectionEndSignal", projectionEnd || "--");
+    setText("forwardPaceTrajectoryEnd", money(projection.totals.projected_balance));
     setText("forwardPaceWeeklyGross", money(projection.weekly.gross));
     setText("forwardPaceWeeklyTax", money(weeklyTax));
     setText("forwardPaceWeeklyBuffer", money(projection.weekly.buffer));
@@ -54,10 +67,18 @@
     setText("forwardPaceFederalTax", money(projection.tax.federal_annual));
     setText("forwardPaceStateRate", `${Number(projection.tax.state_rate || 0).toFixed(2)}%`);
     setText("forwardPaceEffectiveTax", `${Number(projection.tax.effective_tax_rate || 0).toFixed(2)}%`);
+    const profitMetric = document.getElementById("forwardPaceProfitMetric");
+    if (profitMetric) profitMetric.dataset.tone = balanceTone;
+    const balanceStage = document.getElementById("forwardPaceBalanceStage");
+    if (balanceStage) balanceStage.dataset.tone = balanceTone;
+    const commandBoard = document.getElementById("forwardPaceCommandBoard");
+    if (commandBoard) commandBoard.dataset.tone = balanceTone;
+    const trajectoryCard = document.getElementById("forwardPaceTrajectoryCard");
+    if (trajectoryCard) trajectoryCard.dataset.tone = balanceTone;
 
     const schedule = document.getElementById("forwardPaceSchedule");
-    if (!schedule) return;
-    schedule.innerHTML = projection.schedule.map((row) => `
+    if (schedule) {
+      schedule.innerHTML = projection.schedule.map((row) => `
       <div class="forwardPaceWeek">
         <div>
           <span>Week ${row.week}</span>
@@ -69,7 +90,50 @@
         <div><span>Net</span><strong>${money(row.net)}</strong></div>
         <div><span>Balance</span><strong>${money(row.projected_balance)}</strong></div>
       </div>
-    `).join("");
+      `).join("");
+    }
+    renderTrajectory(projection.schedule || []);
+  }
+
+  function renderTrajectory(schedule) {
+    const node = document.getElementById("forwardPaceTrajectory");
+    if (!node) return;
+    if (!Array.isArray(schedule) || !schedule.length) {
+      node.innerHTML = "";
+      return;
+    }
+    const balances = schedule.map((row) => Number(row.projected_balance || 0));
+    const min = Math.min(...balances);
+    const max = Math.max(...balances);
+    const span = Math.max(1, max - min);
+    const points = schedule.map((row, idx) => {
+      const x = schedule.length === 1 ? 50 : (idx / (schedule.length - 1)) * 100;
+      const y = 100 - ((Number(row.projected_balance || 0) - min) / span) * 100;
+      return { x, y, label: `W${row.week}`, balance: money(row.projected_balance) };
+    });
+    const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+    node.innerHTML = `
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="forwardPaceTrajectoryFill" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="rgba(94,220,255,0.24)"></stop>
+            <stop offset="100%" stop-color="rgba(97,255,184,0.32)"></stop>
+          </linearGradient>
+          <linearGradient id="forwardPaceTrajectoryStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#63d7ff"></stop>
+            <stop offset="100%" stop-color="#7bffbf"></stop>
+          </linearGradient>
+        </defs>
+        <polyline class="forwardPaceTrajectoryLine" points="${polyline}"></polyline>
+      </svg>
+      <div class="forwardPaceTrajectoryDots">
+        ${points.map((point, idx) => `
+          <div class="forwardPaceTrajectoryDot${idx === points.length - 1 ? " is-final" : ""}" style="left:${point.x}%;" title="${point.label} · ${point.balance}">
+            <span>${point.label}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
   }
 
   async function refreshProjection() {

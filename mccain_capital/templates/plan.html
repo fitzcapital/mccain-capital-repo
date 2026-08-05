@@ -1,0 +1,242 @@
+<section class="thePlanPage">
+  <div class="card thePlanHero">
+    <div class="toolbar thePlanHeroBar">
+      <div class="thePlanHeroCopy">
+        <div class="pill thePlanEyebrow">Discipline today. Freedom tomorrow.</div>
+        <h2 class="thePlanTitle">
+          <span class="thePlanTitleLine thePlanTitleLine-main">The Plan.</span>
+          <span class="thePlanTitleLine thePlanTitleLine-accent">
+            <span class="is-gold">Execute.</span>
+            <span class="is-cyan">Protect.</span>
+            <span class="is-green">Compound.</span>
+          </span>
+        </h2>
+        <div class="thePlanSubtitle">One good decision at a time. Process first. Ego last.</div>
+      </div>
+      <div class="thePlanGoalCard thePlanGoalCard-pulse">
+        <span>Account Goal</span>
+        <strong>{{ account_goal.start }}</strong>
+        <small>to {{ account_goal.target }}</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="thePlanGrid thePlanGrid-top">
+    <section class="card thePlanPanel tone-blue">
+      <div class="toolbar">
+        <div class="pill">Account & Objectives</div>
+        <ul class="thePlanList">
+          {% for item in account_objectives %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-green thePlanPanel-primary">
+      <div class="toolbar">
+        <div class="pill">Risk Management</div>
+        <div class="thePlanRiskGrid">
+          <div class="thePlanMiniBlock thePlanMiniBlock-trade">
+            <h3>Per Trade</h3>
+            {% for label, value in risk_management.per_trade %}
+              <div class="thePlanMetricRow"><span>{{ label }}</span><strong>{{ value }}</strong></div>
+            {% endfor %}
+          </div>
+          <div class="thePlanMiniBlock thePlanMiniBlock-weekly">
+            <h3>Weekly Risk Limit</h3>
+            <strong class="tone-loss">{{ risk_management.weekly_limit }}</strong>
+            <p>Hit weekly limit? Reset. Reduce size or stop for 1-2 days.</p>
+          </div>
+          <div class="thePlanMiniBlock thePlanMiniBlock-defense">
+            <h3>Drawdown Defense</h3>
+            <div class="thePlanStack">
+              {% for label, value in risk_management.defense %}
+                <div><span>{{ label }}</span><strong>{{ value }}</strong></div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-cyan">
+      <div class="toolbar">
+        <div class="pill">Trade Setup Checklist</div>
+        <ol class="thePlanChecklist">
+          {% for item in setup_checklist %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ol>
+        <div class="thePlanCallout">If any box is missing, it is a no trade.</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="thePlanGrid thePlanGrid-mid">
+    <section class="card thePlanPanel tone-violet">
+      <div class="toolbar">
+        <div class="pill">Market Conditions</div>
+        <div class="thePlanFilterGrid">
+          {% for item in market_filters %}
+            <article class="thePlanFilterCard tone-{{ item.tone }}">
+              <div class="thePlanFilterGrade">{{ item.grade }}</div>
+              <ul class="thePlanList">
+                {% for row in item["items"] %}
+                  <li>{{ row }}</li>
+                {% endfor %}
+              </ul>
+              <div class="thePlanFilterAction">{{ item.action }}</div>
+              <small>{{ item.detail }}</small>
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-gold thePlanPanel-primary">
+      <div class="toolbar">
+        <div class="pill">Execution Rules</div>
+        <div class="thePlanRuleStack">
+          {% for title, detail in execution_rules %}
+            <div class="thePlanRuleItem">
+              <strong>{{ title }}</strong>
+              <span>{{ detail }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-rose">
+      <div class="toolbar">
+        <div class="pill">State of Mind Check</div>
+        <div class="thePlanDangerLead">Do not trade when you are:</div>
+        <ul class="thePlanList is-danger">
+          {% for item in mindset_checks %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        <div class="thePlanMindsetClose">You are the risk sometimes. Protect your mental capital.</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="thePlanProjectionShell">
+    <section class="card thePlanProjectionPanel">
+      <div class="toolbar">
+        <div class="pill">Weekly Projection Example</div>
+        <div class="thePlanProjectionSub">Based on 1k position size · 20% stop · 25% take profit · max 2 trades/day</div>
+        <div class="thePlanProjectionTableWrap">
+          <table class="thePlanProjectionTable">
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Trades</th>
+                <th>Scenario</th>
+                <th>Trade 1</th>
+                <th>Trade 2</th>
+                <th>Daily P&amp;L</th>
+                <th>Account Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for day, trades, scenario, trade_one, trade_two, pnl, balance in weekly_projection %}
+                <tr>
+                  <td>{{ day }}</td>
+                  <td>{{ trades }}</td>
+                  <td>{{ scenario }}</td>
+                  <td>{{ trade_one }}</td>
+                  <td>{{ trade_two }}</td>
+                  <td>{{ pnl }}</td>
+                  <td>{{ balance }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                <td>8</td>
+                <td>Stay selective</td>
+                <td colspan="2">Consistency over prediction</td>
+                <td>+$650</td>
+                <td>$50,650</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card thePlanPanel tone-green thePlanOutlook">
+      <div class="toolbar">
+        <div class="pill">Weekly Outlook</div>
+        <ul class="thePlanList">
+          {% for item in weekly_outlook %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <div class="thePlanGrid thePlanGrid-bottom">
+    <section class="card thePlanPanel tone-red">
+      <div class="toolbar">
+        <div class="pill">If Things Go Wrong...</div>
+        <ol class="thePlanList thePlanList-numbered">
+          {% for item in if_wrong %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ol>
+        <div class="thePlanFootTag">Survival first. Ego last.</div>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-blue">
+      <div class="toolbar">
+        <div class="pill">Journal Every Day</div>
+        <ul class="thePlanList">
+          {% for item in journal_prompts %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        <div class="thePlanFootTag">Review. Learn. Improve. Repeat.</div>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-green">
+      <div class="toolbar">
+        <div class="pill">Scaling Rule</div>
+        <ul class="thePlanList">
+          {% for item in scaling_rule %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        <div class="thePlanScalingNote">Then scale slowly: $1,000 → $1,250 → $1,500. Step by step.</div>
+      </div>
+    </section>
+
+    <section class="card thePlanPanel tone-gold">
+      <div class="toolbar">
+        <div class="pill">Core Principles</div>
+        <div class="thePlanRuleStack">
+          {% for title, detail in core_principles %}
+            <div class="thePlanRuleItem">
+              <strong>{{ title }}</strong>
+              <span>{{ detail }}</span>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="thePlanFootTag is-gold">Grow the account. Grow your freedom.</div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card thePlanBanner">
+    <div class="toolbar">
+      <div class="thePlanBannerLead">Your edge is discipline. Your advantage is consistency. Your future is freedom.</div>
+      <div class="thePlanBannerClose">Stay focused.</div>
+    </div>
+  </section>
+</section>

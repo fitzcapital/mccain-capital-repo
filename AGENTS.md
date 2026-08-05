@@ -9,3 +9,11 @@
 - For validation, prefer narrow checks first, such as `pytest tests/<target>` or a small focused command, before suggesting broader test runs.
 - Ask before running full test suites, long-running scripts, container builds, or commands that may touch large local datasets.
 - If documentation needs updating, keep it focused and consistent with the existing README tone and structure.
+
+## OpenSpec workflow
+
+- Use OpenSpec for new features, financial/business-rule changes, data-model changes, and multi-file behavior changes. Small typo, formatting, or isolated low-risk fixes may proceed directly.
+- Start substantial work with `/opsx:propose`; review and agree on the proposal, specs, design, and tasks before implementation.
+- Implement approved work with `/opsx:apply`, verify the acceptance criteria and targeted tests, then use `/opsx:sync` and `/opsx:archive` so the living specs match production behavior.
+- Keep one coherent change per OpenSpec change folder and one focused branch/commit series per change. Do not mix unrelated dirty-worktree edits.
+- Treat `openspec/specs/` as the current behavioral contract and `openspec/changes/` as proposed deltas. Code and tests must remain consistent with both.

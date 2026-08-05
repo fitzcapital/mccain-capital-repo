@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 {% if tab == 'performance' %}
   {% set analytics_mode_label = 'Performance Review' %}
   {% set analytics_mode_blurb = 'Read the outcome, confirm the risk posture, then inspect the curves.' %}
@@ -23,7 +24,7 @@
     <div class="toolbar">
       <div class="pageHeroHead">
         <div>
-          <div class="pill">Analytics Workspace</div>
+          {{ app_pill('analytics', 'Analytics Workspace') }}
           <div class="pageTitleRow">
             <h2 class="pageTitle">{{ analytics_mode_label }}</h2>
             <details class="inlineHelp">
@@ -38,9 +39,9 @@
               <span class="workspaceHeroPriorityText" id="analyticsPriorityText">{{ analytics_payload.coach.next_action }}</span>
             </div>
             <div class="actionRow workspaceHeroPrimaryActions">
-              <a class="btn primary" href="/analytics/replay">Replay</a>
-              <a class="btn ctaLink" href="/trades">Trades</a>
-              <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+              <a class="btn primary" href="/analytics/replay"><span class="appPillIcon">{{ app_icon('replay') }}</span><span>Replay</span></a>
+              <a class="btn ctaLink" href="/trades"><span class="appPillIcon">{{ app_icon('trades') }}</span><span>Trades</span></a>
+              <a class="btn ctaLink" href="/journal/review/weekly"><span class="appPillIcon">{{ app_icon('journal') }}</span><span>Weekly Review</span></a>
             </div>
           </div>
         </div>
@@ -115,15 +116,15 @@
         </div>
         <div>
           <label>Start</label>
-          <input class="appDateInput" type="date" name="start" value="{{ start_date }}">
+          <input class="appDateInput" type="date" name="start" value="{{ start_date }}" aria-label="Start date">
         </div>
         <div>
           <label>End</label>
-          <input class="appDateInput" type="date" name="end" value="{{ end_date }}">
+          <input class="appDateInput" type="date" name="end" value="{{ end_date }}" aria-label="End date">
         </div>
         <div>
           <label>Explain Day</label>
-          <input class="appDateInput" type="date" name="explain_day" value="{{ explain_day }}">
+          <input class="appDateInput" type="date" name="explain_day" value="{{ explain_day }}" aria-label="Explain day">
         </div>
         <div>
           <label>Expectancy View</label>
@@ -210,7 +211,7 @@
       <div class="toolbar">
         <div class="analyticsCardHead analyticsStageHead">
           <div>
-            <div class="pill">Equity Curve</div>
+            {{ app_pill('analytics', 'Equity Curve') }}
             <div class="analyticsStageTitle">Primary equity tape</div>
             <div class="analyticsCardLead">This curve owns the page. The rest of the terminal explains why it bends, stalls, or compounds.</div>
           </div>

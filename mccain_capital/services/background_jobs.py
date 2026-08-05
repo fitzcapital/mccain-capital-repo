@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import threading
 from typing import Any, Callable, Dict, List
 from uuid import uuid4
@@ -80,10 +81,22 @@ class BackgroundJobStore:
         if not job_id:
             return
         path = self._path(job_id)
-        tmp_path = f"{path}.tmp"
-        with open(tmp_path, "w", encoding="utf-8") as handle:
-            json.dump(job, handle, indent=2)
-        os.replace(tmp_path, path)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self._job_dir,
+            prefix=f"{job_id}.",
+            suffix=".tmp",
+            text=True,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(job, handle, indent=2)
+            os.replace(tmp_path, path)
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except OSError:
+                pass
 
     def _read(self, job_id: str) -> Dict[str, Any]:
         path = self._path(job_id)

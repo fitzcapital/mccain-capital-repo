@@ -206,6 +206,7 @@ def _resolve_scope_selection(
     history_starting_balance: float,
 ) -> dict:
     account_enabled = bool(account_scope.get("enabled"))
+    account_id = str(account_scope.get("account_id") or "").strip()
     account_start = str(account_scope.get("start_date") or "").strip()
     account_label = (
         str(account_scope.get("account_name") or "").strip()
@@ -213,11 +214,11 @@ def _resolve_scope_selection(
         or "Current Account"
     )
     account_type = str(account_scope.get("account_type") or "").strip()
-    default_mode = "current" if account_enabled and account_start else "all"
+    default_mode = "current" if account_enabled and (account_id or account_start) else "all"
     mode = str(requested_mode or "").strip().lower() or default_mode
     if mode not in {"all", "current", "custom"}:
         mode = default_mode
-    if mode == "current" and not (account_enabled and account_start):
+    if mode == "current" and not (account_enabled and (account_id or account_start)):
         mode = "all"
 
     effective_start = ""
@@ -228,6 +229,9 @@ def _resolve_scope_selection(
 
     if mode == "current":
         effective_start = account_start
+        if start_date and (not effective_start or start_date > effective_start):
+            effective_start = start_date
+        effective_end = end_date
         scope_label = "Current Account"
         scope_starting_balance = float(
             account_scope.get("starting_balance") or history_starting_balance
@@ -235,7 +239,10 @@ def _resolve_scope_selection(
         detail_parts = [account_label]
         if account_type:
             detail_parts.append(account_type)
-        detail_parts.append(f"from {account_start}")
+        if start_date or end_date:
+            detail_parts.append(f"{start_date or account_start or '…'} → {end_date or '…'}")
+        else:
+            detail_parts.append(f"from {account_start}")
         scope_detail = " · ".join(part for part in detail_parts if part)
     elif mode == "custom":
         effective_start = start_date
@@ -260,7 +267,7 @@ def _resolve_scope_selection(
         "detail": scope_detail,
         "starting_balance": float(scope_starting_balance),
         "account_name": account_label,
-        "account_id": str(account_scope.get("account_id") or "").strip(),
+        "account_id": account_id,
         "account_type": account_type,
         "account_start_date": account_start,
     }
@@ -949,12 +956,16 @@ def trades_page():
     if d and not start_date and not end_date:
         start_date = d
         end_date = d
+        if not scope_preset:
+            scope_preset = "custom"
     active_day = end_date or d or today_iso()
     history_starting_balance = float(get_setting_float("starting_balance", 50000.0))
     account_scope = trades_repo.account_scope_snapshot()
     account_scope_mode = (
         str(legacy.request.args.get("account_scope_mode", "") or "").strip().lower()
     )
+    if d and not account_scope_mode:
+        account_scope_mode = "custom"
     resolved_scope = _resolve_scope_selection(
         requested_mode=account_scope_mode,
         start_date=start_date,
@@ -1010,14 +1021,37 @@ def trades_page():
     per = max(25, min(200, per))
     scope_state = {
         "account_scope": account_scope,
+        "account_id": (
+            int(resolved_scope["account_id"])
+            if str(resolved_scope.get("account_id") or "").strip().isdigit()
+            else None
+        ),
         "scope_enabled": account_scope_mode in {"current", "custom"}
-        and bool(scope_effective_start),
+        and bool(
+            (
+                str(resolved_scope.get("account_id") or "").strip()
+                if account_scope_mode == "current"
+                else scope_effective_start
+            )
+        ),
         "scope_start": scope_effective_start,
         "scope_starting_balance": float(resolved_scope["starting_balance"]),
-        "scope_active": account_scope_mode in {"current", "custom"} and bool(scope_effective_start),
+        "scope_active": account_scope_mode in {"current", "custom"}
+        and bool(
+            (
+                str(resolved_scope.get("account_id") or "").strip()
+                if account_scope_mode == "current"
+                else scope_effective_start
+            )
+        ),
     }
 
-    raw_trades = legacy.fetch_trades(d="", q="", filters={})
+    raw_trades = legacy.fetch_trades(
+        d="",
+        q="",
+        filters={},
+        account_id=scope_state["account_id"] if account_scope_mode == "current" else None,
+    )
     trades = [dict(r) for r in raw_trades]
     derived_balances = trades_balance_svc.derived_balance_map(
         as_of=scope_as_of_day,
@@ -1025,6 +1059,7 @@ def trades_page():
         starting_balance=(
             scope_state["scope_starting_balance"] if scope_state["scope_active"] else None
         ),
+        account_id=scope_state["account_id"] if account_scope_mode == "current" else None,
     )
     for t in trades:
         trade_id = t.get("id")
@@ -1342,14 +1377,16 @@ def trades_page():
         hero_title = "Start the Session Clean"
         hero_blurb = "Open with a clean record: import, tag, and define the first valid setup before pace increases."
     elif day_net > 0 and win_rate >= 60:
-        hero_title = "Defend the Day and Stay Selective"
+        hero_title = "Protect"
         hero_blurb = "Results are working. Keep the quality bar high and avoid giving back edge through boredom."
     elif day_net < 0:
         hero_title = "Tighten Risk and Review Fast"
         hero_blurb = "Pressure is rising. Shrink the decision tree, fix the misses, and only keep A-grade intent on."
     else:
-        hero_title = "Review the Tape and Keep Entries Selective"
-        hero_blurb = "The read is mixed. Use the log to narrow the next clean setup instead of forcing throughput."
+        hero_title = "Focus"
+        hero_blurb = (
+            "The read is mixed. Stay on the brief, cut the noise, and wait for the cleanest setup."
+        )
 
     trades_status_badges = [
         StateBadgeViewModel(

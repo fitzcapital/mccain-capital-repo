@@ -25,6 +25,8 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_SYMBOL = "SPX"
 DEFAULT_INTERVAL = "5min"
 SUPPORTED_INTERVAL_MINUTES = {
+    "1min": 1,
+    "1m": 1,
     "5min": 5,
     "5m": 5,
     "15min": 15,
@@ -34,8 +36,18 @@ SUPPORTED_INTERVAL_MINUTES = {
     "1h": 60,
     "60min": 60,
     "60m": 60,
+    "4h": 240,
+    "240min": 240,
+    "240m": 240,
+    "12h": 720,
+    "720min": 720,
+    "720m": 720,
+    "1d": 1440,
 }
 CANONICAL_INTERVALS = {
+    "1": "1min",
+    "1m": "1min",
+    "1min": "1min",
     "5": "5min",
     "5m": "5min",
     "5min": "5min",
@@ -49,6 +61,30 @@ CANONICAL_INTERVALS = {
     "60": "1h",
     "60m": "1h",
     "60min": "1h",
+    "4h": "4h",
+    "240": "4h",
+    "240m": "4h",
+    "240min": "4h",
+    "12h": "12h",
+    "720": "12h",
+    "720m": "12h",
+    "720min": "12h",
+    "1d": "1d",
+    "1day": "1d",
+    "1w": "1w",
+    "1wk": "1w",
+    "1week": "1w",
+    "1mo": "1mo",
+    "1mon": "1mo",
+    "1month": "1mo",
+}
+HISTORICAL_INTERVALS = frozenset({"4h", "12h", "1d", "1w", "1mo"})
+HISTORICAL_INTERVAL_CONFIG = {
+    "4h": {"period": "3mo", "source_interval": "60m", "visible_bars": 28},
+    "12h": {"period": "6mo", "source_interval": "60m", "visible_bars": 24},
+    "1d": {"period": "1y", "source_interval": "1d", "visible_bars": 30},
+    "1w": {"period": "3y", "source_interval": "1wk", "visible_bars": 26},
+    "1mo": {"period": "10y", "source_interval": "1mo", "visible_bars": 24},
 }
 DEFAULT_BARS_LIMIT = 480
 LEVEL_UNAVAILABLE = "Unavailable"
@@ -191,6 +227,19 @@ def _bars_for_session_day(
     return out
 
 
+def _session_day_from_bars(bars: List[Dict[str, Any]]) -> Optional[date]:
+    days: List[date] = []
+    for bar in bars:
+        ts = _as_float(bar.get("time"))
+        if ts is None:
+            continue
+        try:
+            days.append(datetime.fromtimestamp(int(ts), tz=app_runtime.TZ).date())
+        except Exception:
+            continue
+    return max(days) if days else None
+
+
 def _regular_session_bars_for_anchor_day(
     *,
     current_bars: List[Dict[str, Any]],
@@ -208,7 +257,7 @@ def _regular_session_bars_for_anchor_day(
     current_regular = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=True)
     if current_regular:
         return current_regular
-    prior_session_day = _previous_trading_day(anchor_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(anchor_day)
     return _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
 
 
@@ -227,7 +276,7 @@ def _extended_hours_bars_for_anchor_day(
     all-session tape instead of returning an empty chart.
     """
 
-    prior_session_day = _previous_trading_day(anchor_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(anchor_day)
     prior_regular = _bars_for_session_day(
         prior_bars, session_day=prior_session_day, regular_only=True
     )
@@ -275,7 +324,7 @@ def _two_session_regular_bars(
     falls back to the prior regular session only.
     """
 
-    prior_session_day = _previous_trading_day(anchor_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(anchor_day)
     prior_regular = _bars_for_session_day(
         prior_bars, session_day=prior_session_day, regular_only=True
     )
@@ -332,7 +381,7 @@ def _opening_session_carryover_bars(
             ),
         }
 
-    prior_session_day = _previous_trading_day(session_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(session_day)
     prior_regular = _bars_for_session_day(
         prior_bars, session_day=prior_session_day, regular_only=True
     )
@@ -414,6 +463,152 @@ def _with_poll_metadata(payload: Dict[str, Any], *, now_et: datetime) -> Dict[st
     }
 
 
+def _historical_bucket_ts(dt: datetime, interval: str) -> int:
+    normalized = normalize_interval(interval)
+    if normalized == "1w":
+        start = (dt - timedelta(days=dt.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        return int(start.timestamp())
+    if normalized == "1mo":
+        start = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return int(start.timestamp())
+    return int(dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+
+def _historical_bars_from_rows(
+    rows: List[Dict[str, Any]], *, interval: str, limit: int = DEFAULT_BARS_LIMIT
+) -> List[Dict[str, Any]]:
+    normalized = normalize_interval(interval)
+    if normalized in {"4h", "12h"}:
+        return normalize_tradier_timesales(rows, interval=normalized, limit=limit)
+
+    bucketed: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        dt = _parse_ts(row.get("ts"))
+        if dt is None:
+            continue
+        bucket_ts = _historical_bucket_ts(dt, normalized)
+        open_ = _as_float(row.get("open"))
+        high = _as_float(row.get("high"))
+        low = _as_float(row.get("low"))
+        close = _as_float(row.get("close"))
+        volume = _as_float(row.get("volume")) or 0.0
+        if open_ is None or high is None or low is None or close is None:
+            continue
+        current = bucketed.get(bucket_ts)
+        if current is None:
+            bucketed[bucket_ts] = {
+                "time": bucket_ts,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+            }
+            continue
+        current["high"] = max(float(current["high"]), high)
+        current["low"] = min(float(current["low"]), low)
+        current["close"] = close
+        current["volume"] = float(current.get("volume") or 0.0) + volume
+
+    bars = [bucketed[key] for key in sorted(bucketed.keys())]
+    if limit > 0:
+        bars = bars[-limit:]
+    return bars
+
+
+def _yfinance_history_rows(
+    symbol: str, *, period: str, source_interval: str, prepost: bool = False
+) -> List[Dict[str, Any]]:
+    ticker = market_data_service._yf_ticker(symbol)
+    if ticker is None:
+        return []
+    try:
+        hist = ticker.history(
+            period=period,
+            interval=source_interval,
+            prepost=prepost,
+            timeout=market_data_service.YFINANCE_FALLBACK_TIMEOUT_SECONDS,
+        )
+        market_data_service._yf_note_success()
+    except Exception:
+        market_data_service._yf_note_failure()
+        return []
+    try:
+        if hist.empty:
+            return []
+    except Exception:
+        return []
+
+    out: List[Dict[str, Any]] = []
+    try:
+        for index, row in hist.iterrows():
+            try:
+                dt = index.to_pydatetime()
+            except Exception:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=app_runtime.TZ)
+            dt = dt.astimezone(app_runtime.TZ)
+            open_ = _as_float(row.get("Open"))
+            high = _as_float(row.get("High"))
+            low = _as_float(row.get("Low"))
+            close = _as_float(row.get("Close"))
+            if open_ is None or high is None or low is None or close is None:
+                continue
+            out.append(
+                {
+                    "ts": dt.isoformat(timespec="seconds"),
+                    "open": float(open_),
+                    "high": float(high),
+                    "low": float(low),
+                    "close": float(close),
+                    "volume": float(_as_float(row.get("Volume")) or 0.0),
+                }
+            )
+    except Exception:
+        return []
+    return out
+
+
+def _historical_interval_payload(symbol: str, interval: str, *, now_et: datetime) -> Dict[str, Any]:
+    normalized = normalize_interval(interval)
+    config = HISTORICAL_INTERVAL_CONFIG.get(normalized) or HISTORICAL_INTERVAL_CONFIG["1d"]
+    rows = _yfinance_history_rows(
+        symbol,
+        period=str(config["period"]),
+        source_interval=str(config["source_interval"]),
+        prepost=False,
+    )
+    bars = _historical_bars_from_rows(rows, interval=normalized)
+    first_day = ""
+    last_day = ""
+    if bars:
+        first_day = _iso_from_bar_time(bars[0].get("time"))[:10]
+        last_day = _iso_from_bar_time(bars[-1].get("time"))[:10]
+    payload = {
+        "symbol": str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL,
+        "interval": normalized,
+        "bars": bars,
+        "opening_session_mode": False,
+        "live_session_bar_count": 0,
+        "opening_threshold": OPENING_SESSION_BAR_THRESHOLD,
+        "carryover_bar_count": 0,
+        "visible_window_bars": min(len(bars), int(config["visible_bars"])) if bars else 0,
+        "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
+        "previous_session_bar_count": 0,
+        "current_session_bar_count": len(bars),
+        "previous_session_day": first_day,
+        "current_session_day": last_day,
+        "session_target_bar_count": 0,
+        "time_zone": HERO_CHART_TIMEZONE,
+    }
+    return _with_poll_metadata(payload, now_et=now_et)
+
+
 def normalize_tradier_timesales(
     rows: List[Dict[str, Any]], *, interval: str = DEFAULT_INTERVAL, limit: int = DEFAULT_BARS_LIMIT
 ) -> List[Dict[str, Any]]:
@@ -433,8 +628,14 @@ def normalize_tradier_timesales(
         dt = _parse_ts(row.get("ts"))
         if dt is None:
             continue
-        floored_minute = dt.minute - (dt.minute % interval_minutes)
-        bucket_dt = dt.replace(minute=floored_minute, second=0, microsecond=0)
+        total_minutes = (dt.hour * 60) + dt.minute
+        floored_total_minutes = total_minutes - (total_minutes % interval_minutes)
+        bucket_dt = dt.replace(
+            hour=floored_total_minutes // 60,
+            minute=floored_total_minutes % 60,
+            second=0,
+            microsecond=0,
+        )
         bucket_ts = int(bucket_dt.timestamp())
 
         open_ = _as_float(row.get("open"))
@@ -472,14 +673,16 @@ def get_intraday_bars(
     symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTERVAL
 ) -> Dict[str, Any]:
     interval = normalize_interval(interval)
+    now_et = app_runtime.now_et()
+    symbol_name = str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL
+    if interval in HISTORICAL_INTERVALS:
+        return _historical_interval_payload(symbol_name, interval, now_et=now_et)
     try:
         rows = market_data_service.get_intraday(symbol)
     except Exception as exc:
         LOGGER.warning("hero chart intraday fetch failed for %s: %s", symbol, exc)
         rows = []
     normalized_current = normalize_tradier_timesales(list(rows or []), interval=interval)
-    now_et = app_runtime.now_et()
-    symbol_name = str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL
     payload: Dict[str, Any] = {
         "symbol": symbol_name,
         "interval": interval,

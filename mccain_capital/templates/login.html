@@ -3,33 +3,28 @@
     <div>
       <div class="pill">🔐 Secure Sign In</div>
       <h2 class="pageTitle">Unlock the Cockpit Cleanly</h2>
-      <div class="pageSub">Use your password or a registered passkey to get back into the trading workspace without adding friction to the start of the session.</div>
+      <div class="pageSub">Use the fastest trusted path, then verify the trading state before work.</div>
     </div>
-    <div class="actionRow">
-      <button class="btn{% if passkeys_available %} primary{% endif %}" type="button" data-passkey-login {% if not passkeys_available %}disabled{% endif %}>Use Passkey</button>
+    <div class="authHeroStatusRail">
+      <div class="authHeroStatus{% if not passkeys_available %} is-muted{% endif %}" id="passkeyStatus" aria-live="polite">
+        <span class="authTrustDot"></span>
+        <span>{% if passkeys_available %}Passkey ready{% else %}No passkey registered{% endif %}</span>
+      </div>
+      <div class="authHeroFallback">Password fallback armed</div>
     </div>
   </div>
 </div></div>
 
-<div class="dashboardSupportGrid authSupportGrid">
-  <div class="card supportCard workflowPromptCard"><div class="toolbar">
-    <div class="pill">Access Rule</div>
-    <div class="supportLead">Get in, confirm the state, then work.</div>
-    <div class="supportBody">Sign-in should be short and boring. If it feels like a decision point, the page is doing too much.</div>
-  </div></div>
-
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Fast Lane</div>
-    <div class="supportLead">{% if passkeys_available %}Passkey sign-in is ready{% else %}Password first, passkey next{% endif %}</div>
-    <div class="supportBody">{% if passkeys_available %}Unlock with Face ID, Touch ID, or the platform passkey already registered on this device.{% else %}Sign in once with your password, then add a passkey from the menu for faster daily access later.{% endif %}</div>
-    <div class="tiny metaBlue line16" id="passkeyStatus" aria-live="polite">{% if passkeys_available %}Passkey sign-in is ready on supported browsers and Apple devices.{% else %}No passkeys registered yet.{% endif %}</div>
-  </div></div>
-</div>
-
 <div class="authShell">
-  <div class="card authPanel"><div class="toolbar authCard">
-    <div class="pill">Password Login</div>
-    <div class="tiny stack10 line16">Use the account password if you are on a new device, the passkey is unavailable, or you need the fallback path.</div>
+  <div class="card authPanel authPanelPassword"><div class="toolbar authCard">
+    <div class="authLaneHead">
+      <div>
+        <div class="pill">Password Login</div>
+        <div class="authLaneTitle">Fallback path</div>
+      </div>
+      <div class="authLaneHint">New device</div>
+    </div>
+    <div class="tiny stack10 line16">Use the account password on new devices or when passkey access is unavailable.</div>
     {% if err %}<div class="hr"></div><div class="tiny metaRed">{{ err }}</div>{% endif %}
     <div class="hr"></div>
     <form method="post" action="{{ url_for('login_page', next=next_url) }}">
@@ -43,18 +38,31 @@
       <input type="hidden" name="next" value="{{ next_url }}">
       <div class="hr"></div>
       <div class="rightActions">
-        <button class="btn primary" type="submit">Sign In</button>
+        <button class="btn primary authSubmitBtn" type="submit">Sign In</button>
       </div>
     </form>
   </div></div>
 
-  <div class="card authPanel"><div class="toolbar">
-    <div class="pill">Passkey Access</div>
+  <div class="card authPanel authPanelPasskey"><div class="toolbar">
+    <div class="authLaneHead">
+      <div>
+        <div class="pill">Passkey Access</div>
+        <div class="authLaneTitle">Fast lane</div>
+      </div>
+      <div class="authLaneHint">{% if passkeys_available %}Ready{% else %}Setup needed{% endif %}</div>
+    </div>
+    <div class="authPasskeyEmblem{% if not passkeys_available %} is-muted{% endif %}" aria-hidden="true">
+      <span>{% if passkeys_available %}✓{% else %}•{% endif %}</span>
+    </div>
     <div class="supportLead">{% if passkeys_available %}One tap when the device is trusted.{% else %}Enable it after the first password sign-in.{% endif %}</div>
-    <div class="supportBody">{% if passkeys_available %}Use the button above to authenticate with the device-bound credential already attached to this account.{% else %}After login, open Passkeys from the menu and register the device you use most often.{% endif %}</div>
+    <div class="supportBody">{% if passkeys_available %}Use this device-bound credential to sign in without typing the account password.{% else %}After login, open Passkeys from the menu and register the device you use most often.{% endif %}</div>
+    <div class="authTrustState{% if not passkeys_available %} is-muted{% endif %}">
+      <span class="authTrustDot"></span>
+      <span>{% if passkeys_available %}Trusted device ready{% else %}No passkey on file{% endif %}</span>
+    </div>
     <input type="hidden" id="passkeyNextUrl" value="{{ next_url }}">
     <div class="rightActions">
-      <button class="btn{% if passkeys_available %} primary{% endif %}" type="button" data-passkey-login {% if not passkeys_available %}disabled{% endif %}>Use Passkey</button>
+      <button class="btn{% if passkeys_available %} primary{% endif %} authSubmitBtn authPasskeyBtn" type="button" data-passkey-login {% if not passkeys_available %}disabled{% endif %}>Use Passkey</button>
     </div>
   </div></div>
 </div>

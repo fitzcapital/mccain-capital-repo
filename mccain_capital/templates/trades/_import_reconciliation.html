@@ -1,0 +1,31 @@
+<div class="hr"></div>
+<div class="pill">🧾 Import Reconciliation</div>
+<div class="hr"></div>
+<table>
+  <tbody>
+    <tr><td>Fills Parsed</td><td>{{ report.fills_parsed }}</td></tr>
+    <tr><td>Round-Trips Paired</td><td>{{ report.pairs_completed }}</td></tr>
+    <tr><td>Inserted Trades</td><td>{{ report.inserted_trades }}</td></tr>
+    <tr><td>Duplicates Skipped</td><td>{{ report.duplicates_skipped }}</td></tr>
+    <tr><td>Open Contracts Remaining</td><td>{{ report.open_contracts }}</td></tr>
+    <tr><td>Errors / Warnings</td><td>{{ report.errors_count }} / {{ report.warnings_count }}</td></tr>
+    <tr>
+      <td>Statement Ending Balance</td>
+      <td>
+        {% if report.statement_ending_balance is not none %}{{ money(report.statement_ending_balance) }}{% else %}Not provided{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td>Ledger Ending Balance</td>
+      <td>
+        {% if report.ledger_ending_balance is not none %}{{ money(report.ledger_ending_balance) }}{% else %}Not available{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td>Balance Delta (Ledger - Statement)</td>
+      <td>
+        {% if report.balance_delta is not none %}{{ money(report.balance_delta) }}{% else %}Not computed{% endif %}
+      </td>
+    </tr>
+  </tbody>
+</table>

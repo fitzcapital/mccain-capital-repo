@@ -7,7 +7,7 @@ from mccain_capital import create_app
 from mccain_capital.runtime import db
 
 
-def _insert_trade(*, trade_date: str, net_pl: float, balance: float) -> None:
+def _insert_trade(*, trade_date: str, net_pl: float, balance: float, ticker: str = "SPX") -> None:
     with db() as conn:
         conn.execute(
             """
@@ -21,7 +21,7 @@ def _insert_trade(*, trade_date: str, net_pl: float, balance: float) -> None:
                 trade_date,
                 "09:30",
                 "10:00",
-                "SPX",
+                ticker,
                 "CALL",
                 5100.0,
                 2.0,
@@ -202,7 +202,7 @@ def test_dashboard_scope_rebases_stored_balance_for_drift_check(client):
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Start $50,000.00" in resp.data
+    assert b"Funded $50,000.00" in resp.data
     assert b"$50,100.00" in resp.data
     assert b"Ledger drift detected" not in resp.data
 
@@ -222,10 +222,13 @@ def test_trades_scope_rebases_row_balances_for_selected_day(client):
             ("active_account_start_balance", "50000"),
         )
 
-    _insert_trade(trade_date="2026-03-02", net_pl=500.0, balance=55500.0)
-    _insert_trade(trade_date="2026-03-04", net_pl=100.0, balance=55600.0)
+    _insert_trade(trade_date="2026-03-02", net_pl=500.0, balance=55500.0, ticker="BEFORE")
+    _insert_trade(trade_date="2026-03-04", net_pl=100.0, balance=55600.0, ticker="TARGET")
+    _insert_trade(trade_date="2026-03-05", net_pl=200.0, balance=55800.0, ticker="AFTER")
 
     resp = client.get("/trades?d=2026-03-04", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"$50,100.00" in resp.data
+    assert b"TARGET" in resp.data
+    assert b"BEFORE" not in resp.data
+    assert b"AFTER" not in resp.data
     assert b"$55,600.00" not in resp.data

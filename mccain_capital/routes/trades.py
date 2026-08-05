@@ -102,6 +102,12 @@ def register(app):
         methods=["GET", "POST"],
     )
     app.add_url_rule(
+        "/trades/sync/live/last-run",
+        endpoint="trades_sync_live_last_run",
+        view_func=h.trades_sync_live_last_run,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/trades/sync/auto/config",
         endpoint="trades_sync_auto_config",
         view_func=h.trades_sync_auto_config,
@@ -123,6 +129,12 @@ def register(app):
         "/trades/sync/job/<job_id>/cancel",
         endpoint="trades_sync_job_cancel",
         view_func=h.trades_sync_job_cancel,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/trades/sync/job/<job_id>/force-reset",
+        endpoint="trades_sync_job_force_reset",
+        view_func=h.trades_sync_job_force_reset,
         methods=["POST"],
     )
     app.add_url_rule(

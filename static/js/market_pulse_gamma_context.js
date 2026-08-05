@@ -8,7 +8,7 @@
   };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-  const LOCAL_FLIP_NONE_LABEL = "No Local Flip between Put Wall and Call Wall";
+  const LOCAL_FLIP_NONE_LABEL = "No local flip in band";
   const abs = (value) => {
     const n = asNum(value);
     return n === null ? null : Math.abs(n);
@@ -818,6 +818,118 @@
     }
   };
 
+  const compactSecondary = (primary, candidates) => {
+    const normalizedPrimary = String(primary || "").trim().toLowerCase();
+    const choices = Array.isArray(candidates) ? candidates : [];
+    for (const candidate of choices) {
+      const text = String(candidate || "").trim();
+      if (!text) continue;
+      if (text.toLowerCase() === normalizedPrimary) continue;
+      return text;
+    }
+    return "";
+  };
+
+  const renderHeaderLevels = (items) => {
+    const node = document.getElementById("marketPulseHeaderSubline");
+    if (!node) return;
+    const levelIcon = (name) => {
+      if (name === "activity") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-5 3.6 10 2.4-6H21"></path></svg>`;
+      if (name === "orbit") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.2"></circle><path d="M4 12c0-3.8 3.6-7 8-7s8 3.2 8 7-3.6 7-8 7-8-3.2-8-7Z"></path></svg>`;
+      if (name === "gamma-symbol") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.2 7.4c.9-2.3 3.3-3.4 5.3-2.6 3.3 1.3 3.5 5.8 2.7 10.6-.6 3.5-.8 5.2-2.1 6.8"></path><path d="M12.4 13.8 18.7 5.2"></path></svg>`;
+      if (name === "compass") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"></path></svg>`;
+      if (name === "check") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.2 2.2 4.8-5"></path></svg>`;
+      if (name === "warning") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z"></path><path d="M12 9v4"></path><circle cx="12" cy="16.5" r=".8" fill="currentColor" stroke="none"></circle></svg>`;
+      if (name === "up") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>`;
+      if (name === "down") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6"></path></svg>`;
+      return "";
+    };
+    node.innerHTML = (Array.isArray(items) ? items : []).map((item) => {
+      const label = String(item.label || "");
+      const value = String(item.value ?? "—");
+      const icon = String(item.icon || "");
+      const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "level";
+      const muted = label === "LF" && value === LOCAL_FLIP_NONE_LABEL ? " is-muted" : "";
+      const live = label === "Spot" ? " is-live" : "";
+      const iconMarkup = icon ? `<span class="marketPulseHeaderLevelIcon">${levelIcon(icon)}</span>` : "";
+      const valueId = label === "Spot" ? ' id="marketPulseHeaderSpot"' : "";
+      return `<div class="marketPulseHeaderLevelItem is-${key}${live}${muted}"><span>${iconMarkup}<span>${label}</span></span><strong${valueId}>${value}</strong></div>`;
+    }).join("");
+  };
+
+  const patchHeaderLiveSpot = (spot, asOf) => {
+    const liveSpot = asNum(spot);
+    if (liveSpot === null) return;
+    const headerSpotValue = document.getElementById("marketPulseHeaderSpot");
+    if (headerSpotValue) {
+      headerSpotValue.textContent = formatNumber(liveSpot, 2);
+    }
+    setText("marketPulseHeaderSnapshot", `Live Session ${formatEtLabel(asOf || new Date().toISOString())}`);
+  };
+
+  const renderSimpleBadges = (id, labels) => {
+    const root = document.getElementById(id);
+    if (!root) return;
+    const normalized = (Array.isArray(labels) ? labels : [])
+      .map((label) => String(label || "").trim())
+      .filter(Boolean);
+    root.innerHTML = normalized.map((label) => `<span class="marketPulseGammaBadge">${label}</span>`).join("");
+  };
+
+  const regimeDisplayLabel = (state, fallback = "REGIME UNAVAILABLE") => {
+    if (state === "positive") return "Positive Ⲅ";
+    if (state === "negative") return "Negative Ⲅ";
+    return fallback;
+  };
+
+  const gammaStateMeta = (dealerRegime) => {
+    const normalized = String(dealerRegime || "").toLowerCase();
+    if (normalized.includes("positive")) {
+      return {
+        cardClass: "gamma-card--positive",
+        pillClass: "state-pill--positive",
+        pillLabel: "POSITIVE Ⲅ",
+        badges: ["PINNING", "MEAN REVERSION"],
+      };
+    }
+    if (normalized.includes("negative")) {
+      return {
+        cardClass: "gamma-card--negative",
+        pillClass: "state-pill--negative",
+        pillLabel: "NEGATIVE Ⲅ",
+        badges: ["EXPANSION RISK", "TREND CONTINUATION"],
+      };
+    }
+    if (normalized.includes("unconfirmed")) {
+      return {
+        cardClass: "gamma-card--unconfirmed",
+        pillClass: "state-pill--wait",
+        pillLabel: "WAIT FOR CONFIRMATION",
+        badges: ["WAIT FOR CONFIRMATION"],
+      };
+    }
+    return {
+      cardClass: "gamma-card--neutral",
+      pillClass: "state-pill--wait",
+      pillLabel: "NEUTRAL / DATA",
+      badges: ["WAIT FOR CONFIRMATION"],
+    };
+  };
+
+  const decisionStateMeta = (label) => {
+    const normalized = String(label || "").trim().toLowerCase();
+    if (normalized === "actionable") {
+      return { pillClass: "state-pill--execute", pillLabel: "EXECUTE" };
+    }
+    if (normalized === "planning only") {
+      return { pillClass: "state-pill--wait", pillLabel: "PLANNING ONLY" };
+    }
+    if (normalized === "no trade") {
+      return { pillClass: "state-pill--negative", pillLabel: "NO TRADE" };
+    }
+    return { pillClass: "state-pill--wait", pillLabel: "WAIT" };
+  };
+
   const buildTickPingLabel = (asOfIso, provider) => {
     const ts = typeof asOfIso === "string" ? Date.parse(asOfIso) : NaN;
     if (!Number.isFinite(ts)) return "No tick timestamp";
@@ -909,7 +1021,7 @@
     const prices = payload.prices || {};
     const seriesPoints = payload.series_points || {};
     const gamma = payload.gamma_map || {};
-    const activeTicker = String(((current || {}).ticker) || "QQQ").toUpperCase();
+    const activeTicker = String(((current || {}).ticker) || "SPY").toUpperCase();
     const playbookTick = prices[activeTicker] || null;
     const vixTick = prices.VIX || prices["^VIX"] || null;
 
@@ -986,6 +1098,20 @@
       ...(current.gamma_snapshot || {}),
       ...(gamma || {}),
     };
+    const nextMarketStructure = {
+      ...((current || {}).market_structure_snapshot || {}),
+    };
+    const liveSpot = asNum(nextPlaybookQuote.price);
+    if (liveSpot !== null) {
+      nextMarketStructure.spot = liveSpot;
+      nextMarketStructure.spot_meta = {
+        ...((nextMarketStructure || {}).spot_meta || {}),
+        value: liveSpot,
+        source: "stream_quote",
+        as_of: nextPlaybookQuote.as_of || nextPlaybookQuote.asof || nextMarketStructure.as_of || null,
+      };
+      patchHeaderLiveSpot(liveSpot, nextPlaybookQuote.as_of || nextPlaybookQuote.asof || payload.updated_at || payload.server_ts);
+    }
     current = {
       ...(current || {}),
       playbook_quote: nextPlaybookQuote,
@@ -1000,6 +1126,7 @@
       },
       quotes_map: nextQuotesMap,
       gamma_snapshot: nextGammaSnapshot,
+      market_structure_snapshot: nextMarketStructure,
       execution_model: patchExecutionModelForStream(
         payload.execution_model || current.execution_model,
         nextPlaybookQuote,
@@ -1177,44 +1304,65 @@
     return { label: "Mixed", tone: "neutral", title: "No clean tape edge yet." };
   };
 
-  const buildSparklineSvg = (points, tone) => {
+  const computeCandles = (points) => {
     const values = (Array.isArray(points) ? points : [])
       .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
       .filter((value) => value !== null);
-    if (values.length < 4) {
+    if (values.length < 4) return [];
+    const targetBars = Math.min(10, Math.max(8, Math.ceil(values.length / 2)));
+    const chunkSize = Math.max(1, Math.ceil(values.length / targetBars));
+    const candles = [];
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize);
+      if (!chunk.length) continue;
+      candles.push({
+        open: chunk[0],
+        high: Math.max(...chunk),
+        low: Math.min(...chunk),
+        close: chunk[chunk.length - 1],
+      });
+    }
+    return candles.length >= 2 ? candles : [];
+  };
+
+  const buildSparklineSvg = (points, tone) => {
+    const candles = computeCandles(points);
+    if (!candles.length) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
-    const width = 120;
-    const height = 28;
-    let minV = Math.min(...values);
-    let maxV = Math.max(...values);
+    const width = 138;
+    const height = 60;
+    let minV = Math.min(...candles.map((row) => row.low));
+    let maxV = Math.max(...candles.map((row) => row.high));
     if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
-    const step = width / Math.max(values.length - 1, 1);
-    const pts = values.map((value, index) => {
-      const x = index * step;
-      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
-    const areaPoints = `0.00,28.00 ${pts.join(" ")} 120.00,28.00`;
-    const baselineY = (((maxV - values[0]) / (maxV - minV)) * (height - 2) + 1).toFixed(2);
-    const markerStride = Math.max(1, Math.floor(pts.length / 8));
-    const selected = pts
-      .filter((_point, index) => index === 0 || index === pts.length - 1 || index % markerStride === 0);
-    const markers = selected
-      .map((point, index) => {
-        const [x, y] = point.split(",");
-        const endpoint = index === 0 ? " start" : index === selected.length - 1 ? " end" : "";
-        return `<circle class="marketMiniSparkPoint ${tone}${endpoint}" cx="${x}" cy="${y}" r="1.55" />`;
-      })
-      .join("");
+    const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
+    const baselineY = yFor(candles[0].open).toFixed(2);
+    const candleGap = 1.35;
+    const slotWidth = 12.2;
+    const plotWidth = Math.min(width - 10, candles.length * slotWidth);
+    const plotStart = (width - plotWidth) / 2;
+    const candleWidth = Math.min(11.6, Math.max(8.6, slotWidth - candleGap));
+    const bars = candles.map((candle, index) => {
+      const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
+      const openY = yFor(candle.open);
+      const closeY = yFor(candle.close);
+      const highY = yFor(candle.high);
+      const lowY = yFor(candle.low);
+      const topY = Math.min(openY, closeY);
+      const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
+      const cls = candle.close > candle.open ? "up" : candle.close < candle.open ? "down" : "flat";
+      const currentClass = index === candles.length - 1 ? " current" : "";
+      return (
+        `<line class="marketMiniSparkWick ${cls}${currentClass}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
+        + `<rect class="marketMiniSparkBody ${cls}${currentClass}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
+      );
+    }).join("");
     return (
-      `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
-      + `<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />`
-      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="120" y2="${baselineY}" />`
-      + `<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />`
-      + `<polygon class="marketMiniSparkArea ${tone}" points="${areaPoints}" />`
-      + `<polyline class="marketMiniSparkLine ${tone}" points="${pts.join(" ")}" />`
-      + markers
+      `<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="138" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />`
+      + bars
       + `</svg>`
     );
   };
@@ -1281,10 +1429,67 @@
     let text = String(label || "").trim();
     if (!text) return state === "live" ? "Live" : "Awaiting refresh";
     text = text
-      .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
-      .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
-      .replace(/last quote\s*/i, "");
+      .replace(/^Closed\s*·\s*last quote\s*/i, "Last quote ")
+      .replace(/^Closed\s*·\s*last snapshot\s*/i, "Last snapshot ");
     return text.trim() || stateLabel;
+  };
+
+  const freshnessTone = (state, label, hasPrice = true) => {
+    const normalizedState = String(state || "").toLowerCase();
+    const normalizedLabel = String(label || "").toLowerCase();
+    if (
+      !hasPrice
+      || normalizedState === "missing"
+      || normalizedLabel.includes("missing")
+      || normalizedLabel.includes("unavailable")
+      || normalizedLabel.includes("no tick")
+      || normalizedLabel.includes("no live data")
+    ) {
+      return "missing";
+    }
+    if (
+      normalizedState === "delayed"
+      || normalizedState === "cached"
+      || normalizedLabel.includes("critical")
+      || normalizedLabel.includes("stale")
+      || normalizedLabel.includes("closed")
+      || normalizedLabel.includes("delayed")
+      || normalizedLabel.includes("cached")
+      || normalizedLabel.includes("wait")
+      || normalizedLabel.includes("old")
+      || normalizedLabel.includes("last quote")
+      || normalizedLabel.includes("last snapshot")
+    ) {
+      return "delayed";
+    }
+    return "live";
+  };
+
+  const freshnessGlyph = (tone) => {
+    if (tone === "live") return "✓";
+    if (tone === "delayed") return "◷";
+    return "!";
+  };
+
+  const setFreshnessIndicator = (node, label, state, hasPrice = true) => {
+    if (!node) return;
+    const cleanLabel = String(label || "Awaiting Tick").trim() || "Awaiting Tick";
+    const tone = freshnessTone(state, cleanLabel, hasPrice);
+    node.classList.remove("is-live", "is-delayed", "is-missing", "is-critical");
+    node.classList.add(`is-${tone}`);
+    node.dataset.freshnessLabel = cleanLabel;
+    node.dataset.freshnessTone = tone;
+    node.title = cleanLabel;
+    node.setAttribute("aria-label", cleanLabel);
+    node.textContent = "";
+    const glyph = document.createElement("span");
+    glyph.className = "marketPulseFreshnessGlyph";
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.textContent = freshnessGlyph(tone);
+    const sr = document.createElement("span");
+    sr.className = "srOnly";
+    sr.textContent = cleanLabel;
+    node.append(glyph, sr);
   };
 
   const updateStateChip = (node, state, labelOverride = "") => {
@@ -1321,10 +1526,68 @@
   };
 
   const updateSparkNode = (node, points, tone) => {
-    if (!node) return;
+    if (!node) return false;
+    const candles = computeCandles(points);
+    if (!candles.length) return false;
+
     node.classList.remove("spark-pos", "spark-neg", "spark-flat");
     node.classList.add(tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat");
-    node.innerHTML = buildSparklineSvg(points, tone);
+
+    const existingSvg = node.querySelector("svg.marketMiniSpark");
+    const prevCandleCount = existingSvg ? existingSvg.querySelectorAll(".marketMiniSparkBody").length : 0;
+
+    // Hybrid (like live tape): full rebuild only for initial or when bar count changes
+    if (!existingSvg || candles.length !== prevCandleCount) {
+      node.innerHTML = buildSparklineSvg(points, tone);
+      return true;
+    }
+
+    // Targeted incremental for live ticks
+    try {
+      const width = 138;
+      const height = 60;
+      const minV = Math.min(...candles.map((c) => c.low));
+      const maxV = Math.max(...candles.map((c) => c.high)) || (minV + 1);
+      const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
+      const plotWidth = width - 10;  // adapted from MP build
+      const plotStart = (width - plotWidth) / 2;
+      const slotWidth = plotWidth / Math.max(candles.length, 1);
+      const candleGap = 1.35;
+      const candleWidth = Math.min(11.6, Math.max(8.6, slotWidth - candleGap));
+      const lastIdx = candles.length - 1;
+      const lastCandle = candles[lastIdx];
+      const lastCenterX = plotStart + (((lastIdx + 0.5) * plotWidth) / Math.max(candles.length, 1));
+      const openY = yFor(lastCandle.open);
+      const closeY = yFor(lastCandle.close);
+      const highY = yFor(lastCandle.high);
+      const lowY = yFor(lastCandle.low);
+      const topY = Math.min(openY, closeY);
+      const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
+      const cls = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
+
+      const lastWick = existingSvg.querySelector(".marketMiniSparkWick.current");
+      if (lastWick) {
+        lastWick.setAttribute("x1", lastCenterX.toFixed(2));
+        lastWick.setAttribute("x2", lastCenterX.toFixed(2));
+        lastWick.setAttribute("y1", highY.toFixed(2));
+        lastWick.setAttribute("y2", lowY.toFixed(2));
+        lastWick.setAttribute("class", `marketMiniSparkWick ${cls} current`);
+      }
+
+      const lastBody = existingSvg.querySelector(".marketMiniSparkBody.current");
+      if (lastBody) {
+        lastBody.setAttribute("x", (lastCenterX - (candleWidth / 2)).toFixed(2));
+        lastBody.setAttribute("y", topY.toFixed(2));
+        lastBody.setAttribute("width", candleWidth.toFixed(2));
+        lastBody.setAttribute("height", bodyHeight.toFixed(2));
+        lastBody.setAttribute("class", `marketMiniSparkBody ${cls} current`);
+      }
+
+      return true;
+    } catch (e) {
+      node.innerHTML = buildSparklineSvg(points, tone);
+      return true;
+    }
   };
 
   const applyGlowState = (nodes, pctChange) => {
@@ -1952,8 +2215,8 @@
         : `Bearish below Local Flip ${formatNumber(input.localFlip, 0)}`;
 
     setText("marketPulseHeroSpot", formatNumber(input.spot, 2));
-    setText("marketPulseHeroBias", biasLine);
-    const tradeabilityLabel = String(derived.tradeability.label || "Unavailable")
+    setText("marketPulseHeroBias", modelPlaybook.bias_summary_label || biasLine);
+    const tradeabilityLabel = String(modelPlaybook.tradeability_display_label || derived.tradeability.label || "Unavailable")
       .replace(/_/g, " ")
       .trim();
     setText("marketPulseHeroTradeability", tradeabilityLabel || "Unavailable");
@@ -2156,13 +2419,16 @@
         );
       }
     }
-    updateTextNode(
+    setFreshnessIndicator(
       card.querySelector('[data-role="freshness"]'),
       dashboardTapeFreshnessLabel(
-        String(quote.freshness_label || "").trim() || (state === "live" ? "Live" : formatEtLabel(asOf)),
+        String(quote.freshness_label || "").trim()
+          || (state === "live" ? "Live" : formatEtLabel(asOf)),
         state,
         asOf
-      )
+      ),
+      state,
+      price !== null
     );
     updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
       live: true,
@@ -2177,11 +2443,17 @@
       }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
+    const quoteRange = String(
+      quote.range_display || quote.day_range_compact || quote.day_range || ""
+    ).trim();
     const hasSeriesPoints = Array.isArray(points) && seriesValueCount(points) >= 4;
     if (hasSeriesPoints) {
       updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
       updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));
     } else {
+      if (quoteRange && quoteRange !== "—" && quoteRange !== "-") {
+        updateTextNode(card.querySelector('[data-role="range-line"]'), quoteRange.replace(/\s+to\s+/i, "-"));
+      }
       const sparkNode = card.querySelector('[data-role="sparkline"]');
       if (sparkNode) {
         sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");
@@ -2228,8 +2500,11 @@
     const sessionHigh = asNum(quote.day_high);
     const sessionLow = asNum(quote.day_low);
 
+    const quoteSpot = asNum(quote.price);
+    const structureSpot = asNum((base.market_structure_snapshot || {}).spot);
+
     return {
-      spot: asNum(quote.price),
+      spot: quoteSpot ?? structureSpot,
       dayOpen,
       sessionHigh,
       sessionLow,
@@ -2268,7 +2543,7 @@
   };
 
   const render = (base) => {
-    const activeTicker = String((base && base.ticker) || "QQQ").toUpperCase();
+    const activeTicker = String((base && base.ticker) || "SPY").toUpperCase();
     const input = adaptInput(base);
     const derived = computeDistanceMetrics(input);
     const executionPlan = buildExecutionPlan(input, derived);
@@ -2322,6 +2597,7 @@
       || structureSnapshot.gamma_regime
       || "REGIME UNAVAILABLE"
     );
+    const gammaDisplayLabel = regimeDisplayLabel(String(structureSnapshot.gamma_regime || "").toLowerCase(), gammaLabel);
     const gammaSub = String(
       structureSnapshot.gamma_regime_reason_label
       || structureSnapshot.gamma_regime_subtitle
@@ -2450,25 +2726,68 @@
     setText("spxPriorityFooterMeta", String((model && model.posture_summary) || `${footerLabel} • ${formatNumber(input.spot, 2)} • ${footerTime}`));
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), quotePoints, sparkTone(playbookQuote.change_pct));
     applyGlowState([shell, spotPanel], playbookQuote.change_pct);
-    setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
-    setText("marketPulseHeaderGammaLabel", gammaLabel);
-    setText("marketPulseHeaderGammaSub", gammaSub);
-    setText("marketPulseHeaderBiasPrimary", biasContext);
-    setText("marketPulseHeaderBiasSecondary", biasShort);
+    const renderedAtLabel = formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso);
+    setText("marketPulseFetchedAt", renderedAtLabel);
+    setText("marketPulseHeaderSnapshot", `${panelMode === "live" ? "Live Session" : footerLabel} ${renderedAtLabel}`);
+    renderHeaderLevels([
+      { label: "Spot", icon: "activity", value: formatNumber(input.spot, 2) },
+      { label: "Main", icon: "orbit", value: formatNumber(input.gammaFlip, 0) },
+      { label: "LF", icon: "compass", value: input.localFlip === null ? (input.localFlipMissingInBand ? LOCAL_FLIP_NONE_LABEL : "—") : formatNumber(input.localFlip, 0) },
+      { label: "CW", icon: "up", value: formatNumber(input.callWall, 0) },
+      { label: "PW", icon: "down", value: formatNumber(input.putWall, 0) },
+    ]);
+    setText("marketPulseHeaderGammaLabel", gammaDisplayLabel);
+    const decisionLabel = modelPlaybook.decision_label || triggerState.label || "Not actionable yet";
+    const gammaMeta = gammaStateMeta(derived.dealerRegime);
+    const decisionMeta = decisionStateMeta(decisionLabel);
+    setText("marketPulseHeaderDecision", decisionLabel);
+    const headerBiasPrimary = modelPlaybook.bias_summary_label || executionPlan.bias || biasContext;
+    setText("marketPulseHeaderBiasPrimary", headerBiasPrimary);
+    setText(
+      "marketPulseHeaderBiasSecondary",
+      compactSecondary(headerBiasPrimary, [
+        modelPlaybook.bias_label,
+        structureSnapshot.current_read,
+        structureSnapshot.plan_note,
+        biasContext,
+        "Wait for cleaner structure",
+      ])
+    );
+    setText("marketPulseHeaderTradeability", modelPlaybook.tradeability_display_label || derived.tradeability.label || "Trigger required");
+    setText("marketPulseHeaderDecisionStatePill", decisionMeta.pillLabel);
+    renderSimpleBadges("marketPulseHeaderBadgeRow", gammaMeta.badges);
 
     const gammaCard = document.getElementById("marketPulseHeaderGammaCard");
     if (gammaCard) {
-      gammaCard.classList.remove("is-positive", "is-negative", "is-neutral");
+      gammaCard.classList.remove(
+        "is-positive",
+        "is-negative",
+        "is-neutral",
+        "gamma-card--positive",
+        "gamma-card--negative",
+        "gamma-card--neutral",
+        "gamma-card--unconfirmed"
+      );
       gammaCard.classList.add(
         derived.dealerRegime === "Positive Gamma / Mean Reverting"
           ? "is-positive"
           : derived.dealerRegime === "Negative Gamma / Momentum Amplifying"
             ? "is-negative"
-            : "is-neutral"
+            : "is-neutral",
+        gammaMeta.cardClass
       );
+      const gammaDot = gammaCard.querySelector(".marketPulseGammaStateDot");
+      if (gammaDot) gammaDot.textContent = "Ⲅ";
     }
     const biasCard = document.getElementById("marketPulseHeaderBiasCard");
     if (biasCard) {
+      biasCard.dataset.gammaState = String(
+        derived.dealerRegime === "Positive Gamma / Mean Reverting"
+          ? "positive"
+          : derived.dealerRegime === "Negative Gamma / Momentum Amplifying"
+            ? "negative"
+            : "neutral"
+      );
       biasCard.classList.remove("is-positive", "is-negative", "is-neutral");
       biasCard.classList.add(
         biasState === "above_local"
@@ -2478,10 +2797,19 @@
             : "is-neutral"
       );
     }
-    const aboveNode = document.getElementById("marketPulseHeaderBiasAbove");
-    const belowNode = document.getElementById("marketPulseHeaderBiasBelow");
-    if (aboveNode) aboveNode.classList.toggle("is-active", biasState === "above_local");
-    if (belowNode) belowNode.classList.toggle("is-active", biasState === "below_local");
+    const biasRow = document.getElementById("marketPulseHeaderBiasRow");
+    if (biasRow) {
+      const biasHeadline = String(modelPlaybook.bias_summary_label || executionPlan.bias || "").toUpperCase();
+      biasRow.classList.toggle(
+        "action-row--bias-risk",
+        biasState === "below_local" || biasHeadline.includes("RISK")
+      );
+    }
+    const decisionPill = document.getElementById("marketPulseHeaderDecisionStatePill");
+    if (decisionPill) {
+      decisionPill.classList.remove("state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute");
+      decisionPill.classList.add(decisionMeta.pillClass);
+    }
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
@@ -2489,8 +2817,6 @@
 
     setText("marketPulseSetupHeadline", summarizeStateLine(input, derived, panelMode));
     setText("marketPulseSetupSubline", "");
-    setText("marketPulseSetupLocation", executionPlan.location);
-    setText("marketPulseSetupLocationLine", summarizeStateSubline(derived, panelMode));
     setText("marketPulseSetupBias", executionPlan.bias);
     setText("marketPulseSetupBiasLine", summarizeBiasSubline(executionPlan, derived));
     setText("marketPulseSetupTrigger", executionPlan.trigger);
@@ -2610,7 +2936,7 @@
     closeStream();
     if (!pageVisible) return;
     const streamUrl = new URL("/stream/market", window.location.origin);
-    streamUrl.searchParams.set("ticker", String((state.base && state.base.ticker) || "QQQ").toUpperCase());
+    streamUrl.searchParams.set("ticker", String((state.base && state.base.ticker) || "SPY").toUpperCase());
     stream = new EventSource(streamUrl.toString());
     stream.onopen = () => {
       dispatchStreamStatus("Live stream connected", "Listening for fresh ticks…");
@@ -2655,4 +2981,6 @@
     dispatchStreamStatus("Live stream connecting", "Restoring live feed…");
     connectStream();
   });
+  window.addEventListener("pagehide", closeStream);
+  window.addEventListener("beforeunload", closeStream);
 })();

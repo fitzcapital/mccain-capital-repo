@@ -1,353 +1,153 @@
-<div class="budget-command-page" id="budgetCommandApp" data-today="{{ today }}">
-  <section class="card budgetHero">
+{% from "partials/app_theme_macros.html" import app_pill %}
+<div class="budget-command-page budgetLedgerApp" id="budgetCommandApp" data-today="{{ today }}">
+  <section class="card budgetLedgerHero">
     <div>
-      <div class="pill">Budget Command</div>
+      {{ app_pill('budget', 'Budget Command') }}
       <h2 class="pageTitle">Budget Command Center</h2>
-      <p class="summaryLead">Tell your money where to go before it disappears.</p>
-      <div class="budgetHeroMeta">
-        <span class="trendChip" id="budgetCurrentMonth">{{ current_month }}</span>
-        <span class="trendChip">Cashflow accountability</span>
-        <span class="trendChip">Leak control</span>
-      </div>
+      <p class="summaryLead">Month-by-month financial log for Current, Bank of America, and Trading.</p>
     </div>
-    <div class="budgetHeroPanel" id="budgetScoreCard" data-score-state="danger">
-      <div class="budgetScoreRing" id="budgetScoreRing" style="--score:0%">
-        <span id="budgetHealthScore">0</span>
-      </div>
-      <div class="budgetHeroStats">
-        <div><span>Take-home</span><strong id="heroTakeHome">$0</strong></div>
-        <div><span>Cash left</span><strong id="heroCashLeft">$0</strong></div>
-        <div><span>Income gap</span><strong id="heroIncomeGap">$0</strong></div>
-      </div>
-      <p id="budgetScoreLabel">Cashflow state loading.</p>
+    <div class="budgetMonthControls" aria-label="Budget month controls">
+      <label><span>Current Month</span><select id="budgetMonthSelect"></select></label>
+      <button class="btn secondary" type="button" data-budget-action="new-month">New Month</button>
+      <button class="btn secondary" type="button" data-budget-action="duplicate-month">Duplicate Previous Month</button>
+      <button class="btn primary" type="button" data-budget-action="close-month">Close Month</button>
+      <button class="btn secondary" type="button" data-budget-action="toggle-archive">View Archive</button>
     </div>
   </section>
 
-  <section class="budgetMiniSummary" aria-label="Budget mini summary">
-    <div><span>Income</span><strong id="miniIncome">$0.00</strong></div>
-    <div><span>Outflow</span><strong id="miniOutflow">$0.00</strong></div>
-    <div><span>Cash Left</span><strong id="miniCashLeft">$0.00</strong></div>
-    <div><span>Health</span><strong id="miniHealth">Loading</strong></div>
+  <section class="budgetSummaryCards" id="budgetSummaryCards" aria-label="Top budget summary"></section>
+
+  <section class="budgetOverviewColumns" aria-label="Current BOA Trading overview">
+    <article class="card budgetOverviewColumn" id="budgetCurrentOverview"></article>
+    <article class="card budgetOverviewColumn" id="budgetBoaOverview"></article>
+    <article class="card budgetOverviewColumn" id="budgetTradingOverview"></article>
   </section>
 
-  <div class="budgetZoneTitle">
-    <span>A</span>
-    <h3>Hero + Monthly Map</h3>
-  </div>
+  <section class="card budgetAlertsPanel" id="budgetAlertsPanel" aria-label="Budget alerts"></section>
 
-  <section class="budgetOverviewGrid" aria-label="Monthly cashflow overview">
-    <div class="card budgetStat metric-card"><span class="metric-label">Monthly Income</span><strong class="metric-value" id="statMonthlyIncome">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Planned Outflow</span><strong class="metric-value" id="statPlannedOutflow">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Fixed Bills</span><strong class="metric-value" id="statBills">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Planned Variables</span><strong class="metric-value" id="statPlannedVariables">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Actual Charges</span><strong class="metric-value" id="statActualCharges">$0.00</strong></div>
-    <div class="card budgetStat budgetStatCash metric-card"><span class="metric-label">Cash Left</span><strong class="metric-value" id="statCashLeft">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Bills Due Soon</span><strong class="metric-value" id="statBillsDueSoon">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Leak Spending</span><strong class="metric-value" id="statLeakSpending">$0.00</strong></div>
-    <div class="card budgetStat metric-card"><span class="metric-label">Goal Gap</span><strong class="metric-value" id="statGoalGap">$0.00</strong></div>
+  <section class="card budgetDebtPolicyPanel" aria-label="Debt elimination policy">
+    <div class="budgetSectionHead">
+      <div>{{ app_pill('risk', 'Debt Elimination') }}<h3>Consumer cards are locked</h3></div>
+      <span class="budgetDebtPolicyStatus">Paydown only</span>
+    </div>
+    <div class="budgetDebtPolicyGrid">
+      <article class="budgetDebtPolicyCard budgetDebtPolicyPrimary">
+        <span>Chase Credit Card — Locked / Paydown Only</span>
+        <strong>$376/month</strong>
+        <p>Paycheck 1: $188 · Paycheck 2: $188</p>
+        <p>No spending allowed. Mission: reduce balance and buy back future cash flow.</p>
+      </article>
+      <article class="budgetDebtPolicyCard">
+        <span>Debt policy</span>
+        <strong>No consumer-card spending</strong>
+        <p>Chase, AMEX, Discover, Capital One, Credit One, Indigo, and every consumer card are liabilities under management, not operating tools.</p>
+      </article>
+      <article class="budgetDebtPolicyCard budgetDebtPolicyRule">
+        <span>Operating rule</span>
+        <strong>Consumer credit is not purchasing power.</strong>
+        <p>Treasury is purchasing power.</p>
+        <p class="budgetDebtPolicyExact">Consumer credit is not purchasing power. Treasury is purchasing power.</p>
+      </article>
+    </div>
   </section>
 
-  <section class="budgetDashboardGrid" aria-label="Budget dashboard">
-    <div class="budgetDashboardMain">
-  <details class="card budgetSetupPanel budgetSetupFold" aria-label="Monthly budget setup">
-    <summary class="budgetSetupSummary">
-      <div>
-        <div class="pill">Monthly Budget Setup</div>
-        <h3>Open only when you need to map or import the full month</h3>
-      </div>
-      <span>Manual Entry / Bulk Import / Current Budget</span>
+  <details class="card budgetMonthSetupPanel">
+    <summary class="budgetSectionSummary">
+      <div>{{ app_pill('budget', 'Monthly Setup') }}<h3>Monthly inputs</h3></div>
+      <span>Edit balances, paychecks, Robinhood, and notes</span>
     </summary>
-
-    <div class="toolbar budgetSetupToolbar">
-      <div>
-        <div class="pill">Budget Setup</div>
-        <h3>Map the month before the money moves</h3>
-      </div>
-      <button class="btn secondary" type="button" id="budgetSeedButton">Load Fitz Current Budget</button>
-    </div>
-
-    <div class="budgetSetupTabs" role="tablist" aria-label="Monthly budget setup tabs">
-      <button class="btn primary" type="button" data-budget-setup-tab="manual">Manual Entry</button>
-      <button class="btn" type="button" data-budget-setup-tab="import">Bulk Import</button>
-      <button class="btn" type="button" data-budget-setup-tab="current">Current Budget</button>
-    </div>
-
-    <div class="budgetSetupPane is-active" data-budget-setup-pane="manual">
-      <form class="budgetSetupGrid" id="budgetMonthlySetupForm">
-        <label><span>Monthly income</span><input name="monthly_take_home" type="number" min="0" step="0.01"></label>
-        <label><span>Pay frequency</span><select name="pay_frequency"><option>biweekly</option><option>weekly</option><option>semimonthly</option><option>monthly</option></select></label>
-        <label><span>Planned amount</span><input name="paycheck_amount" type="number" min="0" step="0.01"></label>
-        <button class="btn primary" type="submit">Save Monthly Budget</button>
-        <label class="budgetWide budgetOptionalDates"><span>Optional paycheck dates</span><input name="paycheck_dates" placeholder="2026-05-01, 2026-05-15"></label>
-      </form>
-      <details class="budgetInnerFold">
-        <summary>Add Budget Line</summary>
-        <form class="budgetSetupGrid" id="budgetLineItemForm">
-          <label><span>Name</span><input name="name" placeholder="Rent 1st payment"></label>
-          <label><span>Amount</span><input name="amount" type="number" min="0" step="0.01"></label>
-          <label><span>Due day</span><input name="due_day" type="number" min="1" max="31" step="1" placeholder="Flexible"></label>
-          <label><span>Category</span><select name="category"><option>housing</option><option>debt</option><option>utilities</option><option>insurance</option><option>auto</option><option>subscriptions</option><option>food</option><option>gas</option><option>savings</option><option>other</option></select></label>
-          <label><span>Type</span><select name="type"><option>bill</option><option>debt</option><option>subscription</option><option>food</option><option>gas</option><option>savings</option><option>other</option></select></label>
-          <label><span>Paycheck allocation</span><select name="paycheck_allocation"><option>any</option><option>first_check</option><option>second_check</option><option>split</option></select></label>
-          <label class="budgetCheck"><input name="essential" type="checkbox" checked><span>Essential</span></label>
-          <label class="budgetCheck"><input name="autopay" type="checkbox"><span>Autopay</span></label>
-          <label class="budgetWide"><span>Notes</span><input name="notes" placeholder="500/500 set aside per pay period"></label>
-          <button class="btn secondary" type="submit">Add Line Item</button>
-        </form>
-        <div class="budgetSetupItems" id="budgetSetupLineItems"></div>
-      </details>
-    </div>
-
-    <div class="budgetSetupPane budgetImportBox" data-budget-setup-pane="import" hidden>
-      <label><span>Paste Bills / Budget Lines</span><textarea id="budgetImportText" rows="7" placeholder="Rent 1st payment - 1320.00 - 1st&#10;Food - 1200.00 - 500/500 set aside per pay period"></textarea></label>
-      <div class="budgetImportActions">
-        <button class="btn secondary" type="button" id="budgetPreviewImportButton">Preview Import</button>
-        <button class="btn primary" type="button" id="budgetSaveImportButton">Save Imported Budget</button>
-      </div>
-      <div class="budgetImportPreview" id="budgetImportPreview"></div>
-    </div>
-
-    <div class="budgetSetupPane" data-budget-setup-pane="current" hidden>
-      <div class="budgetCurrentList" id="budgetCurrentItems"></div>
-    </div>
+    <div class="budgetFormGrid" id="budgetMonthSetup"></div>
   </details>
 
-  <section class="card budgetQuickPanel">
-    <div class="toolbar">
-      <div>
-        <div class="pill">Quick Entry</div>
-        <h3>Log one clean transaction</h3>
+  <section class="card budgetSectionPanel">
+    <div class="budgetSectionHead">
+      <div>{{ app_pill('calendar', 'Paycheck Flow') }}<h3>Paycheck allocation</h3></div>
+      <div class="budgetTabs" role="tablist" aria-label="Paycheck tabs">
+        <button class="btn primary" type="button" data-paycheck-tab="paycheck1">Paycheck 1</button>
+        <button class="btn" type="button" data-paycheck-tab="paycheck2">Paycheck 2</button>
+        <button class="btn" type="button" data-paycheck-tab="month">Full Month</button>
       </div>
-      <button class="btn" type="button" id="budgetProfileToggle">Profile</button>
     </div>
+    <div id="budgetPaycheckView"></div>
+  </section>
 
-    <form class="budgetProfileForm" id="budgetProfileForm" hidden>
-      <label><span>Monthly take-home</span><input name="monthly_take_home" type="number" min="0" step="0.01"></label>
-      <label><span>Hourly after tax</span><input name="hourly_after_tax" type="number" min="0" step="0.01"></label>
-      <label><span>Workday income</span><input name="workday_income" type="number" min="0" step="0.01"></label>
-      <label><span>Target extra monthly income</span><input name="target_extra_monthly_income" type="number" min="0" step="0.01"></label>
-      <button class="btn primary" type="submit">Save Profile</button>
-    </form>
-
-    <div class="budgetEntryTabs" role="tablist" aria-label="Budget entry type">
-      <button class="btn primary" type="button" data-budget-panel="charge">Add Charge</button>
-      <button class="btn" type="button" data-budget-panel="bill">Add Bill</button>
-      <button class="btn" type="button" data-budget-panel="income">Add Income</button>
-      <button class="btn" type="button" data-budget-panel="goal">Add Goal</button>
-      <button class="btn" type="button" data-budget-panel="debt">Add Debt</button>
+  <section class="card budgetSectionPanel">
+    <div class="budgetSectionHead">
+      <div>{{ app_pill('calendar', 'Bills Manager') }}<h3>Bills table</h3></div>
+      <button class="btn secondary" type="button" data-budget-action="add-bill">Add Bill</button>
     </div>
-
-    <div class="budgetPanelStack">
-      <form class="budgetEntryForm is-active" id="budgetChargeForm" data-budget-form="charge">
-        <input type="hidden" name="id">
-        <label><span>Date</span><input name="date" type="date"></label>
-        <label><span>Name</span><input name="name" required placeholder="Charge name"></label>
-        <label><span>Category</span><select name="category"></select></label>
-        <label><span>Amount</span><input name="amount" type="number" min="0" step="0.01" required></label>
-        <label><span>Type</span><select name="need_or_want"><option>need</option><option>want</option><option>investment</option><option>leak</option></select></label>
-        <details class="budgetQuickNote">
-          <summary>Add note</summary>
-          <label><span>Method</span><select name="payment_method"><option>debit</option><option>credit</option><option>cash</option><option>bank</option><option>other</option></select></label>
-          <label><span>Notes</span><input name="notes" placeholder="Optional note"></label>
-        </details>
-        <button class="btn primary" type="submit">Save Charge</button>
-      </form>
-
-      <form class="budgetEntryForm" id="budgetBillForm" data-budget-form="bill" hidden>
-        <input type="hidden" name="id">
-        <label><span>Name</span><input name="name" required placeholder="Rent"></label>
-        <label><span>Category</span><input name="category" placeholder="housing"></label>
-        <label><span>Amount</span><input name="amount" type="number" min="0" step="0.01" required></label>
-        <label><span>Due day</span><input name="due_day" type="number" min="1" max="31" step="1"></label>
-        <label class="budgetCheck"><input name="paid" type="checkbox"><span>Paid</span></label>
-        <label class="budgetCheck"><input name="autopay" type="checkbox"><span>Autopay</span></label>
-        <label class="budgetCheck"><input name="essential" type="checkbox" checked><span>Essential</span></label>
-        <label class="budgetWide"><span>Notes</span><input name="notes" placeholder="Optional note"></label>
-        <button class="btn primary" type="submit">Save Bill</button>
-      </form>
-
-      <form class="budgetEntryForm" id="budgetIncomeForm" data-budget-form="income" hidden>
-        <input type="hidden" name="id">
-        <label><span>Name</span><input name="name" required placeholder="W-2 Paycheck"></label>
-        <label><span>Type</span><select name="type"><option>job</option><option>trading</option><option>business</option><option>side_hustle</option><option>other</option></select></label>
-        <label><span>Amount</span><input name="amount" type="number" min="0" step="0.01" required></label>
-        <label><span>Frequency</span><select name="frequency"><option>monthly</option><option>weekly</option><option>biweekly</option><option>one_time</option></select></label>
-        <label><span>Pay day</span><input name="pay_day" placeholder="15th / Friday / date"></label>
-        <label class="budgetCheck"><input name="active" type="checkbox" checked><span>Active</span></label>
-        <label class="budgetWide"><span>Notes</span><input name="notes" placeholder="Optional note"></label>
-        <button class="btn primary" type="submit">Save Income</button>
-      </form>
-
-      <form class="budgetEntryForm" id="budgetGoalForm" data-budget-form="goal" hidden>
-        <input type="hidden" name="id">
-        <label><span>Name</span><input name="name" required placeholder="Emergency Fund"></label>
-        <label><span>Target</span><input name="target_amount" type="number" min="0" step="0.01" required></label>
-        <label><span>Current</span><input name="current_amount" type="number" min="0" step="0.01"></label>
-        <label><span>Target date</span><input name="target_date" type="date"></label>
-        <label><span>Monthly contribution</span><input name="monthly_contribution" type="number" min="0" step="0.01"></label>
-        <label><span>Priority</span><select name="priority"><option>medium</option><option>high</option><option>low</option></select></label>
-        <label class="budgetWide"><span>Notes</span><input name="notes" placeholder="Optional note"></label>
-        <button class="btn primary" type="submit">Save Goal</button>
-      </form>
-
-      <form class="budgetEntryForm" id="budgetDebtForm" data-budget-form="debt" hidden>
-        <input type="hidden" name="id">
-        <label><span>Name</span><input name="name" required placeholder="Credit Card"></label>
-        <label><span>Balance</span><input name="balance" type="number" min="0" step="0.01" required></label>
-        <label><span>Minimum payment</span><input name="minimum_payment" type="number" min="0" step="0.01"></label>
-        <label><span>Interest rate %</span><input name="interest_rate" type="number" min="0" max="100" step="0.01"></label>
-        <label><span>Due day</span><input name="due_day" type="number" min="1" max="31" step="1"></label>
-        <label><span>Priority</span><select name="priority"><option>high</option><option>medium</option><option>low</option></select></label>
-        <label class="budgetWide"><span>Notes</span><input name="notes" placeholder="Optional note"></label>
-        <button class="btn primary" type="submit">Save Debt</button>
-      </form>
+    <div class="budgetTableScroll">
+      <table class="budgetLedgerTable" id="budgetBillsTable"></table>
     </div>
   </section>
 
-  <section class="budgetTwoColumn budgetBillsChargesZone">
-    <div class="card budgetListPanel">
-      <div class="toolbar">
-        <div><div class="pill">Bills Tracker</div><h3>Next 14 Days: <span id="budgetUpcomingTotal">$0</span> due</h3></div>
-        <div class="budgetFilters" id="budgetBillFilters">
-          <button class="btn primary" data-filter="all" type="button">All</button>
-          <button class="btn" data-filter="unpaid" type="button">Unpaid</button>
-          <button class="btn" data-filter="paid" type="button">Paid</button>
-          <button class="btn" data-filter="upcoming" type="button">Upcoming</button>
-          <button class="btn" data-filter="essential" type="button">Essential</button>
-          <button class="btn secondary" id="budgetToggleBillsButton" type="button">View All Bills</button>
-        </div>
+  <section class="card budgetSectionPanel">
+    <div class="budgetSectionHead">
+      <div>{{ app_pill('note', 'Subscriptions') }}<h3>Subscription manager</h3></div>
+      <div class="budgetTabs" role="tablist" aria-label="Subscription tabs">
+        <button class="btn primary" type="button" data-sub-tab="Personal">Personal</button>
+        <button class="btn" type="button" data-sub-tab="Streaming">Streaming</button>
+        <button class="btn" type="button" data-sub-tab="Trading">Trading</button>
+        <button class="btn secondary" type="button" data-budget-action="add-subscription">Add</button>
       </div>
-      <div class="budgetTable" id="budgetBillsTable"></div>
     </div>
-
-    <div class="card budgetListPanel">
-      <div class="toolbar">
-        <div><div class="pill">Spending Log</div><h3>Charges and leaks</h3></div>
-      </div>
-      <div class="budgetCategoryChips" id="budgetCategoryChips"></div>
-      <div class="budgetTable" id="budgetChargesTable"></div>
+    <div class="budgetTableScroll">
+      <table class="budgetLedgerTable" id="budgetSubscriptionsTable"></table>
     </div>
   </section>
 
-  <section class="budgetAllocationSection">
-    <div class="card budgetListPanel">
-      <div class="toolbar"><div><div class="pill">Paycheck Allocation Map</div><h3>Bi-weekly cash plan</h3></div></div>
-      <div class="budgetPaycheckGrid">
-        <div class="budgetAllocationCard" id="budgetPaycheckOne"></div>
-        <div class="budgetAllocationCard" id="budgetPaycheckTwo"></div>
-        <div class="budgetAllocationCard" id="budgetFlexibleItems"></div>
-      </div>
-    </div>
-    <div class="card budgetListPanel budgetFlawPanel">
-      <div class="toolbar"><div><div class="pill">Flaw Analysis</div><h3>Where money can leak</h3></div></div>
-      <ul class="budgetInsightList" id="budgetLeakList"></ul>
-      <div class="budgetGoalAllocation" id="budgetGoalAllocation"></div>
-    </div>
-  </section>
-
-  <section class="budgetCompactRow" aria-label="Goals debt and income">
-    <details class="card budgetListPanel budgetCompactFold">
-      <summary><div><div class="pill">Goals</div><h3>Fund the targets</h3></div><span>Open</span></summary>
-      <div class="budgetCardGrid" id="budgetGoalsGrid"></div>
-    </details>
-    <details class="card budgetListPanel budgetCompactFold">
-      <summary><div><div class="pill">Debt</div><h3>Payoff focus</h3></div><span>Open</span></summary>
-      <div class="budgetCardGrid" id="budgetDebtsGrid"></div>
-    </details>
-    <details class="card budgetIncomePlan budgetCompactFold">
-      <summary><div><div class="pill">Income Expansion Plan</div><h3>Close the gap</h3></div><span>Open</span></summary>
-      <div class="budgetIncomeGrid">
-        <div><span>Base Income</span><strong id="incomeBase">$0</strong></div>
-        <div><span>Trading Goal</span><strong id="incomeTrading">$0</strong></div>
-        <div><span>Business Goal</span><strong id="incomeBusiness">$0</strong></div>
-        <div><span>Total Projected Income</span><strong id="incomeProjected">$0</strong></div>
-        <div><span>Extra needed / week</span><strong id="incomeWeeklyGap">$0</strong></div>
-        <div><span>Extra needed / workday</span><strong id="incomeWorkdayGap">$0</strong></div>
-      </div>
-      <div class="budgetProgress"><span id="incomeProgressFill"></span></div>
-    </details>
-  </section>
-    </div>
-
-    <aside class="budgetIntelligenceSidebar" aria-label="Money intelligence">
-      <section class="card budgetSidebarCard">
-        <div class="toolbar">
-          <div><div class="pill">Money Intelligence</div><h3>Financial command readout</h3></div>
-        </div>
-        <div class="budgetCircleGrid">
-          <div class="budgetCircleCard" data-ring-state="stable">
-            <div class="budgetCircleRing" id="ringCashflow" style="--value:0;--ring-color:#68e7ff"><strong>0</strong></div>
-            <span>Cashflow Health</span>
-          </div>
-          <div class="budgetCircleCard" data-ring-state="stable">
-            <div class="budgetCircleRing" id="ringBillsPaid" style="--value:0;--ring-color:#35d18a"><strong>0/0</strong></div>
-            <span>Bills Paid</span>
-          </div>
-          <div class="budgetCircleCard" data-ring-state="tight">
-            <div class="budgetCircleRing" id="ringBudgetUsed" style="--value:0;--ring-color:#ffc857"><strong>0%</strong></div>
-            <span>Budget Used</span>
-          </div>
-          <div class="budgetCircleCard" data-ring-state="stable">
-            <div class="budgetCircleRing" id="ringSavings" style="--value:0;--ring-color:#68e7ff"><strong>0%</strong></div>
-            <span>Savings Goals</span>
-          </div>
-          <div class="budgetCircleCard" data-ring-state="danger">
-            <div class="budgetCircleRing" id="ringLeakRisk" style="--value:0;--ring-color:#ff7895"><strong>Low</strong></div>
-            <span>Leak Risk</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="card budgetSidebarCard">
-        <div class="pill">Monthly Flow Map</div>
-        <div class="budgetFlowMap" id="budgetFlowMap"></div>
-      </section>
-
-      <section class="card budgetSidebarCard">
-        <div class="pill">Budget Ratios</div>
-        <div class="budgetRatioList" id="budgetRatioList"></div>
-      </section>
-
-      <section class="card budgetSidebarCard">
-        <div class="pill">Signal Cards</div>
-        <div class="budgetSignalGrid" id="budgetSignalGrid"></div>
-      </section>
-
-      <section class="card budgetSidebarCard">
-        <div class="pill">Analytics Highlights</div>
-        <div class="budgetMiniChartGrid">
-          <div class="budgetMiniChart"><h4>Spending by Category</h4><div id="budgetCategoryHighlight"></div></div>
-          <div class="budgetMiniChart"><h4>Paycheck Load</h4><div id="budgetPaycheckHighlight"></div></div>
-          <div class="budgetMiniChart"><h4>Cash Left Allocation</h4><div id="budgetAllocationHighlight"></div></div>
-        </div>
-      </section>
-    </aside>
-  </section>
-
-  <details class="card budgetAnalytics budgetAnalyticsFold">
-    <summary class="budgetSetupSummary">
-      <div><div class="pill">Full Analytics Details</div><h3>Open for charts, warnings, recommendations, and closeout</h3></div>
-      <span>Show Full Analytics</span>
+  <details class="card budgetSectionPanel">
+    <summary class="budgetSectionSummary">
+      <div>{{ app_pill('trades', 'Trading Business') }}<h3>Trading cash flow</h3></div>
+      <span>Trading pays trading</span>
     </summary>
-    <div class="toolbar budgetSetupToolbar">
-      <div><div class="pill">Analytics</div><h3>Where the money is going</h3></div>
-      <button class="btn secondary" type="button" id="budgetCloseMonthButton">Close Month Review</button>
+    <div id="budgetTradingBusiness"></div>
+  </details>
+
+  <details class="card budgetSectionPanel">
+    <summary class="budgetSectionSummary">
+      <div>{{ app_pill('analytics', 'Cash Sweep') }}<h3>Move excess to BOA</h3></div>
+      <span>Current balance - upcoming bills - buffer</span>
+    </summary>
+    <div id="budgetSweepCalculator"></div>
+  </details>
+
+  <details class="card budgetSectionPanel">
+    <summary class="budgetSectionSummary">
+      <div>{{ app_pill('analytics', 'Q3 Projection') }}<h3>July, August, September</h3></div>
+      <span>Collapsed by default</span>
+    </summary>
+    <div id="budgetQ3Projection"></div>
+  </details>
+
+  <section class="card budgetSectionPanel">
+    <div class="budgetSectionHead">
+      <div>{{ app_pill('review', 'Month Closeout') }}<h3>Projected vs actual</h3></div>
+      <span id="budgetCloseStatus"></span>
     </div>
-    <div class="budgetWarningGrid">
-      <div><h4>Warnings</h4><ul id="budgetWarnings"></ul></div>
-      <div><h4>Recommendations</h4><ul id="budgetRecommendations"></ul></div>
+    <div id="budgetCloseout"></div>
+  </section>
+
+  <section class="card budgetSectionPanel budgetArchivePanel" id="budgetArchivePanel" hidden>
+    <div class="budgetSectionHead">
+      <div>{{ app_pill('note', 'Archive') }}<h3>Closed month archive</h3></div>
+      <span>Projected vs actual history</span>
     </div>
-    <div class="budgetChartGrid">
-      <div class="budgetChartPanel"><h4>Spending by Category</h4><div class="budgetBars" id="budgetCategoryChart"></div></div>
-      <div class="budgetChartPanel"><h4>Fixed / Variable / Debt / Flex</h4><div class="budgetBars" id="budgetMixHighlight"></div></div>
-      <div class="budgetChartPanel"><h4>Bills Timeline</h4><div class="budgetBars" id="budgetTimelineHighlight"></div></div>
-      <div class="budgetChartPanel"><h4>Areas To Improve</h4><div class="budgetImproveList" id="budgetImproveList"></div></div>
-      <div class="budgetChartPanel"><h4>Need vs Want vs Leak</h4><div class="budgetBars" id="budgetNeedChart"></div></div>
-      <div class="budgetChartPanel"><h4>Cash Left Trend</h4><div class="budgetLineChart" id="budgetCashflowChart"></div></div>
-      <div class="budgetChartPanel"><h4>Bills Due Calendar</h4><div class="budgetDueGrid" id="budgetDueChart"></div></div>
-      <div class="budgetChartPanel"><h4>Goal Progress</h4><div class="budgetBars" id="budgetGoalChart"></div></div>
-      <div class="budgetChartPanel"><h4>Debt Summary</h4><div class="budgetDebtSummary" id="budgetDebtSummary"></div></div>
+    <div class="budgetTableScroll">
+      <table class="budgetLedgerTable" id="budgetArchiveTable"></table>
     </div>
+  </section>
+
+  <details class="card budgetSectionPanel">
+    <summary class="budgetSectionSummary">
+      <div>{{ app_pill('note', 'Data') }}<h3>Import / export monthly ledger</h3></div>
+      <span>JSON backup</span>
+    </summary>
+    <div class="budgetDataActions">
+      <button class="btn secondary" type="button" data-budget-action="export-json">Export JSON</button>
+      <label class="btn secondary budgetImportButton">Import JSON<input id="budgetImportFile" type="file" accept="application/json" hidden></label>
+    </div>
+    <textarea id="budgetJsonBox" rows="12" spellcheck="false"></textarea>
   </details>
 
   <div class="budgetToast" id="budgetToast" hidden>Budget updated.</div>

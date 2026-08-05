@@ -12,7 +12,7 @@ import urllib.request
 from zoneinfo import ZoneInfo
 from typing import Any, Mapping
 
-from flask import current_app, render_template, render_template_string, session
+from flask import current_app, render_template, session
 
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
@@ -320,9 +320,7 @@ def _form_bool(form: Mapping[str, Any], key: str, default: bool = False) -> bool
         values = []
     if not values:
         return default
-    return any(
-        str(value or "").strip().lower() in {"1", "true", "on", "yes"} for value in values
-    )
+    return any(str(value or "").strip().lower() in {"1", "true", "on", "yes"} for value in values)
 
 
 def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
@@ -704,19 +702,20 @@ def _macro_notice_detail(
 
 def _global_top_notice() -> dict | None:
     now_et = datetime.now(TZ)
+    horizon = now_et + timedelta(hours=24)
     payload: list[dict] = []
     weekly_payload = get_forex_factory_feed()
-    next_week_payload = get_forex_factory_next_week_feed()
     if isinstance(weekly_payload, list):
         payload.extend(weekly_payload)
-    if isinstance(next_week_payload, list):
-        payload.extend(next_week_payload)
+    if horizon.isocalendar()[:2] != now_et.isocalendar()[:2]:
+        next_week_payload = get_forex_factory_next_week_feed()
+        if isinstance(next_week_payload, list):
+            payload.extend(next_week_payload)
 
     if not payload:
         return None
 
     cutoff = now_et - timedelta(minutes=1)
-    horizon = now_et + timedelta(hours=24)
     events: list[dict] = []
     for row in payload:
         if not isinstance(row, dict):
@@ -964,16 +963,4 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
 
 
 def simple_msg(msg: str) -> str:
-    return render_template_string(
-        """
-        <div class=\"card\"><div class=\"toolbar\">
-          <div class=\"pill\">⚠️</div>
-          <div style=\"margin-top:10px\">{{ msg }}</div>
-          <div class=\"hr\"></div>
-          <div class=\"rightActions\">
-            <a class=\"btn primary\" href=\"/trades\">Back</a>
-          </div>
-        </div></div>
-        """,
-        msg=msg,
-    )
+    return render_template("shared/simple_message.html", msg=msg)

@@ -246,7 +246,9 @@ def _render_life_journal_page(edit_entry: Optional[Dict[str, Any]] = None):
     latest_entry = entries[0] if entries else {}
     composer_values = _life_form_values(edit_entry, default_date=(d or today_iso()))
     form_action = (
-        url_for("edit_life_entry", entry_id=int(edit_entry["id"])) if edit_entry else url_for("life_journal_home")
+        url_for("edit_life_entry", entry_id=int(edit_entry["id"]))
+        if edit_entry
+        else url_for("life_journal_home")
     )
     content = render_template(
         "journal/life.html",
@@ -314,9 +316,7 @@ def _save_life_entry(
     return redirect(url_for("life_journal_home", d=entry_date))
 
 
-def _life_form_values(
-    edit_entry: Optional[Dict[str, Any]], *, default_date: str
-) -> Dict[str, Any]:
+def _life_form_values(edit_entry: Optional[Dict[str, Any]], *, default_date: str) -> Dict[str, Any]:
     if not edit_entry:
         return {
             "entry_date": default_date,
@@ -678,8 +678,13 @@ def _life_summary_payload(text: Any, mood: Any = "") -> Dict[str, str]:
     if not raw:
         return {"summary": "", "what_happened": "", "how_i_felt": "", "next_step": ""}
     note_view = _render_note_sections(str(text or "").strip())
-    sections = {str(item.get("title") or "").strip().lower(): str(item.get("body") or "").strip() for item in note_view.get("sections") or []}
-    sentences = [part.strip() for part in raw.replace("!", ".").replace("?", ".").split(".") if part.strip()]
+    sections = {
+        str(item.get("title") or "").strip().lower(): str(item.get("body") or "").strip()
+        for item in note_view.get("sections") or []
+    }
+    sentences = [
+        part.strip() for part in raw.replace("!", ".").replace("?", ".").split(".") if part.strip()
+    ]
     what_happened = (
         sections.get("what i saw")
         or sections.get("what happened")
@@ -690,7 +695,22 @@ def _life_summary_payload(text: Any, mood: Any = "") -> Dict[str, str]:
         (
             sentence
             for sentence in sentences
-            if any(token in sentence.lower() for token in ("felt", "feeling", "emotion", "grateful", "tired", "happy", "sad", "calm", "stressed", "anxious", "excited"))
+            if any(
+                token in sentence.lower()
+                for token in (
+                    "felt",
+                    "feeling",
+                    "emotion",
+                    "grateful",
+                    "tired",
+                    "happy",
+                    "sad",
+                    "calm",
+                    "stressed",
+                    "anxious",
+                    "excited",
+                )
+            )
         ),
         "",
     )

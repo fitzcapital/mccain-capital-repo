@@ -774,6 +774,207 @@ def _migration_0012_full_trading_host_coverage(conn: sqlite3.Connection) -> None
     _migration_0010_trading_blocked_sites(conn)
 
 
+def _migration_0013_multi_account_ledgers(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prop_firm TEXT NOT NULL DEFAULT '',
+            account_name TEXT NOT NULL DEFAULT '',
+            broker_account_id TEXT NOT NULL DEFAULT '',
+            account_size REAL NOT NULL DEFAULT 0,
+            starting_balance REAL NOT NULL DEFAULT 0,
+            current_balance REAL NOT NULL DEFAULT 0,
+            max_drawdown REAL NOT NULL DEFAULT 0,
+            archived INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS uploads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            filename TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            import_batch_id TEXT NOT NULL DEFAULT '',
+            uploaded_at TEXT NOT NULL
+        );
+        """
+    )
+    account_cols = {
+        str(r["name"]): r for r in conn.execute("PRAGMA table_info(accounts)").fetchall()
+    }
+    if "archived" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+    if "current_balance" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN current_balance REAL NOT NULL DEFAULT 0")
+    if "max_drawdown" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN max_drawdown REAL NOT NULL DEFAULT 0")
+    if "created_at" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+    if "updated_at" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "UPDATE accounts SET created_at = COALESCE(NULLIF(created_at, ''), ?), "
+        "updated_at = COALESCE(NULLIF(updated_at, ''), ?)",
+        (
+            datetime.now().isoformat(timespec="seconds"),
+            datetime.now().isoformat(timespec="seconds"),
+        ),
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_accounts_archived_created "
+        "ON accounts(archived, created_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_accounts_broker_size "
+        "ON accounts(broker_account_id, starting_balance)"
+    )
+    upload_cols = {str(r["name"]): r for r in conn.execute("PRAGMA table_info(uploads)").fetchall()}
+    if "import_batch_id" not in upload_cols:
+        conn.execute("ALTER TABLE uploads ADD COLUMN import_batch_id TEXT NOT NULL DEFAULT ''")
+    if "source" not in upload_cols:
+        conn.execute("ALTER TABLE uploads ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+    if "filename" not in upload_cols:
+        conn.execute("ALTER TABLE uploads ADD COLUMN filename TEXT NOT NULL DEFAULT ''")
+    if "uploaded_at" not in upload_cols:
+        conn.execute("ALTER TABLE uploads ADD COLUMN uploaded_at TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "UPDATE uploads SET uploaded_at = COALESCE(NULLIF(uploaded_at, ''), ?)",
+        (datetime.now().isoformat(timespec="seconds"),),
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_uploads_account_uploaded "
+        "ON uploads(account_id, uploaded_at DESC)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_uploads_batch " "ON uploads(import_batch_id)")
+
+    trade_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+    if "account_id" not in trade_cols:
+        conn.execute("ALTER TABLE trades ADD COLUMN account_id INTEGER")
+    if "upload_id" not in trade_cols:
+        conn.execute("ALTER TABLE trades ADD COLUMN upload_id INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_account_id ON trades(account_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_upload_id ON trades(upload_id)")
+
+    unowned_count = int(
+        (
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM trades WHERE account_id IS NULL OR upload_id IS NULL"
+            ).fetchone()
+            or {"c": 0}
+        )["c"]
+        or 0
+    )
+    if unowned_count <= 0:
+        return
+
+    now = datetime.now().isoformat(timespec="seconds")
+    settings_rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    settings_map = {str(r["key"]): str(r["value"] or "") for r in settings_rows}
+    account_name = (
+        settings_map.get("active_account_name")
+        or settings_map.get("active_account_label")
+        or "Imported Account"
+    ).strip() or "Imported Account"
+    broker_account_id = (settings_map.get("active_account_id") or "").strip()
+    prop_firm = (settings_map.get("active_account_type") or "").strip()
+    try:
+        starting_balance = float(
+            settings_map.get("active_account_start_balance")
+            or settings_map.get("starting_balance")
+            or 0.0
+        )
+    except Exception:
+        starting_balance = 0.0
+    account_size = starting_balance
+    existing = conn.execute(
+        """
+        SELECT id
+        FROM accounts
+        WHERE archived = 0
+          AND COALESCE(account_name, '') = ?
+          AND COALESCE(broker_account_id, '') = ?
+          AND ABS(COALESCE(starting_balance, 0) - ?) < 0.0001
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        (account_name, broker_account_id, float(starting_balance)),
+    ).fetchone()
+    if existing:
+        account_id = int(existing["id"])
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO accounts (
+                prop_firm, account_name, broker_account_id, account_size,
+                starting_balance, current_balance, max_drawdown, archived,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                prop_firm,
+                account_name,
+                broker_account_id,
+                float(account_size),
+                float(starting_balance),
+                float(starting_balance),
+                0.0,
+                now,
+                now,
+            ),
+        )
+        account_id = int(cur.lastrowid)
+
+    cur = conn.execute(
+        """
+        INSERT INTO uploads (account_id, filename, source, import_batch_id, uploaded_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            account_id,
+            "legacy-migrated-history",
+            "migration",
+            "legacy-migration",
+            now,
+        ),
+    )
+    upload_id = int(cur.lastrowid)
+    conn.execute(
+        """
+        UPDATE trades
+        SET account_id = COALESCE(account_id, ?),
+            upload_id = COALESCE(upload_id, ?)
+        WHERE account_id IS NULL OR upload_id IS NULL
+        """,
+        (account_id, upload_id),
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO settings (key, value)
+        VALUES ('active_account_record_id', ?)
+        """,
+        (str(account_id),),
+    )
+
+
+def _migration_0014_account_broker_metrics(conn: sqlite3.Connection) -> None:
+    _migration_0013_multi_account_ledgers(conn)
+    account_cols = {str(r["name"]) for r in conn.execute("PRAGMA table_info(accounts)").fetchall()}
+    for col_name in (
+        "broker_equity",
+        "broker_equity_peak",
+        "broker_remaining_drawdown",
+        "broker_max_loss",
+    ):
+        if col_name not in account_cols:
+            conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} REAL")
+    if "broker_metrics_updated_at" not in account_cols:
+        conn.execute(
+            "ALTER TABLE accounts ADD COLUMN broker_metrics_updated_at TEXT NOT NULL DEFAULT ''"
+        )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -787,6 +988,8 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0010_trading_blocked_sites", _migration_0010_trading_blocked_sites),
     ("0011_trading_scope_hardening", _migration_0011_trading_scope_hardening),
     ("0012_full_trading_host_coverage", _migration_0012_full_trading_host_coverage),
+    ("0013_multi_account_ledgers", _migration_0013_multi_account_ledgers),
+    ("0014_account_broker_metrics", _migration_0014_account_broker_metrics),
 ]
 
 

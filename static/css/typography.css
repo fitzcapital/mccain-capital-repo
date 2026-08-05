@@ -1,0 +1,72 @@
+:root{
+  --font-app:"IBM Plex Sans","Avenir Next","SF Pro Text","Segoe UI",Arial,sans-serif;
+  --font-data:"IBM Plex Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+
+body[data-theme="cinematic-nebula"]{
+  --app-professional-font:var(--font-app);
+  font-family:var(--font-app) !important;
+  letter-spacing:.005em;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  small,
+  strong,
+  span,
+  summary,
+  th,
+  td,
+  .btn,
+  .pill,
+  .card
+){
+  font-family:var(--font-app) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  code,
+  pre,
+  time,
+  .mono,
+  .metricValue,
+  .statValue,
+  .kpiValue,
+  .dashboardCommandCardValue,
+  .dashboardProjectionTarget strong,
+  .dashboardTapeAssetPrice,
+  .dashboardTapeAssetChange,
+  .marketPulseHeaderLevelItem strong,
+  .marketPulseExecutionHeroMetric strong,
+  .marketPulseTapeCard strong,
+  .marketPulseDecisionNarrativeValue
+){
+  font-family:var(--font-data) !important;
+  font-variant-numeric:tabular-nums lining-nums;
+  letter-spacing:-.015em;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .eyebrow,
+  .tinyLabel,
+  .metricLabel,
+  .statLabel,
+  .dashboardDecisionContextLabel,
+  .marketPulseDecisionNarrativeLabel
+){
+  font-family:var(--font-app) !important;
+  font-weight:600;
+  letter-spacing:.055em;
+}

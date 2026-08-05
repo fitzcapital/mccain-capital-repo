@@ -9,11 +9,10 @@ from calendar import monthrange
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from flask import jsonify, render_template, request
+from flask import jsonify, redirect, request, url_for
 
 from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import now_iso, today_iso
-from mccain_capital.services.ui import render_page
 
 _STORE_FILE = "budget.json"
 _INCOME_TYPES = {"job", "trading", "business", "side_hustle", "other"}
@@ -49,8 +48,7 @@ _PRIORITIES = {"low", "medium", "high"}
 
 
 def budget_page():
-    content = render_template("budget.html", today=today_iso(), current_month=_month_label(_today()))
-    return render_page(content, active="budget", title="McCain Capital · Budget Command Center")
+    return redirect(url_for("executive_dashboard"), code=302)
 
 
 def api_summary():
@@ -202,9 +200,11 @@ def _normalize_profile(raw: Dict[str, Any]) -> Dict[str, Any]:
         "target_extra_monthly_income": _money(raw.get("target_extra_monthly_income", 4000)),
         "pay_frequency": pay_frequency if pay_frequency in _FREQUENCIES else "biweekly",
         "paycheck_amount": _nullable_money(raw.get("paycheck_amount")),
-        "paycheck_dates": [str(item)[:10] for item in raw.get("paycheck_dates", []) if str(item).strip()][:4]
-        if isinstance(raw.get("paycheck_dates"), list)
-        else [],
+        "paycheck_dates": (
+            [str(item)[:10] for item in raw.get("paycheck_dates", []) if str(item).strip()][:4]
+            if isinstance(raw.get("paycheck_dates"), list)
+            else []
+        ),
         "currency": str(raw.get("currency") or "USD").strip().upper()[:3] or "USD",
     }
 
@@ -281,7 +281,11 @@ def _normalize_debt(raw: Dict[str, Any]) -> Dict[str, Any]:
 def _normalize_goal(raw: Dict[str, Any]) -> Dict[str, Any]:
     priority = str(raw.get("priority") or "medium").strip().lower()
     target = _money(raw.get("target_amount"))
-    current = min(_money(raw.get("current_amount")), target) if target else _money(raw.get("current_amount"))
+    current = (
+        min(_money(raw.get("current_amount")), target)
+        if target
+        else _money(raw.get("current_amount"))
+    )
     return {
         "id": _item_id(raw),
         "name": str(raw.get("name") or "Savings Goal").strip()[:120],
@@ -315,24 +319,39 @@ def _upsert_item(key: str, payload: Dict[str, Any], normalizer) -> Any:
         next_items.append(item)
     store[key] = next_items
     _write_store(store)
-    return jsonify({"ok": True, "item": item, "summary": _build_summary(store), "analytics": _build_analytics(store)})
+    return jsonify(
+        {
+            "ok": True,
+            "item": item,
+            "summary": _build_summary(store),
+            "analytics": _build_analytics(store),
+        }
+    )
 
 
 def _delete_item(key: str, item_id: str) -> Any:
     store = _read_store()
     store[key] = [item for item in store.get(key, []) if str(item.get("id")) != str(item_id)]
     _write_store(store)
-    return jsonify({"ok": True, "summary": _build_summary(store), "analytics": _build_analytics(store)})
+    return jsonify(
+        {"ok": True, "summary": _build_summary(store), "analytics": _build_analytics(store)}
+    )
 
 
 def _build_summary(store: Dict[str, Any]) -> Dict[str, Any]:
     store = _normalize_store(store)
     profile = store["profile"]
-    income_sources_total = sum(_monthly_income(item) for item in store["income_sources"] if item["active"])
+    income_sources_total = sum(
+        _monthly_income(item) for item in store["income_sources"] if item["active"]
+    )
     monthly_income = profile["monthly_take_home"] or income_sources_total
     fixed_bills = sum(float(item["amount"]) for item in store["bills"] if _is_fixed_item(item))
-    planned_variable = sum(float(item["amount"]) for item in store["bills"] if _is_variable_item(item))
-    charges_total = sum(float(item["amount"]) for item in _current_month_items(store["charges"], "date"))
+    planned_variable = sum(
+        float(item["amount"]) for item in store["bills"] if _is_variable_item(item)
+    )
+    charges_total = sum(
+        float(item["amount"]) for item in _current_month_items(store["charges"], "date")
+    )
     debt_minimums = sum(float(item["minimum_payment"]) for item in store["debts"])
     savings = sum(float(item["monthly_contribution"]) for item in store["goals"])
     total_planned_outflow = fixed_bills + planned_variable + savings
@@ -347,7 +366,9 @@ def _build_summary(store: Dict[str, Any]) -> Dict[str, Any]:
     upcoming = _upcoming_bills(store["bills"])
     overdue = _overdue_bills(store["bills"])
     category_totals = _spending_by_category(store["charges"])
-    leak_totals = _spending_by_category([c for c in store["charges"] if c["need_or_want"] == "leak"])
+    leak_totals = _spending_by_category(
+        [c for c in store["charges"] if c["need_or_want"] == "leak"]
+    )
     summary = {
         "monthly_take_home": round(monthly_income, 2),
         "monthly_income": round(monthly_income, 2),
@@ -377,7 +398,9 @@ def _build_summary(store: Dict[str, Any]) -> Dict[str, Any]:
         "upcoming_bills_next_14_days": upcoming,
         "upcoming_bills_total": round(sum(float(item["amount"]) for item in upcoming), 2),
         "overdue_bills_count": len(overdue),
-        "income_gap_to_goal": round(profile["target_extra_monthly_income"] - _extra_income_this_month(store), 2),
+        "income_gap_to_goal": round(
+            profile["target_extra_monthly_income"] - _extra_income_this_month(store), 2
+        ),
         "paycheck_allocation": _paycheck_allocation(store, monthly_income),
         "leak_analysis": _leak_analysis(store, projected_cash_left),
         "goal_allocation": _goal_allocation(projected_cash_left),
@@ -391,7 +414,9 @@ def _build_analytics(store: Dict[str, Any]) -> Dict[str, Any]:
     charges = _current_month_items(store["charges"], "date")
     spending_by_category = _planned_by_category(store["bills"]) or _spending_by_category(charges)
     need_vs_want = _need_breakdown(charges)
-    leaks_total = round(sum(float(item["amount"]) for item in charges if item["need_or_want"] == "leak"), 2)
+    leaks_total = round(
+        sum(float(item["amount"]) for item in charges if item["need_or_want"] == "leak"), 2
+    )
     summary = _build_summary(store)
     analytics = {
         "spending_by_category": spending_by_category,
@@ -409,8 +434,14 @@ def _build_analytics(store: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _cashflow_score(
-    *, take_home: float, projected_cash_left: float, fixed_bills: float, wants_leaks: float,
-    savings: float, debt_minimums: float, overdue: bool
+    *,
+    take_home: float,
+    projected_cash_left: float,
+    fixed_bills: float,
+    wants_leaks: float,
+    savings: float,
+    debt_minimums: float,
+    overdue: bool,
 ) -> int:
     score = 0
     if projected_cash_left > 0:
@@ -469,7 +500,9 @@ def _upcoming_bills(bills: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
             continue
         due = _due_date_for_day(int(bill.get("due_day") or 1), today)
         if due < today:
-            due = _due_date_for_day(int(bill.get("due_day") or 1), today.replace(day=1) + timedelta(days=32))
+            due = _due_date_for_day(
+                int(bill.get("due_day") or 1), today.replace(day=1) + timedelta(days=32)
+            )
         if today <= due <= end:
             upcoming.append({**bill, "due_date": due.isoformat()})
     return sorted(upcoming, key=lambda item: item["due_date"])
@@ -527,7 +560,9 @@ def _need_breakdown(charges: Iterable[Dict[str, Any]]) -> Dict[str, float]:
 def _cashflow_by_week(store: Dict[str, Any], summary: Dict[str, Any]) -> List[Dict[str, Any]]:
     charges = _current_month_items(store.get("charges", []), "date")
     today = _today()
-    weeks = [{"week": f"W{i}", "cash_left": summary["projected_monthly_income"]} for i in range(1, 6)]
+    weeks = [
+        {"week": f"W{i}", "cash_left": summary["projected_monthly_income"]} for i in range(1, 6)
+    ]
     for charge in charges:
         parsed = _parse_date(charge.get("date")) or today
         idx = min(4, max(0, (parsed.day - 1) // 7))
@@ -538,14 +573,21 @@ def _cashflow_by_week(store: Dict[str, Any], summary: Dict[str, Any]) -> List[Di
 
 def _bills_by_due_date(bills: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [
-        {"due_day": bill["due_day"], "name": bill["name"], "amount": bill["amount"], "paid": bill["paid"]}
+        {
+            "due_day": bill["due_day"],
+            "name": bill["name"],
+            "amount": bill["amount"],
+            "paid": bill["paid"],
+        }
         for bill in sorted(bills, key=lambda item: int(item.get("due_day") or 99))
         if bill.get("active", True)
     ]
 
 
 def _monthly_income_trend(store: Dict[str, Any]) -> List[Dict[str, Any]]:
-    current = round(sum(_monthly_income(item) for item in store["income_sources"] if item["active"]), 2)
+    current = round(
+        sum(_monthly_income(item) for item in store["income_sources"] if item["active"]), 2
+    )
     if current <= 0:
         current = store["profile"]["monthly_take_home"]
     return [{"month": _month_key(_today()), "income": current}]
@@ -564,7 +606,10 @@ def _debt_summary(debts: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     debts = list(debts)
     total_balance = round(sum(float(item.get("balance") or 0) for item in debts), 2)
     total_minimums = round(sum(float(item.get("minimum_payment") or 0) for item in debts), 2)
-    focus = sorted(debts, key=lambda item: (item.get("priority") != "high", -float(item.get("interest_rate") or 0)))
+    focus = sorted(
+        debts,
+        key=lambda item: (item.get("priority") != "high", -float(item.get("interest_rate") or 0)),
+    )
     return {
         "total_balance": total_balance,
         "total_minimums": total_minimums,
@@ -572,13 +617,17 @@ def _debt_summary(debts: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _budget_warnings(store: Dict[str, Any], summary: Dict[str, Any], leaks_total: float) -> List[str]:
+def _budget_warnings(
+    store: Dict[str, Any], summary: Dict[str, Any], leaks_total: float
+) -> List[str]:
     warnings = []
     planned = _planned_by_category(store.get("bills", []))
     if summary["projected_cash_left"] < 0:
         warnings.append("Projected cash left is negative. Cut wants or increase income.")
     if summary["upcoming_bills_total"] > 0:
-        warnings.append(f"Next 14 days: ${summary['upcoming_bills_total']:,.2f} in unpaid bills due.")
+        warnings.append(
+            f"Next 14 days: ${summary['upcoming_bills_total']:,.2f} in unpaid bills due."
+        )
     if leaks_total > max(summary["monthly_take_home"] * 0.05, 100):
         warnings.append(f"Leak spending is ${leaks_total:,.2f} this month.")
     if summary["debt_minimums_total"] > summary["monthly_take_home"] * 0.15:
@@ -599,19 +648,29 @@ def _budget_recommendations(
 ) -> List[str]:
     recommendations = []
     planned = _planned_by_category(store.get("bills", []))
-    fixed_pct = (summary["fixed_bills_total"] / summary["monthly_take_home"] * 100) if summary["monthly_take_home"] else 0
+    fixed_pct = (
+        (summary["fixed_bills_total"] / summary["monthly_take_home"] * 100)
+        if summary["monthly_take_home"]
+        else 0
+    )
     recommendations.append(f"Fixed bills are {fixed_pct:.0f}% of take-home.")
     if summary["income_gap_to_goal"] > 0:
-        recommendations.append(f"You are ${summary['income_gap_to_goal']:,.2f} away from the extra income goal.")
+        recommendations.append(
+            f"You are ${summary['income_gap_to_goal']:,.2f} away from the extra income goal."
+        )
     top = _top_category(spending_by_category)
     if top != "None":
         recommendations.append(f"{top.title()} is your biggest planned category.")
     if summary["projected_cash_left"] >= 1500:
         recommendations.append("Healthy cash buffer. Assign part of this to goals.")
     if planned.get("subscriptions", 0) > 100:
-        recommendations.append(f"Subscriptions are ${planned['subscriptions']:,.2f}/month. Audit them.")
+        recommendations.append(
+            f"Subscriptions are ${planned['subscriptions']:,.2f}/month. Audit them."
+        )
     if planned.get("food", 0) > 1000:
-        recommendations.append("Food is over $1,000 planned. Compare every actual charge against the plan.")
+        recommendations.append(
+            "Food is over $1,000 planned. Compare every actual charge against the plan."
+        )
     for goal in store.get("goals", []):
         progress = _goal_progress(goal)
         if progress["monthly_needed"] > 0:
@@ -709,13 +768,32 @@ def _split_note_amounts(notes: Any) -> Optional[tuple[float, float]]:
 def _paycheck_allocation(store: Dict[str, Any], monthly_income: float) -> Dict[str, Any]:
     profile = store.get("profile", {})
     pay_frequency = profile.get("pay_frequency") or "biweekly"
-    paycheck_amount = profile.get("paycheck_amount") or (monthly_income / 2 if pay_frequency in {"biweekly", "semimonthly"} else monthly_income)
-    first = {"income": round(paycheck_amount, 2), "items": [], "set_asides": [], "bills_total": 0.0, "set_asides_total": 0.0}
-    second = {"income": round(paycheck_amount, 2), "items": [], "set_asides": [], "bills_total": 0.0, "set_asides_total": 0.0}
+    paycheck_amount = profile.get("paycheck_amount") or (
+        monthly_income / 2 if pay_frequency in {"biweekly", "semimonthly"} else monthly_income
+    )
+    first = {
+        "income": round(paycheck_amount, 2),
+        "items": [],
+        "set_asides": [],
+        "bills_total": 0.0,
+        "set_asides_total": 0.0,
+    }
+    second = {
+        "income": round(paycheck_amount, 2),
+        "items": [],
+        "set_asides": [],
+        "bills_total": 0.0,
+        "set_asides_total": 0.0,
+    }
     flexible = {"items": [], "total": 0.0}
 
-    def add_bill(bucket: Dict[str, Any], item: Dict[str, Any], amount: Optional[float] = None) -> None:
-        row = {**item, "amount": round(float(amount if amount is not None else item.get("amount") or 0), 2)}
+    def add_bill(
+        bucket: Dict[str, Any], item: Dict[str, Any], amount: Optional[float] = None
+    ) -> None:
+        row = {
+            **item,
+            "amount": round(float(amount if amount is not None else item.get("amount") or 0), 2),
+        }
         bucket["items"].append(row)
         bucket["bills_total"] = round(bucket["bills_total"] + row["amount"], 2)
 
@@ -737,7 +815,13 @@ def _paycheck_allocation(store: Dict[str, Any], monthly_income: float) -> Dict[s
             add_set_aside(second, item, second_amount)
             remainder = round(max(amount - first_amount - second_amount, 0), 2)
             if remainder:
-                flexible["items"].append({**item, "amount": remainder, "notes": f"{item.get('notes', '')} remaining buffer".strip()})
+                flexible["items"].append(
+                    {
+                        **item,
+                        "amount": remainder,
+                        "notes": f"{item.get('notes', '')} remaining buffer".strip(),
+                    }
+                )
                 flexible["total"] = round(flexible["total"] + remainder, 2)
             continue
         if allocation == "first_check":
@@ -753,7 +837,9 @@ def _paycheck_allocation(store: Dict[str, Any], monthly_income: float) -> Dict[s
             add_bill(second, item)
 
     for bucket in (first, second):
-        bucket["cash_left"] = round(bucket["income"] - bucket["bills_total"] - bucket["set_asides_total"], 2)
+        bucket["cash_left"] = round(
+            bucket["income"] - bucket["bills_total"] - bucket["set_asides_total"], 2
+        )
 
     return {
         "pay_frequency": pay_frequency,
@@ -772,7 +858,11 @@ def _leak_analysis(store: Dict[str, Any], projected_cash_left: float) -> List[st
         messages.append("Subscriptions are above $100. Review what can be cut.")
     if planned.get("food", 0) > 1000:
         messages.append("Food budget is high. Track actual spend closely.")
-    unplanned = sum(float(item.get("amount") or 0) for item in charges if item.get("need_or_want") in {"want", "leak"})
+    unplanned = sum(
+        float(item.get("amount") or 0)
+        for item in charges
+        if item.get("need_or_want") in {"want", "leak"}
+    )
     if unplanned:
         messages.append(f"Unplanned wants/leaks are ${unplanned:,.2f} this month.")
     if projected_cash_left < 1000:

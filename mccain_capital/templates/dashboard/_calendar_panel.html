@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_icon %}
 <div class="tiny stack8 line15">Daily P/L calendar view for <strong>{{ calendar_state.scope_label }}</strong>.</div>
 <div class="hr"></div>
 {% if calendar_state.traded_days == 0 %}
@@ -5,13 +6,13 @@
 {% endif %}
 <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
   <div class="legendStats" aria-label="Month trading day summary">
-    <span class="legendStat legendStatWeekdays"><strong>{{ calendar_state.traded_days }}</strong> weekdays</span>
-    <span class="legendStat legendStatGreen"><strong>{{ calendar_state.green_days }}</strong> green</span>
-    <span class="legendStat legendStatRed"><strong>{{ calendar_state.red_days }}</strong> red</span>
-    <span class="legendStat legendStatFlat"><strong>{{ calendar_state.flat_days }}</strong> flat</span>
+    <span class="legendStat legendStatWeekdays"><span class="dashboardPillIcon">{{ app_icon('calendar') }}</span><strong>{{ calendar_state.traded_days }}</strong> weekdays</span>
+    <span class="legendStat legendStatGreen"><span class="dashboardPillIcon">{{ app_icon('strategy') }}</span><strong>{{ calendar_state.green_days }}</strong> green</span>
+    <span class="legendStat legendStatRed"><span class="dashboardPillIcon">{{ app_icon('alert') }}</span><strong>{{ calendar_state.red_days }}</strong> red</span>
+    <span class="legendStat legendStatFlat"><span class="dashboardPillIcon">{{ app_icon('review') }}</span><strong>{{ calendar_state.flat_days }}</strong> flat</span>
     <details class="calendarLegendHelp">
       <summary aria-label="Calendar legend help">
-        <span class="calendarLegendHelpIcon">i</span>
+        <span class="calendarLegendHelpIcon">{{ app_icon('review') }}</span>
         <span>Legend</span>
       </summary>
       <div class="calendarLegendPopover">
@@ -64,7 +65,7 @@
                 data-wins="{{ day.wins }}"
                 data-losses="{{ day.losses }}"
                 data-win-rate="{{ '%.0f'|format(day.win_rate) }}"
-                data-balance="{% if day.balance is not none %}{{ money(day.balance) }}{% else %}—{% endif %}"
+                data-balance="{% if day.display_balance is not none %}{{ money(day.display_balance) }}{% else %}—{% endif %}"
                 data-status="{% if day.is_weekend %}Market closed{% elif day.trade_count <= 0 %}No trades logged{% elif day.net > 0 %}Profitable session{% elif day.net < 0 %}Losing session{% else %}Flat session{% endif %}"
                 data-open-url="/trades?d={{ day.iso }}"
                 aria-label="Preview {{ day.iso }}"
@@ -94,16 +95,18 @@
     </section>
   {% endfor %}
 </div>
-<div class="calendarPreview" id="calendarPreview" hidden>
-  <div class="calendarPreviewCard">
-    <div class="calendarPreviewHead">
+<dialog class="calendarPreview dashboardSurface dashboardSurface--wide" id="calendarPreview" data-dashboard-surface aria-labelledby="calendarPreviewTitle" hidden>
+  <div class="calendarPreviewCard dashboardSurfaceFrame">
+    <div class="calendarPreviewHead dashboardSurfaceHead">
       <div>
-        <div class="calendarPreviewTitle" id="calendarPreviewTitle">Day preview</div>
+        <div class="dashboardSurfaceEyebrow">Session inspector</div>
+        <div class="calendarPreviewTitle dashboardSurfaceTitle" id="calendarPreviewTitle">Day preview</div>
         <div class="tiny" id="calendarPreviewStatus">Tap a day to inspect its session.</div>
       </div>
-      <button type="button" class="btn" id="calendarPreviewClose">Close</button>
+      <button type="button" class="dashboardSurfaceClose" id="calendarPreviewClose" data-dashboard-surface-close aria-label="Close Session Inspector">&times;</button>
     </div>
-    <div class="previewMetrics">
+    <div class="dashboardSurfaceBody">
+    <div class="previewMetrics dashboardSessionMetrics">
       <div class="previewMetric">
         <div class="k">Net</div>
         <div class="v" id="previewNet">—</div>
@@ -121,8 +124,17 @@
         <div class="v" id="previewBalance">—</div>
       </div>
     </div>
-    <div class="calendarPreviewActions">
+    <div class="dashboardWorkflowStep stack16">
+      <span class="dashboardWorkflowStepLabel">Review state</span>
+      <strong id="calendarPreviewReviewState">Choose a session to inspect.</strong>
+      <div class="tiny" id="calendarPreviewReviewDetail">Journal, replay, and reconciliation actions will remain scoped to the selected date.</div>
+    </div>
+    </div>
+    <div class="calendarPreviewActions dashboardSurfaceActions">
+      <a class="btn" id="calendarPreviewJournal" href="/journal">Open journal</a>
+      <a class="btn" id="calendarPreviewDebrief" href="/journal/new?entry_type=trade_debrief">Start debrief</a>
+      <a class="btn" id="calendarPreviewReconcile" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
       <a class="btn primary" id="calendarPreviewOpen" href="/trades">Open full day</a>
     </div>
   </div>
-</div>
+</dialog>

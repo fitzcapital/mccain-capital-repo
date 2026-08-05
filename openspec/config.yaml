@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  McCain Capital is a Python 3.11 Flask application for trading workflows,
+  treasury planning, journaling, dashboards, and market-data visualization.
+  Application code belongs under mccain_capital/; keep legacy entrypoints thin.
+  Follow the existing services, repositories, handlers, Jinja templates, and
+  static JavaScript/CSS patterns. Use Ruff and Black settings from pyproject.toml
+  (100-character lines, Python 3.11). Prefer focused pytest coverage and JavaScript
+  syntax checks before broader validation. Do not modify runtime or personal data
+  in journal.db, persistent-data/, uploads/, artifacts/, or .env files.
+  Financial projections must state their source inputs, timing assumptions, account
+  allocation, and fallback behavior. Preserve manually entered values unless a
+  refresh or migration succeeds. Keep changes scoped and preserve unrelated worktree
+  edits. User-visible behavior should be verified at the receiving page or endpoint,
+  not only at the initiating control.
+
+rules:
+  proposal:
+    - State the user-visible outcome and the problem being solved.
+    - Include explicit non-goals for scope control.
+    - Identify affected capabilities, data sources, and financial assumptions.
+    - Define measurable acceptance criteria before implementation.
+  design:
+    - Prefer the smallest change consistent with existing architecture.
+    - Document data flow, failure behavior, compatibility, and rollback considerations.
+    - Call out security, privacy, and financial-data risks when applicable.
+  specs:
+    - Express requirements as observable behavior with concrete scenarios.
+    - Cover success, stale or missing data, and regression-sensitive boundary cases.
+  tasks:
+    - Keep tasks ordered, independently verifiable, and small enough for focused commits.
+    - Include targeted tests, syntax or lint checks, and receiving-surface verification.
+    - Include documentation or migration work only when the change requires it.

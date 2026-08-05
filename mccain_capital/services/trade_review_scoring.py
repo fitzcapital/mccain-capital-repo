@@ -117,6 +117,106 @@ def _review_state(review_pct: int) -> tuple[str, str]:
     return "Not Reviewed", "warn"
 
 
+def _review_completion_items(
+    *,
+    setup_identified: bool,
+    thesis_present: bool,
+    review_present: bool,
+    risk_captured: bool,
+    stop_captured: bool,
+    target_captured: bool,
+    execution_reviewed: bool,
+    final_grade_present: bool,
+    classification_present: bool,
+    plan_verdict_present: bool,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "key": "setup",
+            "label": "Setup identified",
+            "done": setup_identified,
+            "hint": "Choose a valid setup tag.",
+        },
+        {
+            "key": "thesis",
+            "label": "Thesis present",
+            "done": thesis_present,
+            "hint": "Explain why the setup existed.",
+        },
+        {
+            "key": "reflection",
+            "label": "Review reflection present",
+            "done": review_present,
+            "hint": "Add review or improvement notes.",
+        },
+        {
+            "key": "risk",
+            "label": "Risk captured",
+            "done": risk_captured,
+            "hint": "Log planned or reviewed risk.",
+        },
+        {
+            "key": "stop",
+            "label": "Stop captured",
+            "done": stop_captured,
+            "hint": "Log a reviewed or planned stop.",
+        },
+        {
+            "key": "target",
+            "label": "Target captured",
+            "done": target_captured,
+            "hint": "Log a reviewed or planned target.",
+        },
+        {
+            "key": "execution",
+            "label": "Execution reviewed",
+            "done": execution_reviewed,
+            "hint": "Score execution or add entry/exit review.",
+        },
+        {
+            "key": "final_grade",
+            "label": "Final grade present",
+            "done": final_grade_present,
+            "hint": "Keep the derived final grade or override it.",
+        },
+        {
+            "key": "classification",
+            "label": "Classification present",
+            "done": classification_present,
+            "hint": "Keep the derived class or set an override.",
+        },
+        {
+            "key": "plan_verdict",
+            "label": "Sizing / plan verdict present",
+            "done": plan_verdict_present,
+            "hint": "Capture sizing, stop discipline, or within-plan verdict.",
+        },
+    ]
+
+
+def _review_missing_summary(items: list[dict[str, Any]]) -> str:
+    missing = [str(item.get("label") or "") for item in items if not bool(item.get("done"))]
+    if not missing:
+        return "All core review checks logged."
+    short_map = {
+        "Setup identified": "setup",
+        "Thesis present": "thesis",
+        "Review reflection present": "review note",
+        "Risk captured": "risk",
+        "Stop captured": "stop",
+        "Target captured": "target",
+        "Execution reviewed": "execution review",
+        "Final grade present": "final grade",
+        "Classification present": "classification",
+        "Sizing / plan verdict present": "plan verdict",
+    }
+    short = [short_map.get(label, label.lower()) for label in missing[:2]]
+    summary = " + ".join(short)
+    if len(missing) > 2:
+        summary += f" + {len(missing) - 2} more"
+    return f"Missing {summary}"
+
+
 def _weighted_score(raw_score: float, max_points: int, *, floor: float = 0.0) -> float:
     return _clamp(raw_score / 100.0, floor, 1.0) * max_points
 
@@ -377,25 +477,29 @@ def compute_trade_review_foundation(
         final_grade, outcome_label
     )
 
-    review_checks = [
-        bool(setup_label and setup_label != "Unknown"),
-        thesis_present,
-        review_present,
-        bool(planned_risk or risk_pct is not None),
-        bool(stop_present or stop_pct or stop_price),
-        bool(target_present or target_price or target_pct),
-        bool(entry_reviewed or exit_reviewed or execution_grade or reviewed_execution_quality),
-        bool(final_grade),
-        classification not in {"", "Unclassified"},
-        bool(
+    review_completion_items = _review_completion_items(
+        setup_identified=bool(setup_label and setup_label != "Unknown"),
+        thesis_present=thesis_present,
+        review_present=review_present,
+        risk_captured=bool(planned_risk or risk_pct is not None),
+        stop_captured=bool(stop_present or stop_pct or stop_price),
+        target_captured=bool(target_present or target_price or target_pct),
+        execution_reviewed=bool(
+            entry_reviewed or exit_reviewed or execution_grade or reviewed_execution_quality
+        ),
+        final_grade_present=bool(final_grade),
+        classification_present=classification not in {"", "Unclassified"},
+        plan_verdict_present=bool(
             size_note_present
             or reviewed_sizing_quality
             or reviewed_stop_discipline
             or reviewed_within_plan is not None
         ),
-    ]
+    )
+    review_checks = [bool(item.get("done")) for item in review_completion_items]
     review_pct = int(round((sum(1 for item in review_checks if item) / len(review_checks)) * 100.0))
     review_label, review_tone = _review_state(review_pct)
+    review_missing_summary = _review_missing_summary(review_completion_items)
 
     grade_components = {
         "setup_quality": round(setup_quality, 1),
@@ -460,6 +564,8 @@ def compute_trade_review_foundation(
             "tone": review_tone,
             "meta": f"{review_pct}% complete",
         },
+        "review_completion_items": review_completion_items,
+        "review_missing_summary": review_missing_summary,
         "grade_components": grade_components,
         "grade_breakdown_items": breakdown_items,
         "weakest_components": weakest_components,

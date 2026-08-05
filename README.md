@@ -161,6 +161,11 @@ cd /mccain-capital-repo
 
 Open: `http://localhost:5001`
 
+### Local Netdata Monitoring
+
+The optional monitoring dashboard runs natively on Apple Silicon, separate from the app.
+See [monitoring/netdata/README.md](monitoring/netdata/README.md) for startup details.
+
 ## ☕ Caffeinate LaunchAgent
 
 If you enabled the repo's macOS display-awake helper, it installs this LaunchAgent:
@@ -176,6 +181,50 @@ Commands:
 ```
 
 `./scripts/stop_caffeinate_for_session.sh` only unloads it for the current login session.
+
+## Self-Control Controls
+
+Use the repo blocker for normal control:
+
+```bash
+./scripts/self_control_status.sh          # inspect daemon/state/hosts status
+./scripts/self_control_repair_state.sh    # complete expired DB sessions and rewrite clean state
+sudo ./scripts/self_control_reapply.sh    # re-apply the block for the app's active session
+sudo ./scripts/self_control_cancel.sh     # cancel the active session and clear the block
+sudo ./scripts/self_control_restart.sh 60 # cancel active session, then start a new 60m session
+```
+
+`self_control_on.sh` starts a new manual session only when no session is active. It refuses to
+replace an active session; use `self_control_restart.sh` when replacement is intentional.
+
+The normal blocker is hosts-based. It installs/runs:
+
+- plist: `/Library/LaunchDaemons/com.mccain.selfcontrolhosts.plist`
+- state: `persistent-data/.self_control_enforcement_state.json`
+- status: `persistent-data/.self_control_enforcement_status.json`
+
+To install only the daemon without starting a block:
+
+```bash
+sudo ./scripts/install_self_control_hosts_launchd.sh
+```
+
+To remove the daemon:
+
+```bash
+sudo ./scripts/uninstall_self_control_hosts_launchd.sh
+```
+
+If the native macOS SelfControl app or PF firewall rules get stuck, use the emergency fail-safe:
+
+```bash
+sudo ./scripts/emergency_stop_self_control.sh
+```
+
+This unloads and removes the repo's Self-Control launch daemons, removes the macOS SelfControl
+privileged helper and PF anchor if present, clears hosts/PF network blocks, marks active
+Self-Control sessions as cancelled, and writes inactive enforcement state so the app does not
+immediately re-arm the block.
 
 ### Data Persistence
 

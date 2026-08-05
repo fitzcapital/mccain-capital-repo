@@ -25,7 +25,12 @@ FONT_MODE = os.environ.get("VISUAL_SMOKE_FONT_MODE") or ""
 SCENARIOS = [
     ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}, None),
     ("desktop-dashboard-menu", "/dashboard", {"width": 1600, "height": 1000}, ".moreBtn"),
-    ("desktop-candle-opens-macro", "/candle-opens", {"width": 1600, "height": 1100}, ".candleMacroSummary"),
+    (
+        "desktop-candle-opens-macro",
+        "/candle-opens",
+        {"width": 1600, "height": 1100},
+        ".candleMacroSummary",
+    ),
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1100}, None),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}, None),
     (
@@ -88,8 +93,11 @@ def _assert_tape_visuals(page, name: str) -> None:
           const cards = Array.from(document.querySelectorAll(
             '.marketPulseTapeCard, .dashboardTapeAssetCard'
           ));
-          const lines = cards.flatMap((card) => Array.from(card.querySelectorAll(
-            'polyline.marketMiniSparkLine'
+          const bodies = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            '.marketMiniSparkBody'
+          )));
+          const wicks = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            '.marketMiniSparkWick'
           )));
           const points = cards.flatMap((card) => Array.from(card.querySelectorAll(
             '.marketMiniSparkPoint'
@@ -97,26 +105,29 @@ def _assert_tape_visuals(page, name: str) -> None:
           const guides = cards.flatMap((card) => Array.from(card.querySelectorAll(
             '.marketMiniSparkGuide'
           )));
-          const multiPointLines = lines.filter((line) => {
-            const raw = String(line.getAttribute('points') || '').trim();
-            return raw ? raw.split(/\\s+/).length >= 4 : false;
+          const visibleBodies = bodies.filter((body) => {
+            const width = Number(body.getAttribute('width') || 0);
+            const height = Number(body.getAttribute('height') || 0);
+            return width > 0 && height > 0;
           }).length;
           return {
             cards: cards.length,
-            lines: lines.length,
+            bodies: bodies.length,
+            wicks: wicks.length,
             points: points.length,
             guides: guides.length,
-            multiPointLines,
+            visibleBodies,
           };
         }
         """
     )
-    if result["lines"] and (
-        result["multiPointLines"] != result["lines"]
-        or result["points"] < result["multiPointLines"] * 3
-        or result["guides"] < result["multiPointLines"] * 2
+    if result["bodies"] and (
+        result["visibleBodies"] != result["bodies"]
+        or result["wicks"] < result["bodies"]
+        or result["points"] < max(1, result["cards"])
+        or result["guides"] < max(1, result["cards"] * 2)
     ):
-        raise RuntimeError(f"{name} tape sparklines lack multi-point detail: {result}")
+        raise RuntimeError(f"{name} tape candles lack visible detail: {result}")
 
 
 def _assert_topbar_menu_visuals(page, name: str) -> None:
@@ -289,6 +300,7 @@ def _assert_hero_chart_controls(page, name: str) -> None:
     )
     if result.get("authGate") and not result.get("hasHost"):
         return
+    empty_state = "Bars empty" in result.get("statusText", "")
     if (
         (not result.get("hasHost") and not result.get("authGate"))
         or result.get("toggleCount") != 3
@@ -297,9 +309,9 @@ def _assert_hero_chart_controls(page, name: str) -> None:
         or "Levels" not in result.get("statusText", "")
         or "Levels pending" in result.get("statusText", "")
         or "Levels error" in result.get("statusText", "")
-        or result.get("beforeCount", 0) <= 0
-        or result.get("restoredCount", 0) <= 0
-        or not result.get("levelRowsBefore")
+        or (not empty_state and result.get("beforeCount", 0) <= 0)
+        or (not empty_state and result.get("restoredCount", 0) <= 0)
+        or (not empty_state and not result.get("levelRowsBefore"))
         or (result.get("dayRowsBefore") and result.get("dayRowsAfterDayOff"))
         or result.get("levelRowsAfterLevelsOff")
         or not result.get("hasSessionBreakWhenExpected")

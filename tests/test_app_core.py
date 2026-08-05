@@ -2,10 +2,15 @@
 
 from datetime import datetime, timedelta
 import json
+from pathlib import Path
+import re
 from zoneinfo import ZoneInfo
 
+from mccain_capital import app_core as core
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
+from mccain_capital.services import market_pulse_tape
 from mccain_capital.services import ui as ui_service
 from werkzeug.security import generate_password_hash
 
@@ -24,6 +29,107 @@ def test_security_headers_applied(client):
     assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"
     assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
     assert "Content-Security-Policy" in resp.headers
+
+
+def test_request_profiling_headers_applied(client):
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert float(resp.headers["X-Request-Duration-Ms"]) >= 0.0
+    assert float(resp.headers["X-SQLite-Duration-Ms"]) >= 0.0
+    assert int(resp.headers["X-SQLite-Query-Count"]) >= 0
+    assert "app;dur=" in resp.headers["Server-Timing"]
+    assert "sqlite;dur=" in resp.headers["Server-Timing"]
+
+
+def test_calc_consistency_next_trade_cap_for_positive_pnl():
+    consistency = trades_repo.calc_consistency(
+        [
+            {"net_pl": 493.0},
+            {"net_pl": 493.0},
+            {"net_pl": 493.0},
+            {"net_pl": 493.0},
+            {"net_pl": 64.20},
+        ]
+    )
+
+    assert consistency["ratio"] == 493.0 / 2036.20
+    assert consistency["cap_available"] is True
+    assert consistency["cap_status"] == "within"
+    assert round(consistency["next_win_cap"], 2) == 872.66
+    assert round(consistency["remaining_room"], 2) == 379.66
+
+
+def test_calc_consistency_next_trade_cap_flags_over_threshold():
+    consistency = trades_repo.calc_consistency(
+        [
+            {"net_pl": 800.0},
+            {"net_pl": 700.0},
+            {"net_pl": 500.0},
+        ]
+    )
+
+    assert consistency["ratio"] == 0.4
+    assert consistency["cap_available"] is True
+    assert consistency["cap_status"] == "over"
+    assert round(consistency["next_win_cap"], 2) == 857.14
+    assert round(consistency["remaining_room"], 2) == 57.14
+
+
+def test_calc_consistency_cap_unavailable_without_positive_denominator():
+    empty = trades_repo.calc_consistency([])
+    flat = trades_repo.calc_consistency([{"net_pl": 100.0}, {"net_pl": -100.0}])
+
+    assert empty["cap_available"] is False
+    assert empty["next_win_cap"] is None
+    assert flat["cap_available"] is False
+    assert flat["next_win_cap"] is None
+
+
+def test_dashboard_renders_consistency_next_trade_cap(client):
+    with db() as conn:
+        created = now_iso()
+        for raw_line, net_pl, balance in (
+            ("consistency cap biggest", 493.0, 50493.0),
+            ("consistency cap second", 493.0, 50986.0),
+            ("consistency cap third", 493.0, 51479.0),
+            ("consistency cap fourth", 493.0, 51972.0),
+            ("consistency cap base", 64.20, 52036.20),
+        ):
+            conn.execute(
+                """
+                INSERT INTO trades (
+                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                    entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                    net_pl, result_pct, balance, raw_line, created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    today_iso(),
+                    "9:35 AM",
+                    "9:48 AM",
+                    "SPX",
+                    "CALL",
+                    5000.0,
+                    1.0,
+                    1.3,
+                    1,
+                    100.0,
+                    1.0,
+                    net_pl,
+                    net_pl,
+                    30.0,
+                    balance,
+                    raw_line,
+                    created,
+                ),
+            )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "Next cap: $872.66 max winner to stay ≤ 30%." in body
+    assert "Use this as the per-trade ceiling across the next 10 trades." in body
 
 
 def test_core_pages_are_reachable(client):
@@ -69,6 +175,216 @@ def test_statement_workspace_preserves_active_lane_cta(client):
     assert 'class="actionRow workspaceHeroActions" data-preserve-primary="true"' in body
     assert 'class="btn primary" href="/trades/upload/statement?ws=reconcile"' in body
     assert 'class="btn " href="/trades/upload/statement?ws=upload"' in body
+
+
+def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC999",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=5000.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+
+    resp = client.get("/dashboard?scope=active", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "dashboardSnapshotCard-accountDropdown" in body
+    assert "dashboardSnapshotDropdownChevron" in body
+    assert 'name="account_ids"' in body
+    assert "data-dashboard-account-check" in body
+    assert "data-dashboard-account-select-all" in body
+    assert "data-dashboard-account-clear" in body
+    assert "data-dashboard-account-selected-count" in body
+    assert 'value="bulk_archive_accounts"' in body
+    assert "Archive selected" in body
+    assert f"/trades/upload/statement?ws=live&account_id={account_id}" in body
+    assert (
+        f'<a class="btn dashboardSyncDetailsLink" '
+        f'href="/trades/upload/statement?ws=live&account_id={account_id}">'
+        "Full sync details</a>" in body
+    )
+    assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
+    assert "Archive selected" in body
+    assert "ACC999" in body
+    assert "default:ACC999" not in body
+
+
+def test_dashboard_milestone_save_persists_settings_and_redirects(client, app):
+    app.config["CSRF_ENABLED"] = True
+    page = client.get("/dashboard", follow_redirects=True)
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    match = re.search(
+        r'<form method="post" action="/dashboard/milestone"[^>]*>.*?'
+        r'<input type="hidden" name="csrf_token" value="([^"]+)"',
+        body,
+        re.S,
+    )
+    assert match
+
+    resp = client.post(
+        "/dashboard/milestone",
+        data={
+            "csrf_token": match.group(1),
+            "milestone_name": "Profit Milestone",
+            "milestone_profit_source": "ytd",
+            "milestone_profit_goal": "7500",
+            "milestone_target_balance": "0.00",
+            "y": "2026",
+            "m": "6",
+            "scope": "all",
+            "ticker": "QQQ",
+            "pace_tf": "d",
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Profit Milestone" in resp.get_data(as_text=True)
+    assert get_setting_value("dashboard_milestone_name") == "Profit Milestone"
+    assert get_setting_value("dashboard_milestone_profit_source") == "ytd"
+    assert get_setting_value("dashboard_milestone_profit_goal") == "7500.00"
+    assert get_setting_value("dashboard_milestone_target_balance") == "0.00"
+
+
+def test_dashboard_add_account_link_carries_rollover_context(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+
+    resp = client.get("/dashboard?scope=active", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert (
+        "/trades/upload/statement?ws=live&account_id=all&account_editor=new"
+        f"&rollover_from={account_id}"
+    ) in body
+
+
+def test_saving_opa_account_links_prior_eval_for_continuity(client):
+    eval_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_active_account(int(eval_account_id))
+
+    resp = client.post(
+        "/trades/upload/statement?ws=live&account_id=all&account_editor=new",
+        data={
+            "intent": "save_account",
+            "selected_account_id": "",
+            "rollover_from_account_id": str(eval_account_id),
+            "account_name": "Performance 50k",
+            "broker_account_id": "OPA0003049",
+            "account_size": "50000",
+            "starting_balance": "50000",
+            "max_drawdown": "2500",
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    performance_account = trades_repo.find_account_by_broker_account_id("OPA0003049")
+    assert performance_account is not None
+    assert performance_account["starting_balance"] == 50000.0
+    assert trades_repo.account_continuity_ids(int(performance_account["id"])) == [
+        int(eval_account_id),
+        int(performance_account["id"]),
+    ]
+    scope = trades_repo.account_scope_snapshot()
+    assert int(scope["account_id"]) == int(performance_account["id"])
+
+
+def test_dashboard_continuity_uses_prior_eval_for_ledger_not_broker(client):
+    eval_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    performance_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Performance 50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_account_continuity(int(performance_account_id), [int(eval_account_id)])
+    trades_repo.set_active_account(int(performance_account_id))
+    trades_repo.update_account_broker_metrics(
+        int(performance_account_id),
+        broker_equity=50125.0,
+        broker_equity_peak=50125.0,
+        broker_remaining_drawdown=2400.0,
+        broker_max_loss=47600.0,
+        updated_at="2026-06-11T09:30:00-04:00",
+    )
+    with db() as conn:
+        for account_id, raw_line, net_pl, balance in (
+            (eval_account_id, "eval rollover trade", 250.0, 50250.0),
+            (performance_account_id, "performance trade", 125.0, 50125.0),
+        ):
+            conn.execute(
+                """
+                INSERT INTO trades (
+                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                    entry_price, exit_price, contracts, total_spent, comm,
+                    gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    "2026-06-11",
+                    "10:05 AM",
+                    "10:20 AM",
+                    "SPX",
+                    "CALL",
+                    6900.0,
+                    1.0,
+                    2.0,
+                    1,
+                    100.0,
+                    1.0,
+                    net_pl,
+                    net_pl,
+                    100.0,
+                    balance,
+                    raw_line,
+                    now_iso(),
+                    int(account_id),
+                ),
+            )
+
+    resp = client.get(
+        f"/dashboard?y=2026&m=6&scope=active&account_id={performance_account_id}",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Broker Equity" in body
+    assert "$50,125.00" in body
+    assert "Ledger P&amp;L" in body
+    assert "continuity" in body
+    assert "$375.00" in body
+    assert "OEV0059123 + OPA0003049" in body
+    assert "Continuity Ledger" in body
 
 
 def test_trades_page_uses_action_specific_hero_and_trust_badges(client):
@@ -188,6 +504,31 @@ def test_strategies_page_uses_playbook_workflow_surface(client):
     assert "Playbook Rule" in body
 
 
+def test_books_page_renders_empty_library_and_featured_shelf(client):
+    empty_resp = client.get("/books", follow_redirects=True)
+    assert empty_resp.status_code == 200
+    empty_body = empty_resp.get_data(as_text=True)
+    assert "Private Trading Library" in empty_body
+    assert "No PDFs found yet." in empty_body
+    assert "No PDFs found in" in empty_body
+
+    books_root = Path(core.BOOKS_DIR)
+    books_root.mkdir(parents=True, exist_ok=True)
+    featured_path = books_root / "Trading in the Zone -  Mark Douglas.pdf"
+    featured_path.write_bytes(b"%PDF-1.4\n% featured test pdf\n")
+
+    featured_resp = client.get("/books", follow_redirects=True)
+    assert featured_resp.status_code == 200
+    featured_body = featured_resp.get_data(as_text=True)
+    assert "Trading in the Zone" in featured_body
+    assert "Mindset Pull" in featured_body
+    assert "Think in terms of probabilities." in featured_body
+    assert (
+        '/books/open/Trading in the Zone -  Mark Douglas.pdf">Open Trading in the Zone<'
+        in featured_body
+    )
+
+
 def test_playbook_page_renders_trading_doctrine_surface(client):
     resp = client.get("/playbook", follow_redirects=True)
     assert resp.status_code == 200
@@ -214,6 +555,15 @@ def test_strat_page_tracks_modules_in_learning_progress_and_includes_deeper_trai
 
 
 def test_strategy_mutations_flash_feedback(client):
+    invalid = client.post(
+        "/strategies/new",
+        data={"title": "", "body": ""},
+        follow_redirects=True,
+    )
+    assert invalid.status_code == 200
+    assert b"Title and body required." in invalid.data
+    assert b"Keep it executable." in invalid.data
+
     created = client.post(
         "/strategies/new",
         data={"title": "ORB", "body": "Open range break with defined risk."},
@@ -322,7 +672,7 @@ def test_login_page_includes_passkey_cta_when_passkeys_exist(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Use Passkey" in body
-    assert "Passkey sign-in is ready" in body
+    assert "Passkey ready" in body
 
 
 def test_passkeys_page_renders_registered_devices_for_authenticated_user(client):
@@ -355,6 +705,41 @@ def test_passkeys_page_renders_registered_devices_for_authenticated_user(client)
     assert "Passkey Control" in body
     assert "MacBook Pro Face ID" in body
     assert "Register Passkey" in body
+
+
+def test_passkeys_page_redirects_loopback_ip_to_localhost(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("secret-pass-123"))
+    with client.session_transaction(base_url="http://127.0.0.1:5001") as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.get("/auth/passkeys", base_url="http://127.0.0.1:5001")
+
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "http://localhost:5001/auth/passkeys"
+
+
+def test_passkey_registration_options_use_localhost_rp_for_loopback_ip(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("secret-pass-123"))
+    with client.session_transaction(base_url="http://127.0.0.1:5001") as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.post(
+        "/auth/passkeys/register/options",
+        base_url="http://127.0.0.1:5001",
+        headers={"Origin": "http://localhost:5001"},
+        json={},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["publicKey"]["rp"]["id"] == "localhost"
 
 
 def test_ops_alerts_page_uses_extracted_workflow_template(client):
@@ -390,7 +775,7 @@ def test_base_shell_generalizes_transition_loader_for_internal_pages(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'window.navigateWithShellLoading' in body
+    assert "window.navigateWithShellLoading" in body
     assert '"/analytics": { title: "Analytics"' in body
     assert '"/strat": { title: "The Strat"' in body
 
@@ -402,8 +787,12 @@ def test_market_pulse_page_uses_deferred_context_refresh_button(client):
     assert 'id="marketPulseContextRefreshBtn"' in body
     assert "/api/market-pulse/context" in body
     assert "if (!pageLoaded || !coreReady) return;" in body
-    assert 'id="marketPulseFeedFold" open' in body
+    assert 'id="marketPulseFeedFold"' in body
+    assert 'id="marketPulseFeedFold" open' not in body
     assert "Source standby" in body
+    assert "Actionability" in body
+    assert "Gamma Data" in body
+    assert "Decision" in body
 
 
 def test_market_pulse_context_api_returns_playbook_payload(client):
@@ -447,7 +836,20 @@ def test_dashboard_renders_foundation_routine_and_reflection_layers(client):
     assert "Operating State" in body
     assert "Permission" in body
     assert "Next Step" in body
+
+
+def test_dashboard_renders_support_health_fold_toggle_button(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert body.count('id="dashboardWakeLockBtn"') == 1
+    assert 'id="dashboardHealthSurface"' in body
+    assert 'aria-controls="dashboardHealthSurface"' in body
+    assert "Keep Support &amp; Health open" in body
+    assert "Keep this dashboard awake" not in body
     assert "dashboardCommandDeck" in body
+    assert "dashboardLabelIcon" in body
+    assert "dashboardTapeHeaderSubline" in body
     assert "5-Day Memory" in body
     assert "Alignment Before Action" in body
     assert "Scripture Anchor" in body
@@ -827,9 +1229,251 @@ def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'href="/market-pulse?ticker=QQQ&amp;refresh=1"' in body
+    assert 'href="/market-pulse?ticker=SPY"' in body
     assert 'href="/ops/trading-window"' in body
     assert 'href="/calendar"' in body
+
+
+def test_home_redirects_to_executive_dashboard(client):
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code in {301, 302, 303, 307, 308}
+    assert resp.headers["Location"].endswith("/executive")
+
+
+def test_executive_dashboard_renders_command_center(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "CEO Command Center" in body
+    assert "Is McCain Capital healthier than yesterday?" in body
+    assert "BOA-Based Projection" in body
+    assert "Projection Controls" in body
+    assert "Enter BOA balance. The system calculates the rest from the operating plan." in body
+    assert "data-exec-recalculate-status" in body
+    assert 'aria-live="polite"' in body
+    assert "Advanced assumptions hidden" in body
+    assert "Show Advanced Assumptions" in body
+    assert "Add Adjustment" in body
+    assert "Projection Summary" in body
+    assert "Visual Command Graphs" in body
+    assert "Month Selector" in body
+    assert "Monthly Operating Calendar" in body
+    assert "Projection Ledger" in body
+    assert "Month Projection Timeline" in body
+    assert "Budget Details" in body
+    assert "Trading Rules" in body
+    assert "July 2026" in body
+    assert '"id": "2026-09"' in body
+    assert '"boaPaycheck2": 4700' in body
+    assert '"currentPaycheck2": 4700' in body
+    assert "July 2027" in body
+    assert "CEO Weekly Scorecard" in body
+    assert "BOA Treasury Growth" in body
+    assert "Company Metrics" in body
+    assert "2026 Annual Targets" in body
+    assert "12-Month Roadmap" in body
+    assert "McCain Capital Timeline" in body
+    assert "Projected BOA Close" in body
+    assert "BOA Current Balance" in body
+    assert "Chase fixed payment" in body
+    assert "Chase Paydown" not in body
+    assert "Current State Inputs" not in body
+    assert "Consumer cards are locked and being paid down only." in body
+    assert "executive_command_center.js" in body
+    assert "Connect Current balance" in body
+    assert "Waiting for first tracked month" in body
+    assert "Placeholder" not in body
+    assert 'href="/executive"' in body
+    assert "Trading Dashboard" in body
+
+
+def test_executive_recalculate_reads_current_controls_and_confirms_update():
+    script = Path("static/js/executive_command_center.js").read_text()
+
+    for contract in (
+        "function recalculateFromControls(button)",
+        "nextInputs[key] = parsed",
+        "state.inputs[month.id] = nextInputs",
+        "Projected close ${formatMoney(projection.projectedBOAClose)}",
+        'button.textContent = "Projection Updated"',
+        "recalculateFromControls(event.target.closest",
+    ):
+        assert contract in script
+
+
+def test_executive_august_guardrails_remain_independent(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    match = re.search(
+        r'<script id="executive-operating-months" type="application/json">(.*?)</script>',
+        body,
+        re.DOTALL,
+    )
+    assert match
+    months = json.loads(match.group(1))
+    august = next(month for month in months if month["id"] == "2026-08")
+
+    assert august["redLine"] == 4000
+    assert august["openingBOA"] == 4400
+    assert august["protectedFloor"] == 5500
+    assert august["targetCloseLow"] == 6500
+    assert august["temporaryFloor"] == 4000
+    assert august["permanentFloorGoal"] == 10000
+    assert august["floorActivationMonth"] == "2026-09"
+    assert august["deposits"]["currentPaycheck1"] == 1873.78
+    assert august["deposits"]["boaPaycheck1"] == 1873.78
+    for month in months:
+        verizon_bills = [bill for bill in month["bills"] if bill["name"] == "Verizon"]
+        assert len(verizon_bills) == 1
+        assert verizon_bills[0]["amount"] == 267
+        assert verizon_bills[0]["dueDay"] == 26
+        assert all("catch-up" not in bill["name"].lower() for bill in month["bills"])
+    assert august["paySchedule"]["anchorDate"] == "2026-07-31"
+    assert august["paySchedule"]["cadenceDays"] == 14
+    assert august["paySchedule"]["regularCurrent"] == 1873.78
+    assert august["paySchedule"]["regularBOA"] == 1873.78
+    food_bills = [bill for bill in august["bills"] if bill["name"] == "Food"]
+    assert food_bills == [
+        {"name": "Food", "account": "Current", "amount": 450, "timing": "Monthly"}
+    ]
+    assert all(bill["name"] != "Food / Dates" for bill in august["bills"])
+    chase_bills = [bill for bill in august["bills"] if bill["name"] == "Chase fixed payment"]
+    assert chase_bills == [
+        {
+            "name": "Chase fixed payment",
+            "account": "BOA",
+            "amount": 376,
+            "timing": "Paycheck 1",
+            "dueDay": 17,
+        }
+    ]
+    september = next(month for month in months if month["id"] == "2026-09")
+    assert september["paySchedule"]["exceptions"]["2026-09-25"] == {
+        "boa": 4700,
+        "current": 4700,
+        "estimated": True,
+    }
+
+
+def test_executive_capital_flow_projection_contract():
+    script = Path("static/js/executive_command_center.js").read_text()
+
+    assert "boaObligations" in script
+    assert "cycle.boaObligations.length === 1" in script
+    assert "cycle.boaObligations.length > 1" in script
+
+    for contract in (
+        "const normalizedEntry = (month, entry, index)",
+        ".sort((a, b) => a.dueDay - b.dueDay",
+        "const dailyPath = [{ day: asOfDay, boa, current",
+        "const projectedLow = lowPoint.boa",
+        "const fundingGap = Math.max(0, activeHardFloor - projectedLow)",
+        "const absorbableUnexpectedExpense = Math.max(0, monthPathCushion)",
+        "const asOfDay = projectionAsOfDay(month)",
+        'if (["Paid", "Skipped"].includes(saved.status)) return 0',
+        "Math.max(asOfDay, entry.dueDay)",
+        'floorStatus = "Temporary Floor at Risk"',
+        'floorStatus = "$10K Floor Secured"',
+        'floorStatus = "Rebuilding Secured Floor"',
+        'let floorPhase = "build"',
+        'floorPhase = "secured"',
+        'floorPhase = "recovery"',
+        "dailyPath.slice(index).every",
+        'const activeHardFloor = floorPhase === "build" ? temporaryFloor : permanentFloorGoal',
+        "state.permanentFloorSecured = true",
+        "const fundingCycleForDate = (date)",
+        "new Date(2026, 6, 31)",
+        "entry.cycleSettled",
+        "const buildRequiredFloatEntries = (month, inputs, entries)",
+        "Required Current float · Day ${day}",
+        "Settled cycle <strong>",
+        "$9,400 estimated",
+        "projectionLog: []",
+        "Recent projection snapshots",
+        "].slice(-24)",
+        "septemberExceptionEstimated: true",
+        "timingEstimated: !hasExplicitDay",
+        "The previous projection was kept",
+        "renderCapitalFlow(month, projection)",
+        "Cycle settled",
+    ):
+        assert contract in script
+
+
+def test_executive_capital_flow_receiving_surface(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "data-exec-capital-flow" in body
+    assert 'aria-label="Daily capital flow"' in body
+    assert (
+        "Active floor ${formatMoney(projection.activeHardFloor)}"
+        in Path("static/js/executive_command_center.js").read_text()
+    )
+
+
+def test_executive_desktop_cleanup_contract(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    script = Path("static/js/executive_command_center.js").read_text()
+    assert 'aria-label="Executive decision band"' in body
+    assert "12-month planning baseline" in body
+    assert "Year View" not in body
+    assert "Net Worth Tracker" not in body
+    assert "Capital Allocation" not in body
+    assert "selectedMonth: currentOperatingMonth.id" in script
+    assert '["Current BOA", formatMoney(monthInputs(month).openingBOA)' in script
+    assert "Absorbable Cushion" in script
+    assert "Planning baseline, not bank sync" in script
+    assert "projected: itemProjection.projectedBOAClose" in script
+    assert "months.slice(startIndex, startIndex + 12)" in script
+    assert "currentToBOATransfers" in script
+    assert "Current Carryover" in script
+    assert "Committed Current" in script
+    assert "Free Current" in script
+    assert "Next-Cycle Support" in script
+    assert "Estimated paycheck · Sep 25 · $9,400" in script
+    assert "const fundingCycleRows = (month, count = 5)" in script
+    assert "const nextCycleCommitment = (month, projection)" in script
+    assert "Paycheck-to-paycheck funding map" in script
+    assert "Settled in as-of balances" in script
+    assert "Current pays cycle obligations" in script
+    assert "Avoid unplanned evaluation purchases" in body
+    assert "Finish July without more eval purchases" not in body
+    assert "Estimated paycheck · $9,400 combined" in script
+    assert "Current shortfall" in script
+    assert "const currentObligations = isSettled ? [] : entries" in script
+    assert "Why BOA support is needed" in script
+    assert "Largest cycle obligations" in script
+    assert "Other cycle obligations" in script
+    assert "otherObligationsTotal" in script
+    assert "View all ${cycle.currentObligations.length} cycle bills" in script
+    assert "Total Current bills" in script
+    assert "Current bills" in script
+    assert "BOA covers only the remaining gap" in script
+    assert 'tabindex="0" role="group" aria-label="Explain BOA support of' in script
+    assert "Remaining BOA path stays at or above $10K" in script
+    assert "Estimated paychecks are planning placeholders" in script
+    assert "Updates automatically when the local date changes." in script
+    assert "const refreshForCalendarChange = () =>" in script
+    assert 'document.addEventListener("visibilitychange"' in script
+    assert script.count('class="executiveTableScroll"') == 2
+    assert "September post-bill surplus sweep" not in script
+    assert "CEO Score" not in script
+    assert "Cash Runway" not in script
+    assert (
+        "entry.cycleSettled ? '<small class=\"executiveTimingEstimate\">Automatic</small>'"
+        in script
+    )
+    assert "data-exec-quick-expense-description" in script
+    assert "executiveReviewComparison" in script
 
 
 def test_vanquish_blocklist_download_endpoint(client):
@@ -1503,6 +2147,143 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"autoRefreshToggle" not in resp.data
 
 
+def test_gamma_ladder_api_defaults_to_spy(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    monkeypatch.setattr(
+        gamma_map_service,
+        "build_gamma_ladder",
+        lambda symbol, window="standard", dte="0": {
+            "ok": True,
+            "symbol": symbol,
+            "spot": 7415.22,
+            "expiration": "2026-05-21",
+            "expiration_label": "0DTE",
+            "regime": "positive_gamma",
+            "regime_label": "Positive Gamma Regime",
+            "updated_at": now_iso(),
+            "updated_label": "2:41 PM ET",
+            "total_net_gamma": 123456789.0,
+            "flip_strike": 7400.0,
+            "strongest_level": 7425.0,
+            "rows_total": 96,
+            "rows_visible": 17,
+            "window_min_strike": 7350.0,
+            "window_max_strike": 7475.0,
+            "window_mode": "spot_band",
+            "window_preset": window,
+            "dte_preset": dte,
+            "rows": [{"strike": 7425.0, "call_gex": 12.0, "put_gex": -8.0, "net_gex": 4.0}],
+        },
+    )
+
+    resp = client.get("/api/gamma-ladder", follow_redirects=True)
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert payload["symbol"] == "SPY"
+    assert payload["rows_total"] == 96
+    assert payload["rows_visible"] == 17
+    assert payload["window_preset"] == "standard"
+    assert payload["dte_preset"] == "0"
+    assert payload["rows"]
+
+
+def test_gamma_ladder_api_accepts_searched_symbols_and_normalizes_invalid(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    seen = []
+
+    monkeypatch.setattr(
+        gamma_map_service,
+        "build_gamma_ladder",
+        lambda symbol, window="standard", dte="0": seen.append((symbol, window, dte))
+        or {
+            "ok": True,
+            "symbol": symbol,
+            "spot": 532.14,
+            "expiration": "2026-05-21",
+            "expiration_label": "0DTE",
+            "regime": "mixed_gamma",
+            "regime_label": "Mixed Gamma Regime",
+            "updated_at": now_iso(),
+            "updated_label": "2:41 PM ET",
+            "total_net_gamma": 1.0,
+            "flip_strike": 530.0,
+            "strongest_level": 535.0,
+            "rows_total": 48,
+            "rows_visible": 13,
+            "window_min_strike": 520.0,
+            "window_max_strike": 542.0,
+            "window_mode": "spot_band",
+            "window_preset": window,
+            "dte_preset": dte,
+            "rows": [{"strike": 535.0, "call_gex": 5.0, "put_gex": -2.0, "net_gex": 3.0}],
+        },
+    )
+
+    spy_resp = client.get("/api/gamma-ladder?symbol=SPY&window=tight&dte=0", follow_redirects=True)
+    nvda_resp = client.get("/api/gamma-ladder?symbol=NVDA&window=wide&dte=7", follow_redirects=True)
+    bad_resp = client.get("/api/gamma-ladder?symbol=bad!&window=nope", follow_redirects=True)
+
+    assert spy_resp.status_code == 200
+    assert spy_resp.get_json()["symbol"] == "SPY"
+    assert spy_resp.get_json()["window_preset"] == "tight"
+    assert nvda_resp.status_code == 200
+    assert nvda_resp.get_json()["symbol"] == "NVDA"
+    assert nvda_resp.get_json()["window_preset"] == "wide"
+    assert nvda_resp.get_json()["dte_preset"] == "7"
+    assert bad_resp.status_code == 200
+    assert bad_resp.get_json()["symbol"] == "SPY"
+    assert bad_resp.get_json()["window_preset"] == "standard"
+    assert bad_resp.get_json()["dte_preset"] == "0"
+    assert ("NVDA", "wide", "7") in seen
+
+
+def test_gamma_ladder_api_error_returns_requested_symbol(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    def _raise(symbol, window="standard", dte="0"):
+        raise RuntimeError(f"{symbol} options chain unavailable.")
+
+    monkeypatch.setattr(gamma_map_service, "build_gamma_ladder", _raise)
+
+    resp = client.get("/api/gamma-ladder?symbol=NVDA&window=tight", follow_redirects=True)
+
+    assert resp.status_code == 503
+    payload = resp.get_json()
+    assert payload["ok"] is False
+    assert payload["symbol"] == "NVDA"
+    assert payload["window_preset"] == "tight"
+    assert "NVDA options chain unavailable" in payload["message"]
+
+
+def test_market_pulse_renders_gamma_ladder_switcher(client):
+    resp = client.get("/market-pulse", follow_redirects=True)
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'id="marketPulseGammaLadderCard"' in body
+    assert 'class="gamma-symbol-switcher"' in body
+    assert 'data-gamma-symbol-pill="SPX"' in body
+    assert 'data-gamma-symbol-pill="SPY"' in body
+    assert 'data-gamma-symbol-pill="QQQ"' in body
+    assert 'data-default-symbol="SPY"' in body
+    assert 'data-symbol="SPY"' in body
+    assert 'data-gamma-symbol-pill="SPY"' in body
+    assert 'class="gamma-symbol-pill active"' in body
+    assert "data-gamma-symbol-search" in body
+    assert "data-gamma-symbol-input" in body
+    assert 'data-gamma-window-pill="tight"' in body
+    assert 'data-gamma-window-pill="standard"' in body
+    assert 'data-gamma-window-pill="wide"' in body
+    assert "data-gamma-summary" in body
+    assert "data-gamma-loading" in body
+    assert "data-gamma-board" in body
+    assert 'class="gamma-ladder-boardShell"' in body
+
+
 def test_market_pulse_news_surface_keeps_tape_drivers_and_removes_watchlist_block(
     client, monkeypatch
 ):
@@ -1617,6 +2398,94 @@ def test_market_pulse_source_is_normalized_to_yahoo():
     )
     assert out["source_label"] == "Yahoo Finance chart feed"
     assert "finnhub" not in str(out["source_note"]).lower()
+
+
+def test_market_pulse_range_payload_prefers_ohlc_rows():
+    out = market_pulse_tape.range_payload(
+        [
+            {"high": 747.25, "low": 745.35, "close": 746.2},
+            {"high": 746.97, "low": 745.8, "close": 746.74},
+        ],
+        source="current_session",
+    )
+
+    assert out["day_range"] == "745.35 to 747.25"
+    assert out["day_range_compact"] == "745.35-747.25"
+    assert out["range_display"] == "745.35-747.25"
+    assert out["day_range_source"] == "current_session"
+
+
+def test_market_pulse_range_payload_falls_back_to_replay_values():
+    out = market_pulse_tape.range_payload(
+        [{"v": 745.35}, {"v": 746.97}, {"v": 746.21}],
+        source="cached_replay",
+    )
+
+    assert out["day_range"] == "745.35 to 746.97"
+    assert out["day_range_compact"] == "745.35-746.97"
+    assert out["day_range_source"] == "cached_replay"
+
+
+def test_market_pulse_range_payload_empty_when_no_range_data():
+    assert market_pulse_tape.range_payload([], source="cached_replay") == {}
+    assert market_pulse_tape.range_payload([{"v": 745.35}], source="cached_replay") == {}
+
+
+def test_market_pulse_tape_api_uses_prior_open_day_range(client, monkeypatch):
+    from mccain_capital.services import market_data_service
+
+    monkeypatch.setattr(
+        core_service,
+        "MARKET_PULSE_SYMBOLS",
+        [{"symbol": "SPY", "label": "SPY", "group": "core", "focus": ""}],
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist",
+        lambda _symbols, allow_yf_fallback=False, force_refresh=False: {
+            "SPY": {
+                "price": 746.74,
+                "pct_change": 1.04,
+                "provider": "tradier",
+                "reason": "tradier_live_quote",
+                "as_of": "2026-06-19T16:00:00-04:00",
+            }
+        },
+    )
+    monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
+    monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
+    monkeypatch.setattr(
+        market_data_service,
+        "get_prior_session_intraday",
+        lambda _symbol, anchor_session_day=None: [
+            {
+                "ts": "2026-06-18T13:30:00+00:00",
+                "open": 745.80,
+                "high": 746.10,
+                "low": 745.35,
+                "close": 745.90,
+                "volume": 100,
+            },
+            {
+                "ts": "2026-06-18T19:59:00+00:00",
+                "open": 745.90,
+                "high": 746.97,
+                "low": 746.01,
+                "close": 746.74,
+                "volume": 100,
+            },
+        ],
+    )
+
+    resp = client.get("/api/market-pulse/tape?include_series=1")
+
+    assert resp.status_code == 200
+    payload = resp.get_json()["payload"]
+    spy = payload["quotes_map"]["SPY"]
+    assert spy["day_range"] == "745.35 to 746.97"
+    assert spy["day_range_compact"] == "745.35-746.97"
+    assert spy["range_display"] == "745.35-746.97"
+    assert spy["day_range_source"] == "prior_session"
 
 
 def test_market_pulse_cached_payload_is_expanded_to_current_symbol_set():
@@ -1739,15 +2608,15 @@ def test_market_pulse_closed_session_quotes_do_not_trigger_unsafe_guardrail():
     assert alert["message"].startswith("Closed-session quotes loaded")
 
 
-def test_market_pulse_sparkline_renders_guides_and_points():
-    svg = core_service._market_pulse_sparkline_svg([10.0, 11.0, 10.5, 12.0, 11.75], "up")
+def test_market_pulse_sparkline_renders_guides_and_candles():
+    svg = market_pulse_tape.sparkline_svg([10.0, 11.0, 10.5, 12.0, 11.75], "up")
 
     assert "marketMiniSparkGuide" in svg
     assert "marketMiniSparkBaseline" in svg
-    assert "marketMiniSparkPoint up" in svg
-    assert "marketMiniSparkPoint up start" in svg
-    assert "marketMiniSparkPoint up end" in svg
-    assert svg.count("<circle") >= 3
+    assert "marketMiniSparkWick" in svg
+    assert "marketMiniSparkBody" in svg
+    assert "marketMiniSparkPoint" in svg
+    assert svg.count("<rect") >= 2
     assert "10.0,11.0" not in svg
 
 
@@ -1777,7 +2646,7 @@ def test_market_pulse_enrich_quotes_uses_replay_when_quote_series_is_sparse(monk
 
     assert len(quote["mini_series"]) >= 8
     assert len(quote["series"]) >= 8
-    assert "marketMiniSparkPoint" in quote["sparkline_svg"]
+    assert "marketMiniSparkBody" in quote["sparkline_svg"]
 
 
 def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
@@ -1805,17 +2674,17 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
                 "QQQ": quote("QQQ", 657.55, -1.01, [660.0, 659.2, 658.4, 658.0, 657.55]),
                 "SPY": quote("SPY", 711.69, -0.49, [715.2, 714.1, 713.0, 712.2, 711.69]),
                 "VIX": quote("VIX", 17.83, -1.06, [18.6, 18.4, 18.2, 18.0, 17.83]),
-                "IWM": quote("IWM", 273.91, -1.17, [277.1, 276.4, 275.2, 274.4, 273.91]),
+                "SPX": quote("SPX", 6780.25, -0.36, [6801.0, 6794.5, 6788.0, 6783.4, 6780.25]),
             },
         },
     )
 
-    resp = client.get("/api/dashboard/tape?ticker=QQQ", follow_redirects=True)
+    resp = client.get("/api/dashboard/tape?symbols=QQQ,SPY", follow_redirects=True)
 
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload["ok"] is True
-    assert sorted(payload["series_points"]) == ["IWM", "QQQ", "SPY", "VIX"]
+    assert sorted(payload["series_points"]) == ["QQQ", "SPY"]
     assert len(payload["series_points"]["SPY"]) == 5
 
 
@@ -1844,7 +2713,7 @@ def test_dashboard_tape_refresh_backfills_vix_intraday_curve(client, monkeypatch
                 "SPY": quote("SPY", 711.69, -0.49),
                 "QQQ": quote("QQQ", 657.55, -1.01),
                 "VIX": quote("VIX", 17.39, 0.06),
-                "IWM": quote("IWM", 273.91, -1.17),
+                "SPX": quote("SPX", 6780.25, -0.36),
             },
             "series_points": {},
             "series": {},
@@ -1895,13 +2764,13 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
         "QQQ": [664.28, 662.90, 661.30, 659.10, 657.55],
         "SPY": [715.23, 714.40, 713.35, 712.20, 711.69],
         "VIX": [18.67, 18.38, 18.12, 17.95, 17.83],
-        "IWM": [277.15, 276.40, 275.35, 274.50, 273.91],
+        "SPX": [6802.15, 6795.40, 6788.35, 6782.50, 6780.25],
     }
     prices = {
         "QQQ": quote("QQQ", 657.55, -1.01),
         "SPY": quote("SPY", 711.69, -0.49),
         "VIX": quote("VIX", 17.83, -1.06),
-        "IWM": quote("IWM", 273.91, -1.17),
+        "SPX": quote("SPX", 6780.25, -0.36),
     }
     monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
     monkeypatch.setattr(
@@ -1918,7 +2787,9 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
         },
     )
     monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
-    monkeypatch.setattr(market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: []
+    )
     monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
     monkeypatch.setattr(
         market_data_service,
@@ -1930,9 +2801,13 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert body.count("marketMiniSparkPoint") >= 12
-    assert body.count("marketMiniSparkGuide") >= 8
-    assert body.count("marketMiniSparkBaseline") >= 4
+    assert body.count("dashboardTapeHourChart") >= 2
+    assert body.count("dashboardTapeHourLine") >= 2
+    assert body.count("dashboardTapeHourPoint") >= 2
+    assert body.count("dashboardTapeHourBaseline") >= 2
+    assert body.count("dashboardTapeFreshnessGlyph") >= 2
+    assert body.count("data-freshness-label=") >= 2
+    assert body.count('data-role="row-live"') >= 2
     assert "Broad tape is defensive" in body
 
 
@@ -1963,7 +2838,7 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
                 "SPX": quote("SPX", 6780.25, 0.12),
                 "QQQ": quote("QQQ", 657.55, -0.10),
                 "VIX": quote("VIX", 17.39, 0.06, {"mini_series": [17.10, 17.22, 17.50, 17.39]}),
-                "IWM": quote("IWM", 286.23, 1.51),
+                "SPY": quote("SPY", 711.69, 0.16),
             },
             "series_points": {},
             "series": {},
@@ -1971,9 +2846,13 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
         },
     )
     monkeypatch.setattr(core_service, "_market_pulse_snapshot", lambda **_: {"quotes": []})
-    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None))
+    monkeypatch.setattr(
+        core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None)
+    )
     monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
-    monkeypatch.setattr(market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: []
+    )
     monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
     monkeypatch.setattr(market_data_service, "get_watchlist", lambda *_args, **_kwargs: {})
 
@@ -1983,7 +2862,7 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
     body = resp.get_data(as_text=True)
     assert "VIX" in body
     assert "17.10-17.50" in body
-    assert "marketMiniSparkPoint" in body
+    assert "dashboardTapeHourPoint" in body
 
 
 def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
@@ -2127,6 +3006,8 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
                     "summary": "Macro desks are focused on yields and policy language.",
                     "source_label": "Reuters",
                     "url": "https://example.com/1",
+                    "published_at": "2026-04-05T09:40:00-04:00",
+                    "published_et_label": "Apr 05, 09:40 AM",
                     "published_label": "5m ago",
                     "impact": "high",
                     "impact_label": "HIGH",
@@ -2139,6 +3020,8 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
                     "summary": "Rates pressure remains the lead market driver.",
                     "source_label": "MarketWatch",
                     "url": "https://example.com/2",
+                    "published_at": "2026-04-05T09:36:00-04:00",
+                    "published_et_label": "Apr 05, 09:36 AM",
                     "published_label": "9m ago",
                     "impact": "high",
                     "impact_label": "HIGH",
@@ -2187,6 +3070,11 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
     assert "Treasury yields climb as SPX futures fade" in body
     assert "Refresh Feed" in body
     assert "All posts" in body
+    assert 'data-feed-published-at="2026-04-05T09:40:00-04:00"' in body
+    assert 'data-feed-absolute-label="Apr 05, 09:40 AM"' in body
+    assert "5m ago · Apr 05, 09:40 AM" in body
+    assert "formatRelativeFeedAge" in body
+    assert "refreshFeedTimeLabels" in body
     assert "Open on X" in body
     assert "https://twitter.com/unusual_whales" in body
 
@@ -2300,7 +3188,7 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     )
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Prepare the Session" in resp.data
+    assert b"Prime" in resp.data
     assert b"Milestone" in resp.data
     assert b"Live Market Pulse" not in resp.data
 
@@ -2374,18 +3262,16 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardTapeStreamStatus" in resp.data
     assert b"Market Tape" in resp.data
     assert b"Live Tape" not in resp.data
-    assert b"dashboardGapLine" in resp.data
-    assert b"Gap O/N:" in resp.data
-    assert b"Tradier Live Quote" in resp.data
-    assert b"SPX cash" in resp.data
+    assert b"dashboardTapeHourModule" in resp.data
+    assert b"dashboardTapeHourChart" in resp.data
+    assert b"SPX" in resp.data
     assert b"6775.80" in resp.data
     assert b"-0.09%" in resp.data
     assert b"6773.42-6775.80" in resp.data
-    assert b"VIX pulse" in resp.data
+    assert b"VIX" in resp.data
     assert b"Live \xc2\xb7" not in resp.data
     assert b"Delayed \xc2\xb7" not in resp.data
     assert b'data-role="market-state">Live</span>' not in resp.data
-    assert b"Freshness" in resp.data
     assert b"dashboardTapeAssetStatus is-" in resp.data
 
 
@@ -2442,7 +3328,9 @@ def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
         },
     )
     monkeypatch.setattr(core_service, "_market_pulse_snapshot", lambda **_: {"quotes": []})
-    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None))
+    monkeypatch.setattr(
+        core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None)
+    )
     monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
     monkeypatch.setattr(market_data_service, "get_watchlist", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
@@ -2453,7 +3341,7 @@ def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
     body = resp.get_data(as_text=True)
     assert "dashboardTapeAssetStatus is-delayed" in body
     assert "dashboardTapeAssetStatus is-missing" in body
-    assert "Cached ·" not in body
+    assert "dashboardTapeAssetStatus is-delayed" in body
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
@@ -3205,6 +4093,16 @@ def test_trade_mutations_flash_feedback(client):
     )
     assert reviewed.status_code == 200
     assert b"Trade review saved." in reviewed.data
+    assert b"Review Completion" in reviewed.data
+    assert b"All core review checks logged." not in reviewed.data
+
+    review_page = client.get(f"/trades/review/{trade_id}?d={today_iso()}", follow_redirects=True)
+    assert review_page.status_code == 200
+    assert b"Review Completion" in review_page.data
+
+    trades_page = client.get(f"/trades?d={today_iso()}", follow_redirects=True)
+    assert trades_page.status_code == 200
+    assert b"tradeReviewMeta-missing" in trades_page.data
 
     edited = client.post(
         f"/trades/edit/{trade_id}?d={today_iso()}",
@@ -3263,6 +4161,48 @@ def test_manual_trade_save_flashes_and_redirects(client):
     )
     assert resp.status_code == 200
     assert b"Trade saved." in resp.data
+
+
+def test_trade_edit_page_renders_form(client):
+    created = client.post(
+        "/trades/new",
+        data={
+            "trade_date": today_iso(),
+            "entry_time": "9:35 AM",
+            "exit_time": "9:40 AM",
+            "ticker": "SPX",
+            "opt_type": "CALL",
+            "strike": "5000",
+            "contracts": "1",
+            "entry_price": "1.00",
+            "exit_price": "1.20",
+            "comm": "1.00",
+            "gate_setup_type": "Opening drive",
+            "gate_invalidation": "Lose opening range low",
+            "gate_max_risk": "100",
+            "gate_focus": "Take one clean A setup",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
+        },
+        follow_redirects=True,
+    )
+    assert created.status_code == 200
+
+    with db() as conn:
+        trade_id = conn.execute("SELECT MAX(id) FROM trades").fetchone()[0]
+
+    resp = client.get(f"/trades/edit/{trade_id}?d={today_iso()}", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Edit Trade" in resp.data
+    assert b"Fees (total)" in resp.data
+
+
+def test_risk_controls_page_renders_form(client):
+    resp = client.get("/trades/risk-controls", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Risk Controls" in resp.data
+    assert b"Daily Max Loss" in resp.data
 
 
 def test_dashboard_shows_balance_basis_and_drift_signal(client):
@@ -3445,12 +4385,60 @@ def test_dashboard_active_scope_aligns_balance_card_and_calendar(client):
 
     resp = client.get("/dashboard?y=2026&m=2&scope=active", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Active Account Balance" in resp.data
-    assert b"Start $52,000.00" in resp.data
-    assert b"Scoped account balance with calendar context." in resp.data
+    assert b"Active Account Profit" in resp.data
+    assert b"Funded $52,000.00" in resp.data
     assert b"Daily P/L calendar view for <strong>Active Account</strong>" in resp.data
-    assert b'data-balance="$52,250.00"' in resp.data
+    assert b'data-balance="$250.00"' in resp.data
     assert b'data-balance="$54,321.00"' not in resp.data
+
+
+def test_dashboard_all_history_uses_profit_only_display(client):
+    set_setting_value("starting_balance", "50000")
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:acct-1",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "10:05 AM",
+                "10:20 AM",
+                "SPX",
+                "PUT",
+                6895.0,
+                1.5,
+                1.0,
+                1,
+                150.0,
+                1.0,
+                250.0,
+                250.0,
+                166.7,
+                50250.0,
+                "all history trade",
+                now_iso(),
+                int(account_id),
+            ),
+        )
+
+    resp = client.get("/dashboard?y=2026&m=2&scope=all", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"All History Profit" in resp.data
+    assert b'data-balance="$250.00"' in resp.data
+    assert b'data-balance="$50,250.00"' not in resp.data
 
 
 def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
@@ -3527,6 +4515,143 @@ def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
     assert len(rows) == 2
     assert float(rows[0]["balance"]) == 50399.0
     assert float(rows[1]["balance"]) == 53399.0
+
+
+def test_dashboard_recompute_balances_endpoint_updates_active_account_rows(client):
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("pass123"))
+    set_setting_value("starting_balance", "50000")
+
+    account_a = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC111",
+        account_size=50000.0,
+        starting_balance=50000.0,
+    )
+    account_b = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Growth",
+        broker_account_id="default:ACC222",
+        account_size=30000.0,
+        starting_balance=30000.0,
+    )
+    trades_repo.set_active_account(int(account_a))
+
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "9:35 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                6925.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                399.0,
+                399.0,
+                399.0,
+                50000.0,
+                "account a trade 1",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-25",
+                "9:40 AM",
+                "10:05 AM",
+                "SPX",
+                "CALL",
+                6920.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                3000.0,
+                3000.0,
+                3000.0,
+                50000.0,
+                "account a trade 2",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "11:15 AM",
+                "11:30 AM",
+                "QQQ",
+                "PUT",
+                500.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                249.0,
+                249.0,
+                249.0,
+                30000.0,
+                "account b trade 1",
+                now_iso(),
+                int(account_b),
+            ),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.post(
+        "/dashboard/recompute-balances",
+        data={"scope": "active"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    with db() as conn:
+        rows_a = conn.execute(
+            "SELECT balance FROM trades WHERE account_id = ? ORDER BY trade_date ASC, id ASC",
+            (int(account_a),),
+        ).fetchall()
+        rows_b = conn.execute(
+            "SELECT balance FROM trades WHERE account_id = ? ORDER BY trade_date ASC, id ASC",
+            (int(account_b),),
+        ).fetchall()
+    assert len(rows_a) == 2
+    assert float(rows_a[0]["balance"]) == 50399.0
+    assert float(rows_a[1]["balance"]) == 53648.0
+    assert len(rows_b) == 1
+    assert float(rows_b[0]["balance"]) == 50648.0
 
 
 def test_dashboard_recompute_balances_requires_auth(client):

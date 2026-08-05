@@ -6,6 +6,9 @@
   const host = document.getElementById("spxExecutionHeroChart");
   const canvas = document.getElementById("spxExecutionHeroChartCanvas");
   const levelRail = document.getElementById("spxExecutionHeroLevelRail");
+  const drawToggle = document.getElementById("marketPulseHeroToggleDraw");
+  const undoDrawButton = document.getElementById("marketPulseHeroUndoDraw");
+  const clearDrawButton = document.getElementById("marketPulseHeroClearDraw");
   const markersToggle = document.getElementById("marketPulseHeroToggleMarkers");
   const levelsToggle = document.getElementById("marketPulseHeroToggleLevels");
   const dayLevelsToggle = document.getElementById("marketPulseHeroToggleDayLevels");
@@ -25,15 +28,24 @@
   const levelsUrl = String(host.dataset.levelsUrl || "/api/hero/levels");
   const quoteUrl = String(host.dataset.quoteUrl || "/api/hero/quote");
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
-  const symbol = String(host.dataset.symbol || "QQQ").toUpperCase();
+  const symbol = String(host.dataset.symbol || "SPY").toUpperCase();
   const DEFAULT_INTERVAL = "5min";
   const INTERVAL_LABELS = {
+    "1min": "1m",
     "5min": "5m",
     "15min": "15m",
     "30min": "30m",
     "1h": "1h",
+    "4h": "4H",
+    "12h": "12H",
+    "1d": "1D",
+    "1w": "1W",
+    "1mo": "1M",
   };
   const INTERVAL_ALIASES = {
+    "1": "1min",
+    "1m": "1min",
+    "1min": "1min",
     "5": "5min",
     "5m": "5min",
     "5min": "5min",
@@ -47,15 +59,49 @@
     "60": "1h",
     "60m": "1h",
     "60min": "1h",
+    "4h": "4h",
+    "240": "4h",
+    "240m": "4h",
+    "240min": "4h",
+    "12h": "12h",
+    "720": "12h",
+    "720m": "12h",
+    "720min": "12h",
+    "1d": "1d",
+    "1day": "1d",
+    "1w": "1w",
+    "1wk": "1w",
+    "1week": "1w",
+    "1mo": "1mo",
+    "1mon": "1mo",
+    "1month": "1mo",
   };
   const normalizeInterval = (value) => (
     INTERVAL_ALIASES[String(value || DEFAULT_INTERVAL).trim().toLowerCase()] || DEFAULT_INTERVAL
   );
   const INTERVAL_MINUTES = {
+    "1min": 1,
     "5min": 5,
     "15min": 15,
     "30min": 30,
     "1h": 60,
+    "4h": 240,
+    "12h": 720,
+    "1d": 1440,
+    "1w": 10080,
+    "1mo": 43200,
+  };
+  const INTERVAL_VISIBLE_BARS = {
+    "1min": 90,
+    "5min": 60,
+    "15min": 48,
+    "30min": 40,
+    "1h": 32,
+    "4h": 28,
+    "12h": 24,
+    "1d": 30,
+    "1w": 26,
+    "1mo": 24,
   };
   let interval = normalizeInterval(host.dataset.interval || DEFAULT_INTERVAL);
   const HERO_CHART_TIMEZONE = "America/New_York";
@@ -89,18 +135,18 @@
     gridMajor: "rgba(199, 208, 217, 0.18)",
     gridMinor: "rgba(199, 208, 217, 0.09)",
     axis: "rgba(199, 208, 217, 0.30)",
-    bull: "#19C997",
-    bullBorder: "#22C55E",
-    bullWick: "#4ADE80",
-    bear: "#D64D66",
-    bearBorder: "#EF4444",
-    bearWick: "#FB7185",
-    bullMuted: "rgba(25, 201, 151, 0.86)",
-    bullBorderMuted: "rgba(34, 197, 94, 0.92)",
-    bullWickMuted: "rgba(74, 222, 128, 0.88)",
-    bearMuted: "rgba(214, 77, 102, 0.84)",
-    bearBorderMuted: "rgba(239, 68, 68, 0.90)",
-    bearWickMuted: "rgba(251, 113, 133, 0.88)",
+    bull: "#F4F8FF",
+    bullBorder: "#E6EEF9",
+    bullWick: "#F4F8FF",
+    bear: "#4988FF",
+    bearBorder: "#3C79F2",
+    bearWick: "#4988FF",
+    bullMuted: "rgba(244, 248, 255, 0.72)",
+    bullBorderMuted: "rgba(230, 238, 249, 0.78)",
+    bullWickMuted: "rgba(244, 248, 255, 0.72)",
+    bearMuted: "rgba(73, 136, 255, 0.68)",
+    bearBorderMuted: "rgba(60, 121, 242, 0.76)",
+    bearWickMuted: "rgba(73, 136, 255, 0.70)",
     spx: "#63B3FF",
     current: "#C23B57",
     cw: "#C85A72",
@@ -125,10 +171,10 @@
     labelMintText: "#08111D",
     labelGreenBg: "#19c77e",
     labelGreenText: "#EAF2FF",
-    stratUp: "#1dffad",
-    stratDown: "#ff3b7f",
-    stratInside: "#71ddff",
-    stratOutside: "#ffd45f",
+    stratUp: "#F4F8FF",
+    stratDown: "#4988FF",
+    stratInside: "#AFC5E8",
+    stratOutside: "#E6EEF9",
     pdh: "#f7d56f",
     pdl: "#b78cff",
     cdh: "#63f7d4",
@@ -140,6 +186,7 @@
   const HERO_CHART_HEIGHT = 600;
   const LEGACY_HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
   const HERO_CHART_PREFS_KEY = `mc_hero_chart_display_prefs_${symbol}`;
+  const HERO_CHART_DRAWINGS_KEY = `mc_hero_chart_drawings_${symbol}`;
   const STRAT_MARKER_LIMIT = 96;
   const LEVEL_RAIL_MIN_GAP = 38;
 
@@ -244,6 +291,8 @@
   let priceLines = [];
   let spotPriceLines = [];
   let dayLevelLines = [];
+  let gammaSelectionLine = null;
+  let lastGammaSelectionTimestamp = 0;
   let polling = {
     session_phase: "open",
     bars_interval_ms: 10000,
@@ -290,6 +339,7 @@
     levels: { label: "Levels", state: "pending", text: "pending" },
   };
   let displayPrefs = { showMarkers: true, showLevels: true, showDayLevels: true };
+  let drawingState = { enabled: false, lines: [], series: [] };
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
   const HIDDEN_LEVELS_INTERVAL_MS = 300000;
@@ -303,11 +353,30 @@
     "next_call_wall",
     "next_put_wall",
   ];
+  const RAIL_LEVEL_KEYS = {
+    main: "main_flip",
+    local: "local_flip",
+    call: "call_wall",
+    put: "put_wall",
+  };
   const OFF_CHART_LEVEL_PCT = 0.018;
 
   const asNum = (value) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const asChartTime = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (value && typeof value === "object") {
+      const year = Number(value.year);
+      const month = Number(value.month);
+      const day = Number(value.day);
+      if ([year, month, day].every(Number.isFinite)) {
+        return Math.floor(Date.UTC(year, month - 1, day) / 1000);
+      }
+    }
+    return null;
   };
 
   const fmt = (value, digits = 0) => {
@@ -321,6 +390,19 @@
   const setText = (id, value) => {
     const node = document.getElementById(id);
     if (node) node.textContent = String(value ?? "");
+  };
+
+  const LOCAL_FLIP_NONE_LABEL = "No local flip in band";
+
+  const renderHeaderLevels = (items) => {
+    const node = document.getElementById("marketPulseHeaderSubline");
+    if (!node) return;
+    node.innerHTML = (Array.isArray(items) ? items : []).map((item) => {
+      const label = String(item.label || "");
+      const value = String(item.value ?? "—");
+      const muted = label === "Local Flip" && value === LOCAL_FLIP_NONE_LABEL ? " is-muted" : "";
+      return `<div class="marketPulseHeaderLevelItem${muted}"><span>${label}</span><strong>${value}</strong></div>`;
+    }).join("");
   };
 
   const parseDateValue = (value) => {
@@ -381,6 +463,69 @@
     if (active) node.classList.add(active);
   };
 
+  const renderSimpleBadges = (id, labels) => {
+    const root = document.getElementById(id);
+    if (!root) return;
+    const normalized = (Array.isArray(labels) ? labels : [])
+      .map((label) => String(label || "").trim())
+      .filter(Boolean);
+    root.innerHTML = normalized.map((label) => `<span class="marketPulseGammaBadge">${label}</span>`).join("");
+  };
+
+  const regimeDisplayLabel = (state, fallback = "REGIME UNAVAILABLE") => {
+    if (state === "positive") return "Positive Ⲅ";
+    if (state === "negative") return "Negative Ⲅ";
+    return fallback;
+  };
+
+  const gammaStateMeta = (state) => {
+    const normalized = String(state || "").toLowerCase();
+    if (normalized === "positive") {
+      return {
+        cardClass: "gamma-card--positive",
+        pillClass: "state-pill--positive",
+        pillLabel: "POSITIVE Ⲅ",
+        badges: ["PINNING", "MEAN REVERSION"],
+      };
+    }
+    if (normalized === "negative") {
+      return {
+        cardClass: "gamma-card--negative",
+        pillClass: "state-pill--negative",
+        pillLabel: "NEGATIVE Ⲅ",
+        badges: ["EXPANSION RISK", "TREND CONTINUATION"],
+      };
+    }
+    if (normalized === "unconfirmed") {
+      return {
+        cardClass: "gamma-card--unconfirmed",
+        pillClass: "state-pill--wait",
+        pillLabel: "WAIT FOR CONFIRMATION",
+        badges: ["WAIT FOR CONFIRMATION"],
+      };
+    }
+    return {
+      cardClass: "gamma-card--neutral",
+      pillClass: "state-pill--wait",
+      pillLabel: "NEUTRAL / DATA",
+      badges: ["WAIT FOR CONFIRMATION"],
+    };
+  };
+
+  const decisionStateMeta = (label) => {
+    const normalized = String(label || "").trim().toLowerCase();
+    if (normalized === "actionable") {
+      return { pillClass: "state-pill--execute", pillLabel: "EXECUTE" };
+    }
+    if (normalized === "planning only") {
+      return { pillClass: "state-pill--wait", pillLabel: "PLANNING ONLY" };
+    }
+    if (normalized === "no trade") {
+      return { pillClass: "state-pill--negative", pillLabel: "NO TRADE" };
+    }
+    return { pillClass: "state-pill--wait", pillLabel: "WAIT" };
+  };
+
   const fmtCompactLevel = (value, digits = 0, fallback = "—") => {
     const numeric = asNum(value);
     return numeric === null ? fallback : fmt(numeric, digits);
@@ -408,6 +553,125 @@
     try {
       window.localStorage.setItem(HERO_CHART_PREFS_KEY, JSON.stringify(displayPrefs));
     } catch (_) {}
+  };
+
+  const drawingRayEndTime = (startTime) => {
+    const intervalMinutes = INTERVAL_MINUTES[interval] || INTERVAL_MINUTES[DEFAULT_INTERVAL] || 5;
+    const extensionSeconds = intervalMinutes * 60 * 240;
+    const bars = Array.isArray(lastBarsPayload?.bars) ? lastBarsPayload.bars : [];
+    const lastBarTime = bars.length ? asChartTime(bars[bars.length - 1]?.time) : null;
+    const anchorTime = Math.max(
+      Number.isFinite(lastBarTime) ? lastBarTime : 0,
+      Number.isFinite(startTime) ? startTime : 0,
+    );
+    return anchorTime + extensionSeconds;
+  };
+
+  const loadDrawings = () => {
+    try {
+      const raw = window.localStorage.getItem(HERO_CHART_DRAWINGS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      drawingState.lines = parsed
+        .map((line) => ({
+          time: asChartTime(line?.time ?? line?.startTime),
+          value: asNum(line?.value ?? line?.startValue),
+        }))
+        .filter((line) => (
+          Number.isFinite(line.time)
+          && line.value !== null
+        ));
+    } catch (_) {
+      drawingState.lines = [];
+    }
+  };
+
+  const saveDrawings = () => {
+    try {
+      window.localStorage.setItem(HERO_CHART_DRAWINGS_KEY, JSON.stringify(drawingState.lines));
+    } catch (_) {}
+  };
+
+  const clearDrawingSeries = () => {
+    drawingState.series.forEach((series) => {
+      try {
+        chart.removeSeries(series);
+      } catch (_) {}
+    });
+    drawingState.series = [];
+  };
+
+  const drawingLineData = (line) => {
+    if (!line) return null;
+    const startTime = asChartTime(line.time);
+    const value = asNum(line.value);
+    const endTime = drawingRayEndTime(startTime);
+    if (
+      !Number.isFinite(startTime)
+      || !Number.isFinite(endTime)
+      || value === null
+      || endTime <= startTime
+    ) {
+      return null;
+    }
+    return [
+      { time: startTime, value },
+      { time: endTime, value },
+    ];
+  };
+
+  const renderDrawings = () => {
+    clearDrawingSeries();
+    drawingState.lines.forEach((line) => {
+      const data = drawingLineData(line);
+      if (!data) return;
+      const series = chart.addLineSeries({
+        color: "rgba(99, 179, 255, 0.95)",
+        lineWidth: 2,
+        lineStyle: 0,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      series.setData(data);
+      drawingState.series.push(series);
+    });
+  };
+
+  const syncDrawingButtons = () => {
+    if (drawToggle) {
+      drawToggle.setAttribute("aria-pressed", drawingState.enabled ? "true" : "false");
+      drawToggle.classList.toggle("is-active", drawingState.enabled);
+      drawToggle.title = "Place horizontal rays";
+    }
+    if (undoDrawButton) {
+      const hasLines = drawingState.lines.length > 0;
+      undoDrawButton.disabled = !hasLines;
+      undoDrawButton.setAttribute("aria-disabled", hasLines ? "false" : "true");
+    }
+    if (clearDrawButton) {
+      const hasLines = drawingState.lines.length > 0;
+      clearDrawButton.disabled = !hasLines;
+      clearDrawButton.setAttribute("aria-disabled", hasLines ? "false" : "true");
+    }
+    canvas.style.cursor = drawingState.enabled ? "crosshair" : "";
+  };
+
+  const removeLastDrawing = () => {
+    if (!drawingState.lines.length) return;
+    drawingState.lines = drawingState.lines.slice(0, -1);
+    saveDrawings();
+    renderDrawings();
+    syncDrawingButtons();
+  };
+
+  const clearAllDrawings = () => {
+    if (!drawingState.lines.length) return;
+    drawingState.lines = [];
+    saveDrawings();
+    renderDrawings();
+    syncDrawingButtons();
   };
 
   const syncToggleButtons = () => {
@@ -580,22 +844,32 @@
   const updateHeaderSummary = (levels) => {
     const gammaState = String(levels.gamma_regime || "").toLowerCase();
     const biasState = String(levels.bias_state || "").toLowerCase();
-    const spot = fmt(levels.spot, 2);
+    const gammaMeta = gammaStateMeta(gammaState);
+    const decisionMeta = decisionStateMeta(levels.decision_label || "Not actionable yet");
     const snapshotLabel = String(levels.last_valid_snapshot_time_label || levels.snapshot_timestamp_label || "—");
     const spotSourceLabel = String(levels?.spot_meta?.source_label || "Last Valid Session");
     const localFlip = levels.local_flip === null || levels.local_flip === undefined
-      ? "—"
+      ? (levels.local_flip_found === false ? LOCAL_FLIP_NONE_LABEL : "—")
       : fmtCompactLevel(levels.local_flip, 0);
-    setText(
-      "marketPulseHeaderSubline",
-      `Main Flip ${fmtCompactLevel(levels.main_flip, 0)} | Local Flip ${localFlip} | CW ${fmtCompactLevel(levels.call_wall, 0)} | PW ${fmtCompactLevel(levels.put_wall, 0)}`
-    );
+    renderHeaderLevels([
+      { label: "Spot", value: fmt(levels.spot, 2) },
+      { label: "Main Flip", value: fmtCompactLevel(levels.main_flip, 0) },
+      { label: "Local Flip", value: localFlip },
+      { label: "CW", value: fmtCompactLevel(levels.call_wall, 0) },
+      { label: "PW", value: fmtCompactLevel(levels.put_wall, 0) },
+    ]);
     setText("marketPulseTitle", `${symbol} PLAYBOOK`);
-    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel} • ${symbol} ${spot}`);
-    setText("marketPulseHeaderGammaLabel", levels.gamma_regime_label || "REGIME UNAVAILABLE");
+    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel}`);
+    const gammaDisplayLabel = regimeDisplayLabel(gammaState, levels.gamma_regime_label || "REGIME UNAVAILABLE");
+    setText("marketPulseHeaderGammaLabel", gammaDisplayLabel);
+    setText("marketPulseHeaderGammaSummary", levels.hero_summary || `${gammaDisplayLabel || "Regime unavailable"}, ${(levels.bias_summary_label || levels.bias_label || "wait for cleaner structure").toLowerCase()}.`);
     setText("marketPulseHeaderGammaSub", levels.gamma_regime_subtitle || "Gamma snapshot unavailable");
-    setText("marketPulseHeaderBiasPrimary", levels.bias_context || levels.planning_bias_label || "Awaiting valid structure");
-    setText("marketPulseHeaderBiasSecondary", levels.bias_label || "WAIT");
+    setText("marketPulseHeaderDecision", levels.decision_label || "Not actionable yet");
+    setText("marketPulseHeaderBiasPrimary", levels.bias_summary_label || levels.bias_label || "Wait for cleaner structure");
+    setText("marketPulseHeaderBiasSecondary", levels.bias_label || levels.planning_bias_label || "Awaiting valid structure");
+    setText("marketPulseHeaderTradeability", levels.tradeability_display_label || String(levels.execution_regime_label || levels.tradeability || "Trigger required").replaceAll("_", " "));
+    setText("marketPulseHeaderDecisionStatePill", decisionMeta.pillLabel);
+    renderSimpleBadges("marketPulseHeaderBadgeRow", gammaMeta.badges);
 
     setToneVariant(
       "marketPulseHeaderGammaCard",
@@ -603,15 +877,20 @@
       gammaState === "positive" ? "is-positive" : gammaState === "negative" ? "is-negative" : "is-neutral",
     );
     setToneVariant(
+      "marketPulseHeaderGammaCard",
+      ["gamma-card--positive", "gamma-card--negative", "gamma-card--neutral", "gamma-card--unconfirmed"],
+      gammaMeta.cardClass,
+    );
+    setToneVariant(
       "marketPulseHeaderBiasCard",
       ["is-positive", "is-negative", "is-neutral"],
       biasState === "above_local" ? "is-positive" : biasState === "below_local" ? "is-negative" : "is-neutral",
     );
-
-    const aboveNode = document.getElementById("marketPulseHeaderBiasAbove");
-    const belowNode = document.getElementById("marketPulseHeaderBiasBelow");
-    if (aboveNode) aboveNode.classList.toggle("is-active", biasState === "above_local");
-    if (belowNode) belowNode.classList.toggle("is-active", biasState === "below_local");
+    setToneVariant(
+      "marketPulseHeaderDecisionStatePill",
+      ["state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute"],
+      decisionMeta.pillClass,
+    );
   };
 
   const setSpotTrendTone = (trend) => {
@@ -642,7 +921,7 @@
     return {
       time,
       value: Number.isFinite(amount) ? amount : 0,
-      color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
+      color: close >= open ? "rgba(244, 248, 255, 0.18)" : "rgba(73, 136, 255, 0.18)",
     };
   };
 
@@ -856,10 +1135,16 @@
     return bars;
   };
 
+  const intervalShowsDates = () => ["4h", "12h", "1d", "1w", "1mo"].includes(interval);
+
+  const preferredVisibleBars = () => (
+    INTERVAL_VISIBLE_BARS[interval] || INTERVAL_VISIBLE_BARS[DEFAULT_INTERVAL] || DEFAULT_VISIBLE_BARS
+  );
+
   const syncAxisSessionMode = (payload) => {
     const previousDay = String(payload?.previous_session_day || "");
     const currentDay = String(payload?.current_session_day || "");
-    heroAxisShowsDates = Boolean(previousDay && currentDay && previousDay !== currentDay);
+    heroAxisShowsDates = intervalShowsDates() || Boolean(previousDay && currentDay && previousDay !== currentDay);
     try {
       chart.timeScale().applyOptions({ tickMarkFormatter: formatAxisTime });
     } catch (_) {}
@@ -899,13 +1184,14 @@
       barSpacing: 15,
     });
     if (fitContent || !initialized) {
+      const intervalVisibleBars = preferredVisibleBars();
       const requestedVisibleBars = Math.max(
         Number(lastBarsPayload.visible_window_bars) || 0,
-        Math.min(bars.length, DEFAULT_VISIBLE_BARS),
+        Math.min(bars.length, intervalVisibleBars),
       );
       const visibleBars = Math.max(
-        Math.min(bars.length, requestedVisibleBars, DEFAULT_VISIBLE_BARS) + LEFT_SCROLL_BUFFER_BARS,
-        Math.min(bars.length, DEFAULT_VISIBLE_BARS),
+        Math.min(bars.length, requestedVisibleBars, intervalVisibleBars) + LEFT_SCROLL_BUFFER_BARS,
+        Math.min(bars.length, intervalVisibleBars),
       );
       const targetTo = sessionTargetBarCount > 0
         ? Math.max((bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS, sessionTargetBarCount - 1)
@@ -1029,6 +1315,44 @@
         title,
       })
     );
+  };
+
+  const clearGammaSelectionLine = () => {
+    if (!gammaSelectionLine) return;
+    try {
+      candleSeries.removePriceLine(gammaSelectionLine);
+    } catch (_) {}
+    gammaSelectionLine = null;
+  };
+
+  const handleGammaLevelSelection = (event) => {
+    const detail = event.detail && typeof event.detail === "object" ? event.detail : {};
+    if (String(detail.symbol || "").toUpperCase() !== symbol) return;
+    const timestamp = Number(detail.timestamp) || 0;
+    if (timestamp && timestamp < lastGammaSelectionTimestamp) return;
+    if (timestamp && Date.now() - timestamp > 5 * 60 * 1000) return;
+    lastGammaSelectionTimestamp = Math.max(lastGammaSelectionTimestamp, timestamp);
+    if (detail.mode === "cleared") {
+      clearGammaSelectionLine();
+      return;
+    }
+    const price = Number(detail.price);
+    if (detail.valid === false || !Number.isFinite(price) || price <= 0) return;
+    clearGammaSelectionLine();
+    const title = String(detail.key || "Gamma level")
+      .replace(/^strike-/, "Strike ")
+      .replaceAll("_", " ")
+      .toUpperCase();
+    gammaSelectionLine = candleSeries.createPriceLine({
+      price,
+      color: "#71BAFF",
+      lineWidth: 2,
+      lineStyle: detail.mode === "preview" ? 2 : 0,
+      axisLabelVisible: true,
+      axisLabelColor: "#2F6BFF",
+      axisLabelTextColor: "#F7FBFF",
+      title,
+    });
   };
 
   const highLowForCandles = (candles) => {
@@ -1281,7 +1605,7 @@
     }
 
     levelRail.innerHTML = plottedRows.map((row) => `
-      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" title="${row.title} ${fmt(row.value, railDigitsForKind(row.kind))}" style="top:${Math.max(12, row.displayY)}px">
+      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" data-market-pulse-chart-level-key="${RAIL_LEVEL_KEYS[row.kind] || ""}" title="${row.title} ${fmt(row.value, railDigitsForKind(row.kind))}" style="top:${Math.max(12, row.displayY)}px">
         <span>${row.title}</span>
         <strong>${fmt(row.value, railDigitsForKind(row.kind))}</strong>
       </div>
@@ -1290,17 +1614,32 @@
 
   const renderSummary = (levels) => {
     // /api/hero/levels already derives read, pullback, destination, and trade state.
-    const state = String(levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
+    const state = String(levels.decision_label || levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
     const currentRead = String(levels.current_read || "Await structure");
     const headline = `${state} - ${currentRead}`.toUpperCase();
 
     updateHeaderSummary(levels);
+    setText("marketPulseHeaderSpot", fmt(levels.spot, 2));
+    document.dispatchEvent(new CustomEvent("market-pulse:levels-updated", {
+      detail: {
+        symbol,
+        spot: asNum(levels.spot),
+        timestamp: Date.parse(String(levels.updated_at || levels.timestamp || "")) || Date.now(),
+        levels: HERO_LEVEL_KEYS.filter((key) => ["main_flip", "local_flip", "call_wall", "put_wall"].includes(key)).map((key) => ({
+          key,
+          price: asNum(levels[key]),
+          classification: key.includes("flip") ? "flip" : key === "call_wall" ? "resistance" : "support",
+          symbol,
+          valid: asNum(levels[key]) !== null,
+        })),
+      },
+    }));
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || `${symbol} Spot`);
-    setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
-    setText("marketPulseHeroBias", levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
+    setText("marketPulseHeroGamma", regimeDisplayLabel(String(levels.gamma_regime || "").toLowerCase(), levels.gamma_regime_label || "Regime Unavailable"));
+    setText("marketPulseHeroBias", levels.bias_summary_label || levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
     const tradeability = String(
-      levels.execution_regime_label || levels.tradeability || "Reduced confidence"
+      levels.tradeability_display_label || levels.execution_regime_label || levels.tradeability || "Reduced confidence"
     ).replaceAll("_", " ");
     setText("marketPulseHeroTradeability", tradeability);
     setText("marketPulseHeroSession", levels.session || "Closed · No confidence");
@@ -1395,6 +1734,7 @@
         }
         applyStratMarkers();
         updateDayLevelLines();
+        renderDrawings();
         setSpotTrendTone(detectShortTermTrend(activeCandles));
         if (emptyState) emptyState.hidden = true;
         return;
@@ -1404,6 +1744,7 @@
         if (fitContent) applyViewport({ fitContent: true });
         applyStratMarkers();
         updateDayLevelLines();
+        renderDrawings();
         if (emptyState) emptyState.hidden = true;
         return;
       }
@@ -1422,6 +1763,7 @@
         if (latestVolume) volumeSeries.update(latestVolume);
         applyStratMarkers();
         updateDayLevelLines();
+        renderDrawings();
         lastBarsSignature = nextBarsSignature;
         lastDataShapeSignature = nextDataShapeSignature;
         lastLiveBarSignature = nextLiveBarSignature;
@@ -1435,6 +1777,7 @@
       applyStratMarkers({ force: true });
       volumeSeries.setData(volume);
       updateDayLevelLines();
+      renderDrawings();
       lastBarsSignature = nextBarsSignature;
       lastDataShapeSignature = nextDataShapeSignature;
       lastLiveBarSignature = nextLiveBarSignature;
@@ -1500,6 +1843,7 @@
       if (signature === lastQuotePatchSignature) return;
 
       lastQuotePatchSignature = signature;
+      setText("marketPulseHeaderSpot", fmt(price, 2));
       setText("marketPulseHeroSpot", fmt(price, 2));
       updateSpotOverlayPrice(price);
     } finally {
@@ -1671,6 +2015,22 @@
   };
 
   const bindDisplayToggles = () => {
+    if (drawToggle) {
+      drawToggle.addEventListener("click", () => {
+        drawingState.enabled = !drawingState.enabled;
+        syncDrawingButtons();
+      });
+    }
+    if (undoDrawButton) {
+      undoDrawButton.addEventListener("click", () => {
+        removeLastDrawing();
+      });
+    }
+    if (clearDrawButton) {
+      clearDrawButton.addEventListener("click", () => {
+        clearAllDrawings();
+      });
+    }
     if (markersToggle) {
       markersToggle.addEventListener("click", () => {
         displayPrefs.showMarkers = !displayPrefs.showMarkers;
@@ -1745,12 +2105,16 @@
   };
 
   loadDisplayPrefs();
+  loadDrawings();
   renderPollStatus();
   syncToggleButtons();
+  syncDrawingButtons();
   syncIntervalControls();
   bindDisplayToggles();
   bindIntervalToggles();
+  document.addEventListener("market-pulse:gamma-level-selected", handleGammaLevelSelection);
   applyLevelVisibility();
+  renderDrawings();
   window.addEventListener("resize", () => {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(resize, RESIZE_DEBOUNCE_MS);
@@ -1766,6 +2130,24 @@
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       renderLevelRail(lastLevelsPayload);
       renderSessionBreakLabel();
+    });
+  } catch (_) {}
+  try {
+    chart.subscribeClick((param) => {
+      if (!drawingState.enabled || !param?.point) return;
+      const time = asChartTime(param.time);
+      const value = asNum(candleSeries.coordinateToPrice(param.point.y));
+      if (!Number.isFinite(time) || value === null) return;
+      drawingState.lines = [
+        ...drawingState.lines,
+        {
+          time,
+          value,
+        },
+      ];
+      saveDrawings();
+      renderDrawings();
+      syncDrawingButtons();
     });
   } catch (_) {}
   document.addEventListener("visibilitychange", () => {

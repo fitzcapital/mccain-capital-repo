@@ -79,4 +79,4 @@ if [[ -n "$current_stamp" ]]; then
   printf '%s\n' "$current_stamp" > "$STAMP_FILE"
 fi
 echo "[run_podman_app] container is up"
-echo "[run_podman_app] local: http://127.0.0.1:${HOST_PORT}"
+echo "[run_podman_app] local: http://localhost:${HOST_PORT}"

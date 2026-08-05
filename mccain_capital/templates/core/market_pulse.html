@@ -1,12 +1,48 @@
+{% macro mp_icon(name) -%}
+  {% if name == 'orbit' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.2"></circle><path d="M4 12c0-3.8 3.6-7 8-7s8 3.2 8 7-3.6 7-8 7-8-3.2-8-7Z"></path><path d="M7.5 6.5c3-2.2 7.1-1.6 9.2 1.4 2.2 3 1.6 7.1-1.4 9.2-3 2.2-7.1 1.6-9.2-1.4-2.2-3-1.6-7.1 1.4-9.2Z"></path></svg>
+  {% elif name == 'gamma-symbol' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.2 7.4c.9-2.3 3.3-3.4 5.3-2.6 3.3 1.3 3.5 5.8 2.7 10.6-.6 3.5-.8 5.2-2.1 6.8"></path><path d="M12.4 13.8 18.7 5.2"></path></svg>
+  {% elif name == 'activity' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-5 3.6 10 2.4-6H21"></path></svg>
+  {% elif name == 'crosshair' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6"></circle><path d="M12 2v4"></path><path d="M12 18v4"></path><path d="M2 12h4"></path><path d="M18 12h4"></path></svg>
+  {% elif name == 'compass' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"></path></svg>
+  {% elif name == 'shield-check' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+  {% elif name == 'shield-alert' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3Z"></path><path d="M12 8v4"></path><circle cx="12" cy="15.5" r=".8" fill="currentColor" stroke="none"></circle></svg>
+  {% elif name == 'hourglass' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12"></path><path d="M6 21h12"></path><path d="M8 3c0 4 4 4 4 8s-4 4-4 10"></path><path d="M16 3c0 4-4 4-4 8s4 4 4 10"></path></svg>
+  {% elif name == 'layers' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path></svg>
+  {% elif name == 'alert' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z"></path><path d="M12 9v4"></path><circle cx="12" cy="16.5" r=".8" fill="currentColor" stroke="none"></circle></svg>
+  {% elif name == 'check' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.2 2.2 4.8-5"></path></svg>
+  {% elif name == 'ruler' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 21 18-18"></path><path d="m14 4 6 6"></path><path d="m11 7 2 2"></path><path d="m8 10 2 2"></path><path d="m5 13 2 2"></path></svg>
+  {% elif name == 'candles' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16"></path><path d="M17 4v16"></path><rect x="5" y="8" width="4" height="6" rx="1"></rect><rect x="15" y="6" width="4" height="9" rx="1"></rect></svg>
+  {% elif name == 'up' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>
+  {% elif name == 'down' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6"></path></svg>
+  {% else -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle></svg>
+  {% endif -%}
+{%- endmacro %}
+
 {% set gamma_quality_tone = 'marketPulseTrustChip-critical' if gamma_quality.get('tone') == 'critical' else 'marketPulseTrustChip-warn' if gamma_quality.get('tone') == 'warn' else 'marketPulseTrustChip-ok' %}
 {% set gamma_snapshot_status = gamma_snapshot.get('snapshot_status') or 'invalid' %}
 {% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
 {% set structure_snapshot = market_structure_snapshot or {} %}
 {% set playbook = playbook_view or {} %}
-{% set selected_ticker = ticker or 'QQQ' %}
+{% set selected_ticker = ticker or 'SPY' %}
 {% set quote = playbook_quote or spx_quote or {} %}
 {% set priority_context = playbook_priority_context or spx_priority_context or {} %}
-{% set spot_price_label = playbook.get('spot_label') or ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—') %}
+{% set spot_price_label = ('%.2f'|format(quote.get('price')) if quote.get('price') is number else ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is number else (playbook.get('spot_label') or '—'))) %}
 {% set market_closed = execution_chart.mode != 'live_session' %}
 {% set model_levels = {
   'spot': structure_snapshot.get('spot'),
@@ -18,12 +54,12 @@
 {% set main_flip_num = model_levels.main_flip if model_levels.main_flip is number else none %}
 {% set local_flip_num = model_levels.local_flip if model_levels.local_flip is number else none %}
 {% set local_flip_missing_in_band = gamma_snapshot_status in ['healthy', 'degraded', 'stale'] and not gamma_snapshot.get('local_flip_found') %}
-{% set local_flip_label = '%.0f'|format(local_flip_num) if local_flip_num is not none else ('No Local Flip between Put Wall and Call Wall' if local_flip_missing_in_band else '—') %}
+{% set local_flip_label = '%.0f'|format(local_flip_num) if local_flip_num is not none else ('No local flip in band' if local_flip_missing_in_band else '—') %}
 {% set call_wall_num = model_levels.call_wall if model_levels.call_wall is number else none %}
 {% set put_wall_num = model_levels.put_wall if model_levels.put_wall is number else none %}
 {% set next_call_wall_num = structure_snapshot.get('next_call_wall') if structure_snapshot.get('next_call_wall') is number else none %}
 {% set next_put_wall_num = structure_snapshot.get('next_put_wall') if structure_snapshot.get('next_put_wall') is number else none %}
-{% set spot_num = model_levels.spot if model_levels.spot is number else (quote.get('price') if quote.get('price') is number else none) %}
+{% set spot_num = quote.get('price') if quote.get('price') is number else (model_levels.spot if model_levels.spot is number else none) %}
 {% set macro_regime = {
   'state': playbook.get('gamma_regime') or structure_snapshot.get('gamma_regime') or 'unavailable',
   'title': playbook.get('gamma_regime_label') or structure_snapshot.get('gamma_regime_label') or 'REGIME UNAVAILABLE',
@@ -53,15 +89,47 @@
 {% set hero_tradeability_label = playbook.get('tradeability_label') or structure_snapshot.get('execution_regime_label') or structure_snapshot.get('tradeability') or 'WAIT' %}
 {% set hero_tradeability_display = hero_tradeability_label|replace('_', ' ') %}
 {% set hero_session_label = playbook.get('session_summary_label') or structure_snapshot.get('session') or macro_regime.subtitle or 'Confirmation required' %}
+{% set decision_label = playbook.get('decision_label') or ('Planning only' if trade_state_label == 'PLANNING ONLY' else 'No trade' if trade_state_label == 'NO TRADE' else 'Not actionable yet' if trade_state_label == 'WAIT' else trade_state_label|replace('_', ' ')|title) %}
+{% set decision_detail = playbook.get('decision_detail') or (playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Awaiting market posture.') %}
+{% set bias_summary = playbook.get('bias_summary_label') or (playbook.get('bias_label') or local_bias.action or 'Wait for cleaner structure') %}
+{% set tradeability_display = playbook.get('tradeability_display_label') or hero_tradeability_display %}
+{% set hero_summary = playbook.get('hero_summary') or ((macro_regime.title or 'Regime unavailable') ~ ', ' ~ (bias_summary|lower) ~ ', ' ~ (decision_label|lower) ~ '.') %}
+{% set hero_reason = playbook.get('hero_reason_label') or (playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or '') %}
+{% set show_session_reason = guardrail.active or market_closed or macro_regime.state in ['unconfirmed', 'unavailable'] or structure_snapshot.get('gamma_data_status') in ['partial', 'invalid', 'stale_but_usable'] %}
+{% set session_reason = guardrail.message if guardrail.active else (hero_reason or macro_regime.subtitle or 'Market Pulse context ready.') %}
+{% set gamma_state_class = 'gamma-card--positive' if macro_regime.state == 'positive' else 'gamma-card--negative' if macro_regime.state == 'negative' else 'gamma-card--unconfirmed' if macro_regime.state == 'unconfirmed' else 'gamma-card--neutral' %}
+{% set gamma_pill_class = 'state-pill--positive' if macro_regime.state == 'positive' else 'state-pill--negative' if macro_regime.state == 'negative' else 'state-pill--wait' %}
+{% set gamma_display_title = 'Positive Ⲅ' if macro_regime.state == 'positive' else 'Negative Ⲅ' if macro_regime.state == 'negative' else macro_regime.title or 'REGIME UNKNOWN' %}
+{% set gamma_pill_label = 'POSITIVE Ⲅ' if macro_regime.state == 'positive' else 'NEGATIVE Ⲅ' if macro_regime.state == 'negative' else 'WAIT FOR CONFIRMATION' if macro_regime.state == 'unconfirmed' else 'NEUTRAL / DATA' %}
+{% set gamma_badges = ['PINNING', 'MEAN REVERSION'] if macro_regime.state == 'positive' else ['EXPANSION RISK', 'TREND CONTINUATION'] if macro_regime.state == 'negative' else ['WAIT FOR CONFIRMATION'] %}
+{% set gamma_state_icon = 'check' if macro_regime.state == 'positive' else 'warning' if macro_regime.state == 'negative' else 'compass' %}
+{% set level_strip = [
+  {'label': 'Spot', 'icon': 'activity', 'value': spot_price_label},
+  {'label': 'Main', 'icon': 'orbit', 'value': ('%.0f'|format(main_flip_num)) if main_flip_num is not none else '—'},
+  {'label': 'LF', 'icon': 'compass', 'value': local_flip_label},
+  {'label': 'CW', 'icon': 'up', 'value': ('%.0f'|format(call_wall_num)) if call_wall_num is not none else '—'},
+  {'label': 'PW', 'icon': 'down', 'value': ('%.0f'|format(put_wall_num)) if put_wall_num is not none else '—'}
+] %}
+{% set gamma_deck_levels = [
+  {'key': 'main_flip', 'label': 'Main Flip', 'short': 'MAIN', 'value': main_flip_num, 'classification': 'Flip / regime boundary'},
+  {'key': 'local_flip', 'label': 'Local Flip', 'short': 'LOCAL', 'value': local_flip_num, 'classification': 'Local structure pivot'},
+  {'key': 'call_wall', 'label': 'Call Wall', 'short': 'CW', 'value': call_wall_num, 'classification': 'Resistance / upside magnet'},
+  {'key': 'put_wall', 'label': 'Put Wall', 'short': 'PW', 'value': put_wall_num, 'classification': 'Support / downside magnet'}
+] %}
 
-<div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
-  <div class="toolbar">
+<div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact" id="marketPulseStatusBar">
+  <div class="toolbar gamma-ladder-toolbar">
     <div class="marketPulsePlaybookHero">
-      <div class="marketPulsePlaybookTitleZone">
+      <div class="marketPulsePlaybookTitleZone marketPulseCockpitCommand">
         <div class="marketPulseHeroKicker">Market Pulse</div>
         <div class="marketPulseTickerRow">
           <h2 class="pageTitle" id="marketPulseTitle">{{ selected_ticker }} PLAYBOOK</h2>
-          <div class="marketPulseTickerSwitcher" role="tablist" aria-label="Gamma playbook ticker">
+          <div
+            class="marketPulseTickerSwitcher"
+            role="tablist"
+            aria-label="Gamma playbook ticker"
+            data-playbook-symbol-search-control
+          >
             {% for switch_ticker in supported_tickers %}
               <a
                 class="marketPulseTickerSwitch{% if switch_ticker == selected_ticker %} is-active{% endif %}"
@@ -69,35 +137,128 @@
                 role="tab"
                 aria-selected="{{ 'true' if switch_ticker == selected_ticker else 'false' }}"
                 data-playbook-ticker-switch="{{ switch_ticker }}"
+                data-symbol-quick="{{ switch_ticker }}"
               >{{ switch_ticker }}</a>
             {% endfor %}
+            <button
+              class="marketPulseTickerSearchToggle"
+              type="button"
+              aria-label="Search ticker"
+              aria-expanded="false"
+              data-symbol-search-toggle
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+            </button>
+            <div class="marketPulseTickerSearchPopover" data-symbol-search-popover hidden>
+              <form class="marketPulseTickerSearch" action="/market-pulse" method="get" data-symbol-search-form aria-label="Search playbook ticker">
+                <input
+                  type="search"
+                  name="ticker"
+                  value="{{ selected_ticker }}"
+                  placeholder="Search ticker"
+                  maxlength="12"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label="Search playbook ticker"
+                  data-symbol-search-input
+                >
+                <div class="marketPulseTickerSearchQuick" aria-label="Quick ticker search">
+                  {% for switch_ticker in supported_tickers %}
+                    <button class="marketPulseTickerSearchQuickButton" type="button" data-symbol-popover-quick="{{ switch_ticker }}">{{ switch_ticker }}</button>
+                  {% endfor %}
+                </div>
+                <button class="marketPulseTickerSearchSubmit" type="submit" aria-label="Load ticker playbook" title="Load ticker playbook">Search</button>
+                <div class="marketPulseTickerSearchMessage" data-symbol-search-message hidden></div>
+              </form>
+            </div>
           </div>
         </div>
-        <div class="marketPulseHeaderSubline" id="marketPulseHeaderSubline">Main Flip {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }} | Local Flip {{ local_flip_label }} | CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }} | PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</div>
-        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }} • {{ selected_ticker }} {{ spot_price_label }}</div>
-      </div>
-      <div class="marketPulseGammaStateCard {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard">
-        <div class="marketPulseGammaStateTop">
-          <span class="marketPulseGammaStateDot" aria-hidden="true"></span>
-          <div class="marketPulseGammaStateCopy">
-            <div class="marketPulseGammaStateLabel" id="marketPulseHeaderGammaLabel">{{ macro_regime.title or 'REGIME UNKNOWN' }}</div>
-            <div class="marketPulseGammaStateSub" id="marketPulseHeaderGammaSub">{{ macro_regime.subtitle or 'LEVELS UNAVAILABLE' }}</div>
+        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</div>
+        <div class="marketPulseStatusReadout" aria-label="Current market status">
+          <div class="marketPulseStatusMetric is-spot">
+            <span>{{ selected_ticker }} Spot</span>
+            <strong id="marketPulseStatusSpot">{{ spot_price_label }}</strong>
+          </div>
+          <div class="marketPulseStatusMetric">
+            <span>Session</span>
+            <strong>{% if guardrail.active %}Locked{% elif market_closed %}Planning{% else %}Live execution{% endif %}</strong>
+          </div>
+          <div class="marketPulseStatusMetric is-{{ gamma_snapshot_status_tone }}">
+            <span>Gamma Data</span>
+            <strong id="marketPulseStatusDataState">{{ gamma_snapshot.get('snapshot_status_label') or macro_regime.subtitle or 'Awaiting snapshot' }}</strong>
+          </div>
+          <div class="marketPulseStatusMetric">
+            <span>Updated</span>
+            <strong id="marketPulseStatusUpdated">{{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</strong>
           </div>
         </div>
-      </div>
-      <div class="marketPulseBiasCard {% if local_bias.state == 'above_local' %}is-positive{% elif local_bias.state == 'below_local' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderBiasCard">
-        <div class="marketPulseBiasCardLabel">Local Bias</div>
-        <div class="marketPulseBiasState">
-          <div class="marketPulseBiasPrimary" id="marketPulseHeaderBiasPrimary">{{ bias_context }}</div>
-          <div class="marketPulseBiasSecondary" id="marketPulseHeaderBiasSecondary">{{ bias_label }}</div>
-        </div>
-        <div class="marketPulseBiasRail">
-          <span class="marketPulseBiasRailItem {% if local_bias.state == 'above_local' %}is-active{% endif %}" id="marketPulseHeaderBiasAbove">ABOVE LOCAL → BUY DIPS</span>
-          <span class="marketPulseBiasRailItem {% if local_bias.state == 'below_local' %}is-active{% endif %}" id="marketPulseHeaderBiasBelow">BELOW LOCAL → SELL RIPS</span>
+        <div class="marketPulseHeaderLevels" id="marketPulseHeaderSubline">
+          {% for item in level_strip %}
+            <div class="marketPulseHeaderLevelItem is-{{ item.label|lower|replace(' ', '-') }}{% if item.label == 'Spot' %} is-live{% endif %}{% if item.label == 'LF' and item.value == 'No local flip in band' %} is-muted{% endif %}">
+              <span><span class="marketPulseHeaderLevelIcon">{{ mp_icon(item.icon) }}</span><span>{{ item.label }}</span></span>
+              <strong{% if item.label == 'Spot' %} id="marketPulseHeaderSpot"{% endif %}>{{ item.value }}</strong>
+            </div>
+          {% endfor %}
         </div>
       </div>
-    </div>
-    <div class="marketPulsePlaybookActions">
+      <div class="marketPulseCockpitDecisionBand marketPulseCockpitDecisionBand-compact">
+        <div class="marketPulseGammaStateCard marketPulseCockpitRegime {{ gamma_state_class }} {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
+          <div class="marketPulseGammaStateOrb" aria-hidden="true">Ⲅ</div>
+          <div class="marketPulseGammaStateTop">
+            <span class="marketPulseGammaStateDot" aria-hidden="true">Ⲅ</span>
+            <div class="marketPulseGammaStateCopy">
+              <div class="marketPulseGammaStateEyebrow">Regime</div>
+              <div class="marketPulseGammaStateLabel" id="marketPulseHeaderGammaLabel">{{ gamma_display_title }}</div>
+              <div class="marketPulseGammaBadgeRow" id="marketPulseHeaderBadgeRow">
+                {% for badge in gamma_badges %}
+                  <span class="marketPulseGammaBadge">{{ badge }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="marketPulseBiasCard marketPulseCockpitActionability {% if local_bias.state == 'above_local' %}is-positive{% elif local_bias.state == 'below_local' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderBiasCard" data-gamma-state="{{ macro_regime.state }}">
+          <div class="marketPulseBiasCardLabel">Actionability</div>
+          <div class="marketPulseActionGrid">
+            <div class="marketPulseActionItem action-row action-row--decision">
+              <div class="marketPulseActionIcon">{{ mp_icon('crosshair') }}</div>
+              <span>Decision</span>
+              <strong id="marketPulseHeaderDecision">{{ decision_label }}</strong>
+              <small>{{ decision_detail }}</small>
+              <span class="state-pill {% if decision_label == 'Actionable' %}state-pill--execute{% else %}state-pill--wait{% endif %}" id="marketPulseHeaderDecisionStatePill">{{ 'EXECUTE' if decision_label == 'Actionable' else 'PLANNING ONLY' if decision_label == 'Planning only' else 'NO TRADE' if decision_label == 'No trade' else 'WAIT' }}</span>
+            </div>
+            <div class="marketPulseActionItem action-row action-row--bias{% if local_bias.state == 'below_local' or 'RISK' in (bias_summary or '') %} action-row--bias-risk{% endif %}" id="marketPulseHeaderBiasRow">
+              <div class="marketPulseActionIcon">{{ mp_icon('compass') }}</div>
+              <span>Bias</span>
+              <strong id="marketPulseHeaderBiasPrimary">{{ bias_summary }}</strong>
+              <small id="marketPulseHeaderBiasSecondary">{{ playbook.get('bias_label') or local_bias.action or 'Wait for cleaner structure' }}</small>
+            </div>
+            <div class="marketPulseActionItem action-row action-row--tradeability">
+              <div class="marketPulseActionIcon">{{ mp_icon('shield-check') if decision_label == 'Actionable' else mp_icon('shield-alert') }}</div>
+              <span>Tradeability</span>
+              <strong id="marketPulseHeaderTradeability">{{ tradeability_display }}</strong>
+              <small>{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Awaiting trigger' }}</small>
+            </div>
+          </div>
+        </div>
+        <div class="marketPulsePlaybookActions marketPulseCockpitUtility">
+          <button
+            class="btn marketPulsePlaybookPinToggle"
+            type="button"
+            aria-pressed="false"
+            title="Keep the Playbook header visible while scrolling"
+            data-playbook-pin-toggle
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 4 6 0"></path>
+              <path d="m10 4 .8 6-3.3 3.4h9L13.2 10 14 4"></path>
+              <path d="M12 13.4V20"></path>
+            </svg>
+            <span data-playbook-pin-label>Pin header</span>
+          </button>
           <button
             id="marketPulseContextRefreshBtn"
             class="notifRefreshBtn marketPulseContextRefreshBtn"
@@ -111,7 +272,9 @@
               <path d="M21 3v6h-6"></path>
             </svg>
           </button>
-          <a class="btn" href="/candle-opens">Candle Opens</a>
+          <a class="btn" href="/candle-opens"><span class="marketPulseInlineIcon">{{ mp_icon('candles') }}</span><span>Candle Opens</span></a>
+        </div>
+      </div>
     </div>
   </div>
   <div class="srOnly" aria-hidden="true">
@@ -170,37 +333,76 @@
   </div>
 </div>
 
-<section class="marketPulseSessionState marketPulseSection {% if guardrail.active %}is-locked{% else %}is-open{% endif %}" aria-label="Market Pulse session and data state">
-  <div class="marketPulseSessionStatePrimary">
-    <span class="marketPulseSessionDot" aria-hidden="true"></span>
-    <div>
-      <div class="marketPulseSessionEyebrow">Session / Data State</div>
-      <strong>{% if guardrail.active %}Trading actions locked{% elif market_closed %}Planning mode{% else %}Execution mode{% endif %}</strong>
-    </div>
+{% set permission_label = 'Locked' if guardrail.active else 'Planning only' if market_closed else trade_state_label %}
+{% set permission_detail = guardrail.message if guardrail.active else 'Market closed' if market_closed else 'Existing trade gate applies' %}
+<section
+  class="marketPulseDecisionNarrative marketPulseSection"
+  id="marketPulseDecisionNarrative"
+  aria-label="Market Pulse execution narrative"
+>
+  <div class="marketPulseDecisionNarrativeLead">
+    <span>Execution Read</span>
+    <strong>{{ decision_label }}</strong>
+    <small>{{ decision_detail }}</small>
   </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Regime</span>
+    <strong>{{ macro_regime.title }}</strong>
+    <small>{{ macro_regime.subtitle }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Spot / Availability</span>
+    <strong>{{ spot_price_label }}</strong>
+    <small>{% if spot_num is number %}Available · {{ structure_snapshot.get('spot_source_label') or source_label }}{% else %}Unavailable · no valid spot{% endif %}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Permission</span>
+    <strong>{{ permission_label }}</strong>
+    <small>{{ permission_detail }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Freshness</span>
+    <strong>{{ gamma_snapshot_status|replace('_', ' ')|title }}</strong>
+    <small>{{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or 'Timestamp unavailable' }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Trigger</span>
+    <strong>{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Confirmation required' }}</strong>
+    <small>Manual confirmation remains authoritative</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Invalidation</span>
+    <strong>{{ playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'Wait for live structure' }}</strong>
+    <small>Exit the thesis when this condition fails</small>
+  </div>
+</section>
+
+<section class="marketPulseSessionState marketPulseSection {% if guardrail.active %}is-locked{% else %}is-open{% endif %}" aria-label="Market Pulse session and data state">
   <div class="marketPulseSessionStateGrid">
     <div>
-      <span>Guardrail</span>
-      <strong>{% if guardrail.active %}Data unsafe{% elif market_closed %}Closed session{% else %}Clear{% endif %}</strong>
+      <span>Session</span>
+      <strong>{% if guardrail.active %}Locked{% elif market_closed %}Planning mode{% else %}Execution mode{% endif %}</strong>
     </div>
     <div>
-      <span>Gamma</span>
+      <span>Gamma Data</span>
       <strong>{{ gamma_snapshot.get('snapshot_status_label') or macro_regime.subtitle or 'Awaiting snapshot' }}</strong>
     </div>
     <div>
       <span>Trigger</span>
-      <strong>{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or trade_state_label }}</strong>
+      <strong>{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or decision_label }}</strong>
     </div>
   </div>
-  <p>{{ guardrail.message if guardrail.active else ('Closed-session planning: live trading stays locked; use the latest quote and gamma context for prep only.' if market_closed else (playbook.get('context_footer_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Market Pulse context ready.')) }}</p>
+  {% if show_session_reason %}
+    <p>{{ session_reason }}</p>
+  {% endif %}
 </section>
 
-<section class="card stack12 marketPulseExecutionHero marketPulseSection">
+<section class="card stack12 marketPulseExecutionHero marketPulseSection" id="marketPulseGammaCockpit" aria-label="Gamma and chart cockpit">
   <div class="toolbar">
     <div class="pillRow marketPulseExecutionHeroTopline">
       <span class="pill">Execution</span>
       <span class="marketPulseExecutionHeroTopState" id="marketPulseHeroTopState">READ: {{ structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</span>
-      <span class="marketPulseExecutionHeroTopState" id="marketPulseHeroTopMode">DECISION: {{ trade_state_label }}</span>
+      <span class="marketPulseExecutionHeroTopState" id="marketPulseHeroTopMode">DECISION: {{ decision_label }}</span>
       <button class="trendChip marketPulseLegendButton" type="button" data-open-modal="marketPulseLevelsModal">More</button>
     </div>
     <div class="marketPulseExecutionHeroGrid">
@@ -220,12 +422,61 @@
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Bias</span>
-            <strong id="marketPulseHeroBias">{{ playbook.get('bias_label') or local_bias.action or 'Unavailable' }}</strong>
+            <strong id="marketPulseHeroBias">{{ bias_summary or playbook.get('bias_label') or local_bias.action or 'Unavailable' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric marketPulseExecutionHeroMetric-tradeability">
             <span class="tiny muted">Tradeability</span>
-            <strong id="marketPulseHeroTradeability">{{ hero_tradeability_display }}</strong>
+            <strong id="marketPulseHeroTradeability">{{ tradeability_display }}</strong>
           </div>
+        </div>
+      </section>
+
+      <section class="marketPulseExecutionHeroPanel marketPulseGammaLevelDeck" id="marketPulseGammaLevelDeck" aria-label="Gamma Level Deck">
+        <div class="marketPulseGammaLevelDeckHead">
+          <div>
+            <span class="marketPulseGammaLevelDeckKicker">Gamma Level Deck</span>
+            <strong>Map the level, then confirm it on the chart.</strong>
+          </div>
+          <span class="state-pill {{ gamma_pill_class }}">{{ gamma_pill_label }}</span>
+        </div>
+        <div class="marketPulseGammaLevelDeckSpot">
+          <span>Current spot</span>
+          <strong id="marketPulseGammaDeckSpot">{{ spot_price_label }}</strong>
+          <small>{{ location.zone or 'Awaiting structure' }}</small>
+        </div>
+        <div class="marketPulseGammaLevelDeckList" role="list" aria-label="Principal Gamma levels">
+          {% for item in gamma_deck_levels %}
+            {% set level_available = item.value is number %}
+            {% set level_distance = item.value - spot_num if level_available and spot_num is number else none %}
+            <button
+              class="marketPulseGammaLevelRow{% if not level_available %} is-unavailable{% endif %}{% if location.nearest_level_name and item.label|lower in location.nearest_level_name|lower %} is-nearest{% endif %}"
+              type="button"
+              role="listitem"
+              data-market-pulse-level-key="{{ item.key }}"
+              data-market-pulse-level-price="{{ item.value if level_available else '' }}"
+              data-market-pulse-level-classification="{{ item.classification }}"
+              data-market-pulse-level-symbol="{{ selected_ticker }}"
+              aria-pressed="false"
+              {% if not level_available %}disabled aria-disabled="true"{% endif %}
+            >
+              <span class="marketPulseGammaLevelRowIdentity">
+                <small>{{ item.short }}</small>
+                <strong>{{ item.label }}</strong>
+              </span>
+              <span class="marketPulseGammaLevelRowValue" data-market-pulse-level-value="{{ item.key }}">
+                {{ '%.2f'|format(item.value) if level_available else 'Unavailable' }}
+              </span>
+              <span class="marketPulseGammaLevelRowDistance" data-market-pulse-level-distance="{{ item.key }}">
+                {{ '%+.1f pts'|format(level_distance) if level_distance is number else 'No valid distance' }}
+              </span>
+              <span class="marketPulseGammaLevelRowClass">{{ item.classification }}</span>
+            </button>
+          {% endfor %}
+        </div>
+        <div class="marketPulseGammaLevelDeckNearest">
+          <span>Nearest important level</span>
+          <strong>{{ location.nearest_level_name or 'Awaiting valid level' }}</strong>
+          <small>{% if location.distance_points is number %}{{ '%.1f points from spot'|format(location.distance_points) }}{% else %}Distance unavailable{% endif %}</small>
         </div>
       </section>
 
@@ -234,6 +485,15 @@
           <div class="marketPulseExecutionHeroFrameControl">
             <span class="tiny muted">{{ selected_ticker }} Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
             <div class="marketPulseExecutionHeroIntervalGroup" role="group" aria-label="Chart timeframe">
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1min"
+                aria-pressed="false"
+                title="Show 1 minute candles"
+              >
+                <span aria-hidden="true">1m</span>
+              </button>
               <button
                 class="marketPulseExecutionHeroIntervalToggle is-active"
                 type="button"
@@ -270,6 +530,51 @@
               >
                 <span aria-hidden="true">1H</span>
               </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="4h"
+                aria-pressed="false"
+                title="Show 4 hour candles"
+              >
+                <span aria-hidden="true">4H</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="12h"
+                aria-pressed="false"
+                title="Show 12 hour candles"
+              >
+                <span aria-hidden="true">12H</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1d"
+                aria-pressed="false"
+                title="Show 1 day candles"
+              >
+                <span aria-hidden="true">1D</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1w"
+                aria-pressed="false"
+                title="Show 1 week candles"
+              >
+                <span aria-hidden="true">1W</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1mo"
+                aria-pressed="false"
+                title="Show 1 month candles"
+              >
+                <span aria-hidden="true">1M</span>
+              </button>
             </div>
           </div>
           <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ playbook.get('action_context_label') or location.read or 'Awaiting valid structure' }}</span>
@@ -278,6 +583,33 @@
           <div class="marketPulseExecutionHeroChartBanner">
             <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.get('hero_title_label') or (trade_state_label ~ ' - ' ~ (structure_snapshot.get('current_read') or location.zone or 'Awaiting structure')) }}</div>
             <div class="marketPulseExecutionHeroChartControls" aria-label="Chart display toggles">
+              <button
+                class="marketPulseExecutionHeroChartToggle"
+                id="marketPulseHeroToggleDraw"
+                type="button"
+                aria-pressed="false"
+                title="Place horizontal rays"
+              >
+                <span aria-hidden="true">✎</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle"
+                id="marketPulseHeroUndoDraw"
+                type="button"
+                aria-pressed="false"
+                title="Remove last horizontal ray"
+              >
+                <span aria-hidden="true">↶</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle"
+                id="marketPulseHeroClearDraw"
+                type="button"
+                aria-pressed="false"
+                title="Clear horizontal rays"
+              >
+                <span aria-hidden="true">✕</span>
+              </button>
               <button
                 class="marketPulseExecutionHeroChartToggle is-active"
                 id="marketPulseHeroToggleMarkers"
@@ -355,6 +687,28 @@
         </div>
       </section>
 
+      <section class="marketPulseExecutionHeroPanel marketPulseStructureMapPrimary" id="marketPulseStructureMapPrimary" aria-label="Current Gamma structure">
+        <div class="marketPulseStructureMapHead">
+          <div>
+            <span class="tiny muted">Structure Read</span>
+            <strong id="marketPulseStructurePrimaryZone">{{ location.zone or 'Awaiting structure' }}</strong>
+          </div>
+          <span class="trendChip">{{ location.status or 'Awaiting structure' }}</span>
+        </div>
+        <div class="marketPulseStructureMapTrack" aria-label="Put Wall, flips, spot, and Call Wall structure map">
+          <span class="is-put">PW <strong>{{ '%.0f'|format(put_wall_num) if put_wall_num is number else '—' }}</strong></span>
+          <span class="is-local">LF <strong>{{ '%.0f'|format(local_flip_num) if local_flip_num is number else '—' }}</strong></span>
+          <span class="is-spot">SPOT <strong id="marketPulseStructurePrimarySpot">{{ spot_price_label }}</strong></span>
+          <span class="is-main">MAIN <strong>{{ '%.0f'|format(main_flip_num) if main_flip_num is number else '—' }}</strong></span>
+          <span class="is-call">CW <strong>{{ '%.0f'|format(call_wall_num) if call_wall_num is number else '—' }}</strong></span>
+        </div>
+        <div class="marketPulseStructureMapSummary">
+          <span><small>Current zone</small><strong>{{ location.zone or 'Unavailable' }}</strong></span>
+          <span><small>Nearest test</small><strong>{{ location.nearest_level_name or 'Unavailable' }}</strong></span>
+          <span><small>Next read</small><strong>{{ location.read or 'Wait for live structure' }}</strong></span>
+        </div>
+      </section>
+
       <section id="marketPulseTradeReadCard" class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-decision tradeRead-conditional" aria-label="Execution decision box">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Trade Decision</span>
@@ -423,7 +777,7 @@
   </div>
 </section>
 
-<section class="card stack12 marketPulseSection marketPulseTriggerValidationShell">
+<section class="card stack12 marketPulseSection marketPulseTriggerValidationShell" id="marketPulseEntryChecklist">
   <div class="toolbar">
     <div class="pillRow marketPulseTriggerTopline">
       <span class="pill">Entry Checklist</span>
@@ -484,9 +838,320 @@
   </div>
 </section>
 
+<section
+  class="card stack12 marketPulseSection gamma-ladder-card"
+  id="marketPulseGammaLadderCard"
+  data-gamma-ladder
+  data-api-url="{{ gamma_ladder_api_url }}"
+  data-default-symbol="{{ ticker }}"
+  data-default-window="standard"
+  data-supported-symbols='{{ gamma_ladder_supported_symbols|tojson }}'
+  data-supported-windows='{{ gamma_ladder_window_presets|tojson }}'
+  data-symbol="{{ ticker }}"
+  data-default-dte="0"
+  data-regime="mixed_gamma"
+  aria-label="Dynamic gamma ladder"
+>
+  <div class="toolbar gamma-ladder-toolbar">
+    <div class="gamma-ladder-status" id="gammaLadderStatus" data-gamma-status>
+      <div class="gamma-ladder-commandBar" data-gamma-command-bar>
+        <div class="gamma-ladder-commandBar__identity">
+          <div class="gamma-ladder-kicker">
+            <div class="pill">Gamma Ladder</div>
+            <span class="tiny muted gamma-ladder-header__sub">Live dealer positioning by symbol.</span>
+          </div>
+          <div class="gamma-ladder-meta__headline">
+            <strong data-gamma-symbol>{{ ticker }}</strong>
+            <span data-gamma-spot>Loading spot…</span>
+          </div>
+        </div>
+        <div class="gamma-ladder-commandBar__actions">
+          <div class="gamma-ladder-controls">
+            <div class="gamma-symbol-switcher" role="tablist" aria-label="Gamma ladder symbol switcher">
+              {% for gamma_symbol in gamma_ladder_supported_symbols %}
+                <button
+                  class="gamma-symbol-pill{% if gamma_symbol == ticker %} active{% endif %}"
+                  type="button"
+                  role="tab"
+                  aria-selected="{{ 'true' if gamma_symbol == ticker else 'false' }}"
+                  data-gamma-symbol-pill="{{ gamma_symbol }}"
+                >{{ gamma_symbol }}</button>
+              {% endfor %}
+              <button
+                class="gamma-symbol-searchToggle"
+                type="button"
+                aria-label="Search ticker"
+                aria-expanded="false"
+                data-gamma-symbol-search-toggle
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <path d="m16 16 4 4"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="gamma-symbol-searchPopover" data-gamma-symbol-search-popover hidden>
+              <form class="gamma-symbol-search" data-gamma-symbol-search aria-label="Search Gamma ladder symbol">
+                <input
+                  class="gamma-symbol-search__input"
+                  type="search"
+                  name="symbol"
+                  value="{{ ticker }}"
+                  placeholder="NVDA"
+                  maxlength="12"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-gamma-symbol-input
+                />
+                <div class="gamma-symbol-search__quick" aria-label="Quick symbols">
+                  {% for gamma_symbol in gamma_ladder_supported_symbols %}
+                    <button class="gamma-symbol-search__quickButton" type="button" data-gamma-symbol-quick="{{ gamma_symbol }}">{{ gamma_symbol }}</button>
+                  {% endfor %}
+                </div>
+                <button class="gamma-symbol-search__button" type="submit">Search</button>
+                <div class="gamma-symbol-search__message" data-symbol-search-message hidden></div>
+              </form>
+            </div>
+          </div>
+          <div class="gamma-ladder-settingsControl">
+            <button
+              class="gamma-ladder-settingsToggle"
+              id="gammaLadderSettingsToggle"
+              type="button"
+              aria-label="Configure Gamma ladder window and days to expiration"
+              aria-expanded="false"
+              aria-controls="gammaLadderSettingsPopover"
+              data-gamma-settings-toggle
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle>
+                <path d="M4 17h2"></path><path d="M10 17h10"></path><circle cx="8" cy="17" r="2"></circle>
+              </svg>
+              <span data-gamma-settings-label>Standard · 0DTE</span>
+              <span class="gamma-ladder-settingsToggle__chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div
+              class="gamma-ladder-settingsPopover"
+              id="gammaLadderSettingsPopover"
+              role="dialog"
+              aria-label="Gamma ladder display settings"
+              data-gamma-settings-popover
+              hidden
+            >
+              <div class="gamma-ladder-settingsGroup">
+                <span class="gamma-ladder-settingsGroup__label">Strike window</span>
+                <div class="gamma-window-switcher" role="tablist" aria-label="Gamma ladder strike window">
+                  {% for gamma_window in gamma_ladder_window_presets %}
+                    <button
+                      class="gamma-window-pill{% if gamma_window == 'standard' %} active{% endif %}"
+                      type="button"
+                      role="tab"
+                      aria-selected="{{ 'true' if gamma_window == 'standard' else 'false' }}"
+                      data-gamma-window-pill="{{ gamma_window }}"
+                    >{{ gamma_window|title }}</button>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="gamma-ladder-settingsGroup">
+                <span class="gamma-ladder-settingsGroup__label">Days to expiration</span>
+                <div class="gamma-dte-control">
+                  <div
+                    class="gamma-dte-switcher"
+                    role="tablist"
+                    aria-label="Gamma ladder days to expiration"
+                    data-tooltip='{"title":"DTE","body":"DTE means Days To Expiration. Lower DTE usually has stronger intraday impact."}'
+                  >
+                    {% for gamma_dte in ["0", "1", "3", "7", "all"] %}
+                      <button
+                        class="gamma-dte-pill{% if gamma_dte == '0' %} active{% endif %}"
+                        type="button"
+                        role="tab"
+                        aria-selected="{{ 'true' if gamma_dte == '0' else 'false' }}"
+                        data-gamma-dte-pill="{{ gamma_dte }}"
+                      >{{ "All" if gamma_dte == "all" else gamma_dte ~ "DTE" }}</button>
+                    {% endfor %}
+                  </div>
+                  <div class="gamma-dte-limited">Only 3DTE data available</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            class="gamma-ladder-refreshButton gamma-ladder-refreshButton--command"
+            type="button"
+            aria-label="Refresh gamma ladder"
+            title="Refresh Gamma ladder"
+            data-gamma-refresh
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 11a8 8 0 0 0-14.6-4.5L3 9"></path>
+              <path d="M3 4v5h5"></path>
+              <path d="M4 13a8 8 0 0 0 14.6 4.5L21 15"></path>
+              <path d="M21 20v-5h-5"></path>
+            </svg>
+            <span class="gamma-ladder-refreshSpinner" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="gamma-ladder-meta gamma-ladder-commandBar__context" data-gamma-header>
+          <div class="gamma-ladder-meta__stats">
+            <span class="gamma-ladder-regime gamma-ladder-regime--mixed_gamma" data-gamma-regime>Loading regime</span>
+            <span class="gamma-ladder-meta__stat" data-gamma-expiration>Awaiting expiration</span>
+            <span class="gamma-ladder-meta__stat" data-gamma-updated>· Updated —</span>
+          </div>
+          <div class="gamma-ladder-summary tiny muted" data-gamma-summary>Loading focused window…</div>
+        </div>
+      </div>
+    </div>
+    <div class="gamma-ladder-keyLevels" id="gammaLadderKeyLevels" data-gamma-key-levels aria-live="polite">
+      <div class="gamma-ladder-keyLevel is-spot">
+        <span>Spot</span>
+        <strong data-gamma-key-spot>—</strong>
+        <small data-gamma-key-spot-note>Awaiting market</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-regime">
+        <span>Gamma Regime</span>
+        <strong data-gamma-key-regime>Unavailable</strong>
+        <small>Dealer response environment</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-freshness">
+        <span>Freshness</span>
+        <strong data-gamma-key-freshness>Unavailable</strong>
+        <small data-gamma-key-freshness-note>Awaiting accepted snapshot</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-strongest">
+        <span>Dominant Node</span>
+        <strong data-gamma-key-strongest>Unavailable</strong>
+        <small data-gamma-key-strongest-note>Strongest displayed GEX</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-flip">
+        <span>Gamma Flip</span>
+        <strong data-gamma-key-flip>Unavailable</strong>
+        <small>Regime transition strike</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-support">
+        <span>Nearest Support</span>
+        <strong data-gamma-key-support>Unavailable</strong>
+        <small data-gamma-key-support-note>Below spot</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-resistance">
+        <span>Nearest Resistance</span>
+        <strong data-gamma-key-resistance>Unavailable</strong>
+        <small data-gamma-key-resistance-note>Above spot</small>
+      </div>
+    </div>
+    <div class="gamma-decision-panels" data-gamma-decision-panels hidden>
+      <div class="gamma-structure-card" data-gamma-structure-summary></div>
+      <div class="gamma-top-levels" data-gamma-top-levels></div>
+    </div>
+    <div class="gamma-ladder-stage" id="gammaLadderDepthBoard">
+      <div class="gamma-ladder-shimmer" data-gamma-loading aria-hidden="true">
+        {% for _ in range(5) %}
+          <div class="gamma-ladder-shimmer__row">
+            <span class="gamma-ladder-shimmer__label"></span>
+            <span class="gamma-ladder-shimmer__bar"></span>
+            <span class="gamma-ladder-shimmer__value"></span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="gamma-ladder-empty" data-gamma-error hidden></div>
+      <div class="gamma-ladder-board" data-gamma-board hidden>
+        <div class="gamma-ladder-boardShell">
+          <div class="gamma-ladder-board__legend">
+            <span>Strike</span>
+            <span class="gamma-ladder-board__depthHeading">
+              <strong>Dealer positioning depth</strong>
+              <small><b>PUT / NEG</b><i>ZERO AXIS</i><b>CALL / POS</b></small>
+            </span>
+            <span>Net GEX</span>
+          </div>
+          <div class="gamma-ladder-rows" data-gamma-rows></div>
+        </div>
+      </div>
+      <div class="gamma-ladder-tooltip" data-gamma-tooltip hidden></div>
+    </div>
+    <div class="gamma-ladder-selectedInspector" id="gammaLadderSelectedInspector" data-gamma-selected-inspector aria-live="polite">
+      <div class="gamma-ladder-selectedInspector__lead">
+        <span>Selected Level</span>
+        <strong data-gamma-selected-strike>No strike selected</strong>
+      </div>
+      <div class="gamma-ladder-selectedInspector__metrics">
+        <span><small>Role</small><strong data-gamma-selected-role>Choose a row</strong></span>
+        <span><small>Distance</small><strong data-gamma-selected-distance>—</strong></span>
+        <span><small>Net Gamma</small><strong data-gamma-selected-net>—</strong></span>
+        <span><small>State</small><strong data-gamma-selected-state>Inspection ready</strong></span>
+      </div>
+    </div>
+    <details class="gamma-ladder-guide" id="gammaLadderGuide">
+      <summary class="gamma-ladder-guide__summary">
+        <span>How to read this depth map</span>
+        <small>Color, shape, and role labels explained</small>
+      </summary>
+      <div class="gamma-ladder-legend" aria-label="Gamma ladder legend">
+      <button class="gamma-ladder-legend__item is-strong-positive" type="button" data-gamma-legend data-tooltip='{"title":"Strong Positive Gamma","body":"Volatility suppression. Dealer positioning often pins price and dampens expansion."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Strong Positive Gamma</strong>
+          <span>Volatility suppression</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-positive" type="button" data-gamma-legend data-tooltip='{"title":"Positive Gamma","body":"Stabilizing zone. Price often mean reverts and directional follow-through is softer."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Positive Gamma</strong>
+          <span>Stabilizing flow</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-neutral" type="button" data-gamma-legend data-tooltip='{"title":"Neutral / Flip","body":"Equilibrium zone. Balance can break either way and behavior often changes here first."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Neutral / Flip</strong>
+          <span>Transition zone</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-negative" type="button" data-gamma-legend data-tooltip='{"title":"Negative Gamma","body":"Expansion risk. Price can accelerate faster and reversions are less dependable."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Negative Gamma</strong>
+          <span>Expansion risk</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-strong-negative" type="button" data-gamma-legend data-tooltip='{"title":"Strong Negative Gamma","body":"Momentum amplification. Volatility can expand quickly and dealer hedging may intensify moves."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Strong Negative Gamma</strong>
+          <span>Momentum amplification</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-spot" type="button" data-gamma-legend data-tooltip='{"title":"Spot Price","body":"Current market location. Use it to anchor nearby dealer structure and local reaction zones."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Spot Price</strong>
+          <span>Current market</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-strongest" type="button" data-gamma-legend data-tooltip='{"title":"Strongest Level","body":"Dominant dealer node. This level often acts like the heaviest positioning magnet in the current ladder."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Strongest Level</strong>
+          <span>Dominant dealer node</span>
+        </span>
+      </button>
+      </div>
+    </details>
+  </div>
+</section>
+
 {% set spx_priority_change = quote.get('change_pct') if quote else none %}
 {% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
-<section class="marketPulseExecutionContextGrid marketPulseSection">
+<details class="marketPulseSupportFold marketPulseSection" id="marketPulseStructureContextFold">
+  <summary class="marketPulseSupportFoldSummary">
+    <span>
+      <strong>Structure Context</strong>
+      <small>Supporting regime, location, volatility, and distance analysis</small>
+    </span>
+    <span aria-hidden="true">Open analysis</span>
+  </summary>
+<section class="marketPulseExecutionContextGrid">
   {% set structure_values = [spot_num, main_flip_num, local_flip_num, call_wall_num, put_wall_num]|select('number')|list %}
   {% set structure_lo = (structure_values|min) if structure_values else 0 %}
   {% set structure_hi = (structure_values|max) if structure_values else 1 %}
@@ -507,11 +1172,11 @@
       <div class="marketPulseExecBarShell{% if spot_num is none %} is-empty{% endif %}" id="marketPulseZoneBarShell">
         <div class="marketPulseExecBarAxis">
           <div class="marketPulseExecBarAxisGroup marketPulseExecBarAxisGroup-left">
-            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-put" id="marketPulseZonePutLabel">PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</span>
-            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-call" id="marketPulseZoneCallLabel">CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }}</span>
+            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-put" id="marketPulseZonePutLabel"><span class="marketPulseInlineIcon">{{ mp_icon('alert') }}</span>PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</span>
+            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-call" id="marketPulseZoneCallLabel"><span class="marketPulseInlineIcon">{{ mp_icon('check') }}</span>CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }}</span>
           </div>
           <div class="marketPulseExecBarAxisGroup marketPulseExecBarAxisGroup-right">
-            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-flip" id="marketPulseZoneFlipLabel">Main {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }}</span>
+            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-flip" id="marketPulseZoneFlipLabel"><span class="marketPulseInlineIcon">{{ mp_icon('orbit') }}</span>Main {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }}</span>
           </div>
         </div>
         <div class="marketPulseExecBarTrack" id="marketPulseZoneBarTrack">
@@ -558,12 +1223,12 @@
       </div>
       <div class="marketPulseDistanceGrid">
         {% for row in distance_rows %}
-          <div class="marketPulseDistanceItem tone-{{ playbook.get('context_tone') or 'warn' }}{% if row.value is not number %} is-unavailable{% endif %}">
+          <div class="marketPulseDistanceItem tone-{{ playbook.get('context_tone') or 'warn' }} marketPulseDistanceItem--{{ row.key|replace('_', '-') }}{% if row.value is not number %} is-unavailable{% elif row.value <= 10 %} is-near{% endif %}">
             <div class="marketPulseDistanceTop">
-              <span class="tiny muted">{% if row.direction == 'down' %}↓{% elif row.direction == 'up' %}↑{% else %}•{% endif %} {{ row.label }}</span>
+              <span class="tiny muted">{% if row.key == 'put_wall' %}<span class="marketPulseInlineIcon">{{ mp_icon('alert') }}</span>{% elif row.key == 'call_wall' %}<span class="marketPulseInlineIcon">{{ mp_icon('check') }}</span>{% elif row.key == 'local_flip' %}<span class="marketPulseInlineIcon">{{ mp_icon('layers') }}</span>{% else %}<span class="marketPulseInlineIcon">{{ mp_icon('orbit') }}</span>{% endif %} {{ row.label }}</span>
               <strong>
                 {% if row.key == 'main_flip' %}<span id="spxPriorityDistanceFlip">{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}</span>
-                {% elif row.key == 'local_flip' %}<span id="spxPriorityDistanceLocal">{{ '%.1f pts'|format(row.value) if row.value is number else ('No Local Flip between Put Wall and Call Wall' if local_flip_missing_in_band else '—') }}</span>
+                {% elif row.key == 'local_flip' %}<span id="spxPriorityDistanceLocal">{{ '%.1f pts'|format(row.value) if row.value is number else ('No local flip in band' if local_flip_missing_in_band else '—') }}</span>
                 {% elif row.key == 'call_wall' %}<span id="spxPriorityDistanceCall">{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}</span>
                 {% elif row.key == 'put_wall' %}<span id="spxPriorityDistancePut">{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}</span>
                 {% else %}{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}{% endif %}
@@ -578,6 +1243,7 @@
     </div>
   </section>
 </section>
+</details>
 
 {% set watch_ns = namespace(leaders=[], laggard='—', laggard_move=None) %}
 {% for q in core_quotes %}
@@ -591,10 +1257,44 @@
   {% endif %}
 {% endfor %}
 
-<section class="card stack12 marketPulseSection marketPulseTapeShell">
+<details class="marketPulseSupportFold marketPulseSection" id="marketPulseCoreTapeFold">
+  <summary class="marketPulseSupportFoldSummary">
+    <span>
+      <strong>Core Tape</strong>
+      <small>Breadth, leadership, selected-timeframe candles, and source freshness</small>
+    </span>
+    <span aria-hidden="true">Open tape</span>
+  </summary>
+<section class="card stack12 marketPulseTapeShell" id="marketPulseCoreTape">
   <div class="toolbar">
     <div class="pillRow marketPulseTapeTopline">
       <span class="pill">Core Tape</span>
+      <div class="marketPulseTapeWindowControl" data-market-pulse-tape-window-control>
+        <button
+          class="marketPulseTapeWindowButton"
+          type="button"
+          data-market-pulse-tape-window-toggle
+          aria-label="Change Core Tape chart timeframe"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M12 7v5l3 2"></path>
+          </svg>
+          <span data-market-pulse-tape-window-label>1H</span>
+        </button>
+        <div class="marketPulseTapeWindowMenu" data-market-pulse-tape-window-menu role="menu" hidden>
+          {% for window_label in ['15M', '30M', '1H', '6H', '24H'] %}
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked="{{ 'true' if window_label == '1H' else 'false' }}"
+              data-market-pulse-tape-window-option="{{ window_label }}"
+            >{{ window_label }}</button>
+          {% endfor %}
+        </div>
+      </div>
       <button
         class="notifRefreshBtn marketPulseTapeRefreshBtn"
         type="button"
@@ -615,6 +1315,9 @@
       <span class="marketPulseWatchStripItem">Drag <strong id="marketPulseBiggestMove">{{ watch_ns.laggard }}{% if watch_ns.laggard_move is not none %} {{ '%+.2f'|format(watch_ns.laggard_move) }}%{% endif %}</strong></span>
       <span class="marketPulseWatchStripItem"><strong id="marketPulseMissing">{{ stats.missing }}</strong> missing</span>
     </div>
+    <div class="marketPulseTapeLegend">
+      Selected timeframe candles · white bull · blue bear · cyan = positive tape · blue = negative tape
+    </div>
     <div class="marketPulseTapeRail marketPulseWatchGrid" data-no-mobile-compact="1">
       {% for q in core_quotes %}
         {% set q_pct = q.change_pct if q.change_pct is number else none %}
@@ -626,12 +1329,24 @@
         {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
         {% set watch_tone = 'positive' if delta_val is not none and delta_val > 0 else 'negative' if delta_val is not none and delta_val < 0 else 'neutral' %}
         {% set spark_tone = 'pos' if delta_val is not none and delta_val > 0 else 'neg' if delta_val is not none and delta_val < 0 else 'flat' %}
-        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
+        {% set q_timeframes = q.get('timeframes') if q is mapping else {} %}
+        {% set q_active_window = (q_timeframes or {}).get('1H') or q.get('last_hour') or {} %}
+        {% set q_active_tone = q_active_window.get('tone') or 'flat' %}
+        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}" data-timeframes='{{ (q_timeframes or {})|tojson }}'>
           <div class="marketPulseWatchCardTop">
-            <div class="k">{{ q.label }}</div>
-            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" title="{{ watch_title }}">{{ watch_state }}</span>
+            <div class="k"><span class="marketPulseTapeTrendIcon marketPulseTapeTrendIcon--{{ 'up' if delta_val is not none and delta_val > 0 else 'down' if delta_val is not none and delta_val < 0 else 'mixed' }}">{{ mp_icon('up') if delta_val is not none and delta_val > 0 else mp_icon('down') if delta_val is not none and delta_val < 0 else mp_icon('activity') }}</span>{{ q.label }}</div>
+            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" data-state-label="{{ watch_state|upper }}" title="{{ watch_title }}">{{ watch_state }}</span>
           </div>
-          <div class="marketMiniSparkWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
+          <div class="marketPulseTapeWindowModule is-{{ q_active_tone }}" data-role="timeframe-module">
+            <div class="marketPulseTapeWindowHead">
+              <span class="marketPulseTapeWindowCardLabel" data-role="timeframe-label">{{ q_active_window.get('label') or '1H' }}</span>
+              <span class="marketPulseTapeWindowChange" data-role="timeframe-change">{{ q_active_window.get('change_display') or '—' }}</span>
+            </div>
+            <div class="marketPulseTapeWindowChartWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline" data-role-chart="timeframe-chart">{{ (q_active_window.get('svg') or q.sparkline_svg)|safe }}</div>
+            <div class="marketPulseTapeWindowFoot">
+              <span class="marketPulseTapeWindowPct" data-role="timeframe-pct">{{ q_active_window.get('pct_display') or '—' }}</span>
+            </div>
+          </div>
           <div class="marketPulseWatchValueRow">
             <div class="v" data-role="price">
               {% if q.price is not none %}
@@ -652,18 +1367,34 @@
           </div>
           <div class="tiny muted marketPulseWatchMetaRow">
             <span data-role="market-state" hidden>{{ q.market_state }}</span>
-            <span data-role="freshness">{{ (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Critical · ')|replace('Closed · last snapshot ', 'Critical · ')|replace('last quote ', '') }}</span>
+            {% set freshness_label = (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Last quote ')|replace('Closed · last snapshot ', 'Last snapshot ') %}
+            {% set freshness_lower = freshness_label|lower %}
+            {% set has_quote_price = q.price is not none %}
+            {% set freshness_tone = 'missing' if not has_quote_price or 'missing' in freshness_lower or 'unavailable' in freshness_lower or 'no tick' in freshness_lower or 'no live data' in freshness_lower else 'delayed' if 'critical' in freshness_lower or 'stale' in freshness_lower or 'closed' in freshness_lower or 'delayed' in freshness_lower or 'cached' in freshness_lower or 'wait' in freshness_lower or 'old' in freshness_lower or 'last quote' in freshness_lower or 'last snapshot' in freshness_lower else 'live' %}
+            {% set freshness_glyph = '✓' if freshness_tone == 'live' else '◷' if freshness_tone == 'delayed' else '!' %}
+            <span
+              class="marketPulseFreshnessIndicator is-{{ freshness_tone }}"
+              data-role="freshness"
+              data-freshness-label="{{ freshness_label }}"
+              data-freshness-tone="{{ freshness_tone }}"
+              title="{{ freshness_label }}"
+              aria-label="{{ freshness_label }}"
+            >
+              <span class="marketPulseFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
+              <span class="srOnly">{{ freshness_label }}</span>
+            </span>
           </div>
           <div class="tiny muted" data-role="reason-line" hidden></div>
           <div class="tiny muted" data-role="source-badge" hidden>{{ q.source_badge_label or q.source_label or source_label }}</div>
-          <div class="tiny muted marketPulseWatchRange" data-role="range-line">{{ q.day_range }}</div>
+          <div class="tiny muted marketPulseWatchRange" data-role="range-line">{{ q.day_range_compact or q.range_display or q.day_range }}</div>
         </div>
       {% endfor %}
     </div>
   </div>
 </section>
+</details>
 
-<details class="marketPulseFold marketPulseSection" id="marketPulseFeedFold" open>
+<details class="marketPulseFold marketPulseSection" id="marketPulseFeedFold">
   <summary class="marketPulseFoldSummary">
     <span class="pill">Market Feed</span>
     <span class="tiny muted">Real-time market commentary from curated sources.</span>
@@ -743,7 +1474,13 @@
                       {% set item_rel = item.age_label or item.published_label %}
                       {% set item_abs = item.published_et_label %}
                       {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
-                      <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
+                      <span
+                        class="marketFeedRow__time"
+                        title="{{ item_time }}"
+                        data-feed-published-at="{{ item.published_at or '' }}"
+                        data-feed-absolute-label="{{ item_abs or '' }}"
+                        data-feed-fallback-label="{{ item_rel or item.published_label or '' }}"
+                      >{{ item_time }}</span>
                     </div>
                     <div class="marketFeedRow__head">
                       <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
@@ -781,7 +1518,13 @@
                       {% set item_rel = item.age_label or item.published_label %}
                       {% set item_abs = item.published_et_label %}
                       {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
-                      <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
+                      <span
+                        class="marketFeedRow__time"
+                        title="{{ item_time }}"
+                        data-feed-published-at="{{ item.published_at or '' }}"
+                        data-feed-absolute-label="{{ item_abs or '' }}"
+                        data-feed-fallback-label="{{ item_rel or item.published_label or '' }}"
+                      >{{ item_time }}</span>
                     </div>
                     <div class="marketFeedRow__head">
                       <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
@@ -1022,15 +1765,19 @@
      data-market-hours="{{ '1' if market_hours else '0' }}"
      hidden></div>
 
-<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': quote, 'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url, 'tape_api_url': market_pulse_tape_api_url}|tojson }}</script>
+<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': base_playbook_quote, 'spx_quote': base_spx_quote, 'vix_quote': base_vix_quote, 'gamma_snapshot': base_gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url, 'tape_api_url': market_pulse_tape_api_url}|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}?v={{ market_now_iso|urlencode }}"></script>
+<script src="{{ url_for('static', filename='js/symbol_search_control.js') }}?v={{ static_v }}&rev=symbol-search-20260619a"></script>
+<script src="{{ url_for('static', filename='js/gamma_ladder_presentation.js') }}?v={{ static_v }}&rev=gamma-depth-map-20260714a"></script>
+<script src="{{ url_for('static', filename='js/gamma_ladder.js') }}?v={{ static_v }}&rev=gamma-ladder-20260521a"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_gamma_workflow.js') }}?v={{ static_v }}&rev=gamma-chart-workflow-20260714b"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
   const MODE_KEY = "marketPulseViewMode";
-  const TICKER_KEY = "{{ playbook_ticker_storage_key or 'mc_playbook_ticker' }}";
+  const TICKER_KEY = "{{ playbook_ticker_storage_key or 'mc_market_pulse_ticker' }}";
   const modeToggle = document.getElementById("viewModeToggle");
   const streamStatus = document.getElementById("marketPulseStreamStatus");
   const streamFreshness = document.getElementById("marketPulseStreamFreshness");
@@ -1038,7 +1785,7 @@
   const contextRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-context-refresh]"));
   const tapeRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
   const tapeShell = document.querySelector(".marketPulseTapeShell");
-  const tickerSwitches = Array.from(document.querySelectorAll("[data-playbook-ticker-switch]"));
+  const tickerSearchRoot = document.querySelector("[data-playbook-symbol-search-control]");
   const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
   const loadingTitle = document.getElementById("marketPulseLoadingTitle");
   const loadingSub = document.getElementById("marketPulseLoadingSub");
@@ -1080,7 +1827,7 @@
   } catch (_err) {
     basePayload = null;
   }
-  const currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
+  let currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
   const contextApiUrl = (basePayload && basePayload.context_api_url) || "{{ market_pulse_context_api_url }}";
   const tapeApiUrl = (basePayload && basePayload.tape_api_url) || "{{ market_pulse_tape_api_url }}";
   storageSet(TICKER_KEY, currentTicker);
@@ -1142,10 +1889,11 @@
     }
     contextRefreshPromise = (async () => {
       try {
-        const params = new URLSearchParams();
-        if (forceRefresh) params.set("refresh", "1");
-        params.set("_", String(Date.now()));
-        const response = await fetch(`${contextApiUrl}?${params.toString()}`, {
+        const url = new URL(contextApiUrl, window.location.origin);
+        url.searchParams.set("ticker", currentTicker);
+        if (forceRefresh) url.searchParams.set("refresh", "1");
+        url.searchParams.set("_", String(Date.now()));
+        const response = await fetch(url.toString(), {
           cache: "no-store",
           credentials: "same-origin",
         });
@@ -1168,6 +1916,7 @@
     try {
       const params = new URLSearchParams();
       params.set("refresh", "1");
+      params.set("include_series", "1");
       params.set("_", String(Date.now()));
       const response = await fetch(`${tapeApiUrl}?${params.toString()}`, {
         cache: "no-store",
@@ -1186,17 +1935,31 @@
     }
   };
 
-  tickerSwitches.forEach((link) => {
-    link.addEventListener("click", (event) => {
-      const nextTicker = String(link.dataset.playbookTickerSwitch || "").toUpperCase();
-      if (!nextTicker || nextTicker === currentTicker) {
-        event.preventDefault();
-        return;
-      }
-      storageSet(TICKER_KEY, nextTicker);
-      showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
+  const sanitizeTicker = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 12);
+  const loadTickerPlaybook = (symbol) => {
+    const nextTicker = sanitizeTicker(symbol);
+    if (!nextTicker || nextTicker === currentTicker) return;
+    currentTicker = nextTicker;
+    storageSet(TICKER_KEY, nextTicker);
+    showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
+    const url = new URL(window.location.href);
+    url.searchParams.set("ticker", nextTicker);
+    {% if feed_mode == 'raw' %}url.searchParams.set("feed", "raw");{% endif %}
+    window.location.assign(url.toString());
+  };
+  if (tickerSearchRoot && window.SymbolSearchControl) {
+    new window.SymbolSearchControl({
+      root: tickerSearchRoot,
+      selectedSymbol: currentTicker,
+      allowedSymbols: {{ supported_tickers|tojson }},
+      onSymbolChange: loadTickerPlaybook,
+      showQuickButtons: true,
+      placeholder: "Search ticker",
+      unsupportedMessage: "Only QQQ, SPY, and SPX are supported.",
+      activeClass: "is-active",
+      quickButtonSelector: "[data-playbook-ticker-switch]",
     });
-  });
+  }
 
   const syncMobileFolds = () => {
     const isMobile = mobileFoldQuery.matches;
@@ -1376,34 +2139,80 @@
   };
 
   const feedTag = (item, mode) => escapeHtml(mode === "raw" ? "POST" : (item.impact_label || item.category_label || "LIVE"));
+  const formatRelativeFeedAge = (publishedAt, now = new Date()) => {
+    const dt = new Date(publishedAt || "");
+    if (Number.isNaN(dt.getTime())) return "";
+    const deltaMs = Math.max(0, now.getTime() - dt.getTime());
+    const minutes = Math.floor(deltaMs / 60000);
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+  const formatFeedAbsoluteTime = (publishedAt) => {
+    const dt = new Date(publishedAt || "");
+    if (Number.isNaN(dt.getTime())) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(dt);
+  };
+  const composeFeedTime = ({ relative = "", absolute = "", fallback = "" } = {}) => {
+    const rel = String(relative || "").trim();
+    const abs = String(absolute || "").trim();
+    const backstop = String(fallback || "").trim();
+    if (rel && abs) return `${rel} · ${abs}`;
+    return rel || abs || backstop || "Now";
+  };
   const feedTimeParts = (item) => {
-    const relative = item.age_label || item.published_label || "";
+    let relative = formatRelativeFeedAge(item.published_at);
     let absolute = item.published_et_label || "";
     if (!absolute && item.published_at) {
-      const dt = new Date(item.published_at);
-      if (!Number.isNaN(dt.getTime())) {
-        absolute = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          month: "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        }).format(dt);
-      }
+      absolute = formatFeedAbsoluteTime(item.published_at);
     }
+    if (!relative) relative = item.age_label || item.published_label || "";
     return { relative, absolute };
   };
   const feedTime = (item) => {
     const { relative, absolute } = feedTimeParts(item);
-    const text = relative && absolute ? `${relative} · ${absolute}` : (relative || absolute || "Now");
-    return escapeHtml(text);
+    return escapeHtml(composeFeedTime({ relative, absolute }));
   };
   const feedTimeTitle = (item) => {
     const { relative, absolute } = feedTimeParts(item);
-    const text = relative && absolute ? `${relative} · ${absolute}` : (relative || absolute || "Now");
-    return escapeHtml(text);
+    return escapeHtml(composeFeedTime({ relative, absolute }));
   };
+  const feedTimeAttrs = (item) => {
+    const { relative, absolute } = feedTimeParts(item);
+    const fallback = item.age_label || item.published_label || relative || "";
+    return [
+      `data-feed-published-at="${escapeHtml(item.published_at || "")}"`,
+      `data-feed-absolute-label="${escapeHtml(absolute || "")}"`,
+      `data-feed-fallback-label="${escapeHtml(fallback || "")}"`,
+    ].join(" ");
+  };
+  const refreshFeedTimeLabels = () => {
+    const now = new Date();
+    document.querySelectorAll(".marketFeedRow__time[data-feed-published-at]").forEach((node) => {
+      const publishedAt = node.dataset.feedPublishedAt || "";
+      const fallback = node.dataset.feedFallbackLabel || "";
+      const relative = formatRelativeFeedAge(publishedAt, now) || fallback;
+      let absolute = node.dataset.feedAbsoluteLabel || "";
+      if (!absolute && publishedAt) {
+        absolute = formatFeedAbsoluteTime(publishedAt);
+        if (absolute) node.dataset.feedAbsoluteLabel = absolute;
+      }
+      const text = composeFeedTime({ relative, absolute, fallback });
+      node.textContent = text;
+      node.title = text;
+    });
+  };
+  window.setInterval(refreshFeedTimeLabels, 60000);
+  window.setTimeout(refreshFeedTimeLabels, 0);
   const feedHeadline = (item) => escapeHtml(item.headline || item.text || "Market update");
   const feedSummary = (item) => {
     const headline = String(item?.headline || item?.text || "Market update").trim().toLowerCase();
@@ -1587,7 +2396,7 @@
       <article class="marketFeedRow marketFeedRow-high">
         <div class="marketFeedRow__meta">
           <span class="live-x-feed-item__tag">HIGH</span>
-          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}" ${feedTimeAttrs(item)}>${feedTime(item)}</span>
         </div>
         <div class="marketFeedRow__head">
           <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
@@ -1616,7 +2425,7 @@
     const listHtml = sorted.map((item) => `
       <article class="marketFeedRow">
         <div class="marketFeedRow__meta">
-          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}" ${feedTimeAttrs(item)}>${feedTime(item)}</span>
         </div>
         <div class="marketFeedRow__head">
           <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
@@ -1664,9 +2473,10 @@
               </button>
             </div>
           ` : ""}
-        </div>
-      </section>`;
-  };
+	        </div>
+	      </section>`;
+    refreshFeedTimeLabels();
+	  };
 
   const setFeedRefreshState = (isLoading) => {
     const buttons = [
@@ -1724,7 +2534,8 @@
 
   const initialItems = currentFeedItems;
   renderFeedLayout(initialItems);
-  updateUnreadBadge(initialItems);
+  syncNotifications(initialItems);
+  storeNotificationOverrides(initialItems);
   document.addEventListener("click", (event) => {
     const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
     if (refreshTrigger) {
@@ -1814,6 +2625,11 @@
     }
   };
   const tapeButtons = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
+  const coreTapeHasRenderableValues = () => Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"))
+    .some((card) => {
+      const text = String(card.querySelector('[data-role="price"]')?.textContent || "").trim();
+      return /\d/.test(text);
+    });
   const setRefreshState = (loading) => {
     const shell = document.querySelector(".marketPulseTapeShell");
     if (shell) {
@@ -1825,6 +2641,90 @@
       button.classList.toggle("is-loading", loading);
       button.setAttribute("aria-busy", loading ? "true" : "false");
     });
+  };
+  let coreTapeRefreshInFlight = false;
+  const CORE_TAPE_WINDOW_KEY = "mccain.marketPulse.coreTapeWindow";
+  const CORE_TAPE_WINDOWS = ["15M", "30M", "1H", "6H", "24H"];
+  const normalizeCoreTapeWindow = (value) => {
+    const label = String(value || "").trim().toUpperCase();
+    return CORE_TAPE_WINDOWS.includes(label) ? label : "1H";
+  };
+  const readCoreTapeWindow = () => {
+    try {
+      return normalizeCoreTapeWindow(window.localStorage?.getItem(CORE_TAPE_WINDOW_KEY));
+    } catch (_err) {
+      return "1H";
+    }
+  };
+  const writeCoreTapeWindow = (value) => {
+    try {
+      window.localStorage?.setItem(CORE_TAPE_WINDOW_KEY, normalizeCoreTapeWindow(value));
+    } catch (_err) {
+      // Storage can be unavailable in strict/private browsing contexts.
+    }
+  };
+  let activeCoreTapeWindow = readCoreTapeWindow();
+  const coreTapeWindowControl = document.querySelector("[data-market-pulse-tape-window-control]");
+  const coreTapeWindowToggle = document.querySelector("[data-market-pulse-tape-window-toggle]");
+  const coreTapeWindowMenu = document.querySelector("[data-market-pulse-tape-window-menu]");
+  const coreTapeWindowLabels = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-window-label]"));
+  const coreTapeWindowOptions = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-window-option]"));
+  const setCoreTapeWindowMenuOpen = (open) => {
+    if (!coreTapeWindowMenu || !coreTapeWindowToggle) return;
+    coreTapeWindowMenu.hidden = !open;
+    coreTapeWindowToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    coreTapeWindowControl?.classList.toggle("is-open", open);
+  };
+  const syncCoreTapeWindowControl = () => {
+    coreTapeWindowLabels().forEach((node) => setText(node, activeCoreTapeWindow));
+    coreTapeWindowOptions().forEach((button) => {
+      const active = normalizeCoreTapeWindow(button.dataset.marketPulseTapeWindowOption) === activeCoreTapeWindow;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-checked", active ? "true" : "false");
+    });
+  };
+  const parseCoreTapeTimeframes = (card) => {
+    if (!card) return {};
+    const raw = card.dataset.timeframes || "{}";
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  };
+  const coreTapePayloadForCard = (card) => {
+    const timeframes = parseCoreTapeTimeframes(card);
+    return (
+      timeframes[activeCoreTapeWindow]
+      || timeframes["1H"]
+      || Object.values(timeframes).find((item) => item && typeof item === "object")
+      || null
+    );
+  };
+  const renderCoreTapeTimeframe = (card) => {
+    const payload = coreTapePayloadForCard(card);
+    const module = card?.querySelector('[data-role="timeframe-module"]');
+    if (!module || !payload || typeof payload !== "object") return;
+    const tone = String(payload.tone || "flat").toLowerCase();
+    module.classList.remove("is-up", "is-down", "is-flat");
+    module.classList.add(`is-${tone === "up" || tone === "down" ? tone : "flat"}`);
+    setText(card.querySelector('[data-role="timeframe-label"]'), payload.label || activeCoreTapeWindow);
+    setText(card.querySelector('[data-role="timeframe-change"]'), payload.change_display || "—");
+    setText(card.querySelector('[data-role="timeframe-pct"]'), payload.pct_display || "—");
+    const chartNode = card.querySelector('[data-role-chart="timeframe-chart"]');
+    if (chartNode && payload.svg) {
+      chartNode.innerHTML = payload.svg;
+    }
+  };
+  const renderAllCoreTapeTimeframes = () => {
+    syncCoreTapeWindowControl();
+    document.querySelectorAll(".marketPulseTapeCard[data-symbol]").forEach(renderCoreTapeTimeframe);
+  };
+  const setActiveCoreTapeWindow = (value) => {
+    activeCoreTapeWindow = normalizeCoreTapeWindow(value);
+    writeCoreTapeWindow(activeCoreTapeWindow);
+    renderAllCoreTapeTimeframes();
   };
   const watchStateFor = (symbol, pct) => {
     if (["SPX", "SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return {
@@ -1863,10 +2763,56 @@
       let text = String(label || "").trim();
       if (!text) return stateText || "Live";
       return text
-        .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
-        .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
-        .replace(/last quote\s*/i, "")
+        .replace(/^Closed\s*·\s*last quote\s*/i, "Last quote ")
+        .replace(/^Closed\s*·\s*last snapshot\s*/i, "Last snapshot ")
         .trim() || stateText || "Live";
+    };
+    const freshnessTone = (state, label, hasPrice = true) => {
+      const normalizedState = String(state || "").toLowerCase();
+      const normalizedLabel = String(label || "").toLowerCase();
+      if (
+        !hasPrice
+        || normalizedState === "missing"
+        || normalizedLabel.includes("missing")
+        || normalizedLabel.includes("unavailable")
+        || normalizedLabel.includes("no tick")
+        || normalizedLabel.includes("no live data")
+      ) return "missing";
+      if (
+        normalizedState === "delayed"
+        || normalizedState === "cached"
+        || normalizedLabel.includes("critical")
+        || normalizedLabel.includes("stale")
+        || normalizedLabel.includes("closed")
+        || normalizedLabel.includes("delayed")
+        || normalizedLabel.includes("cached")
+        || normalizedLabel.includes("wait")
+        || normalizedLabel.includes("old")
+        || normalizedLabel.includes("last quote")
+        || normalizedLabel.includes("last snapshot")
+      ) return "delayed";
+      return "live";
+    };
+    const freshnessGlyph = (tone) => tone === "live" ? "✓" : tone === "delayed" ? "◷" : "!";
+    const setFreshnessIndicator = (node, label, state, hasPrice = true) => {
+      if (!node) return;
+      const cleanLabel = String(label || "Awaiting Tick").trim() || "Awaiting Tick";
+      const tone = freshnessTone(state, cleanLabel, hasPrice);
+      node.classList.remove("is-live", "is-delayed", "is-missing", "is-critical");
+      node.classList.add(`is-${tone}`);
+      node.dataset.freshnessLabel = cleanLabel;
+      node.dataset.freshnessTone = tone;
+      node.title = cleanLabel;
+      node.setAttribute("aria-label", cleanLabel);
+      node.textContent = "";
+      const glyph = document.createElement("span");
+      glyph.className = "marketPulseFreshnessGlyph";
+      glyph.setAttribute("aria-hidden", "true");
+      glyph.textContent = freshnessGlyph(tone);
+      const sr = document.createElement("span");
+      sr.className = "srOnly";
+      sr.textContent = cleanLabel;
+      node.append(glyph, sr);
     };
     const updateCard = (card, quote) => {
       if (!card || !quote || typeof quote !== "object") return;
@@ -1878,18 +2824,24 @@
       setText(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
       setText(card.querySelector('[data-role="change-line"]'), formatSigned(pct));
       setText(card.querySelector('[data-role="market-state"]'), quote.market_state || "Live");
-      setText(
+      setFreshnessIndicator(
         card.querySelector('[data-role="freshness"]'),
         dashboardTapeFreshnessLabel(
           quote.freshness_label || "Live",
           quote.market_state || "Live",
           quote.as_of || quote.asof || ""
-        )
+        ),
+        quote.market_state || "Live",
+        price !== null
       );
       const sparkNode = card.querySelector('[data-role="sparkline"]');
       if (sparkNode) {
         sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");
         sparkNode.classList.add(sparkTone);
+      }
+      if (quote.timeframes && typeof quote.timeframes === "object") {
+        card.dataset.timeframes = JSON.stringify(quote.timeframes);
+        renderCoreTapeTimeframe(card);
       }
       const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
@@ -1923,12 +2875,14 @@
     if (meta.advancers !== undefined) setText(document.getElementById("marketPulseAdvancers"), String(meta.advancers));
     if (meta.decliners !== undefined) setText(document.getElementById("marketPulseDecliners"), String(meta.decliners));
   };
-  window.refreshMarketPulseCoreTape = async () => {
-    if (tapeButtons().some((button) => button.disabled)) return;
-    setRefreshState(true);
+  window.refreshMarketPulseCoreTape = async ({ showRefreshState = true } = {}) => {
+    if (coreTapeRefreshInFlight) return;
+    coreTapeRefreshInFlight = true;
+    if (showRefreshState) setRefreshState(true);
     try {
       const url = new URL(tapeApiUrl(), window.location.origin);
       url.searchParams.set("refresh", "1");
+      url.searchParams.set("include_series", "1");
       url.searchParams.set("_", String(Date.now()));
       const response = await fetch(url.toString(), {
         cache: "no-store",
@@ -1945,15 +2899,40 @@
     } catch (_err) {
       // Preserve the current tape if the manual refresh fails.
     } finally {
-      setRefreshState(false);
+      coreTapeRefreshInFlight = false;
+      if (showRefreshState) setRefreshState(false);
     }
   };
   document.addEventListener("click", (event) => {
+    const windowToggle = event.target.closest("[data-market-pulse-tape-window-toggle]");
+    if (windowToggle) {
+      event.preventDefault();
+      setCoreTapeWindowMenuOpen(coreTapeWindowMenu ? coreTapeWindowMenu.hidden : false);
+      return;
+    }
+    const windowOption = event.target.closest("[data-market-pulse-tape-window-option]");
+    if (windowOption) {
+      event.preventDefault();
+      setActiveCoreTapeWindow(windowOption.dataset.marketPulseTapeWindowOption);
+      setCoreTapeWindowMenuOpen(false);
+      return;
+    }
+    if (coreTapeWindowControl && !coreTapeWindowControl.contains(event.target)) {
+      setCoreTapeWindowMenuOpen(false);
+    }
     const trigger = event.target.closest("[data-market-pulse-tape-refresh]");
     if (!trigger) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    window.refreshMarketPulseCoreTape();
+    window.refreshMarketPulseCoreTape({ showRefreshState: true });
   }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setCoreTapeWindowMenuOpen(false);
+  });
+  window.applyMarketPulseTapePayload = applyPayload;
+  renderAllCoreTapeTimeframes();
+  window.setTimeout(() => {
+    window.refreshMarketPulseCoreTape({ showRefreshState: false });
+  }, coreTapeHasRenderableValues() ? 220 : 650);
 })();
 </script>

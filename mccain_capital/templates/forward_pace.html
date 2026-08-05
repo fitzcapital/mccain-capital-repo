@@ -1,7 +1,8 @@
+{% from "partials/app_theme_macros.html" import app_pill, app_icon %}
 <div class="forwardPacePage" id="forwardPaceApp" data-today="{{ today }}">
   <section class="forwardPaceHero">
     <div>
-      <div class="pill">Forward Pace</div>
+      {{ app_pill('pace', 'Forward Pace') }}
       <h2 class="pageTitle">Projection Command</h2>
       <p class="pageSub">Model weekly payouts, tax drag, buffers, and projected balance structure.</p>
     </div>
@@ -71,21 +72,73 @@
         <span>Output</span>
         <strong id="forwardPaceHeadline">$0 / week</strong>
       </div>
-      <div class="forwardPacePrimaryMetric">
-        <span>Projected Balance</span>
-        <strong id="forwardPaceProjectedBalance">$0.00</strong>
-        <small id="forwardPaceProjectedMeta">After tax and buffer.</small>
-      </div>
-      <div class="forwardPaceMetricGrid">
-        <div><span>Gross</span><strong id="forwardPaceWeeklyGross">$0.00</strong></div>
-        <div><span>Tax</span><strong id="forwardPaceWeeklyTax">$0.00</strong></div>
-        <div><span>Buffer</span><strong id="forwardPaceWeeklyBuffer">$0.00</strong></div>
-        <div><span>Net Pace</span><strong id="forwardPaceWeeklyNet">$0.00</strong></div>
-      </div>
-      <div class="forwardPaceTaxStrip">
-        <div><span>Federal Annual</span><strong id="forwardPaceFederalTax">$0.00</strong></div>
-        <div><span>State Rate</span><strong id="forwardPaceStateRate">0%</strong></div>
-        <div><span>Effective Tax</span><strong id="forwardPaceEffectiveTax">0%</strong></div>
+      <div class="forwardPaceCommandBoard" id="forwardPaceCommandBoard" data-tone="positive">
+        <div class="forwardPaceCommandHero">
+          <div class="forwardPaceCommandSignal" aria-hidden="true">{{ app_icon('pace') }}</div>
+          <div class="forwardPaceCommandHeadline">
+            <span class="forwardPaceCommandLabel">Net Pace</span>
+            <strong id="forwardPaceWeeklyNetHero">$0.00</strong>
+            <small id="forwardPaceProjectedMeta">After tax and buffer.</small>
+          </div>
+          <div class="forwardPaceCommandLive">
+            <span>Projection Horizon</span>
+            <strong id="forwardPaceProjectionHorizon">0 weeks</strong>
+          </div>
+        </div>
+
+        <div class="forwardPaceHeroOutput">
+          <div class="forwardPaceBalanceStage" id="forwardPaceBalanceStage" data-tone="positive">
+            <div class="forwardPaceBalanceStageHead">
+              <span>Projected Balance</span>
+              <strong id="forwardPaceProjectionEnd">--</strong>
+            </div>
+            <div class="forwardPaceBalanceStageValue" id="forwardPaceProjectedBalance">$0.00</div>
+            <div class="forwardPaceBalanceStageMeta" id="forwardPaceProjectedBalanceMeta">Projected end balance.</div>
+          </div>
+
+          <div class="forwardPaceProfitInset" id="forwardPaceProfitMetric" data-tone="positive">
+            <span>Projected Profit</span>
+            <strong id="forwardPaceProjectedProfit">$0.00</strong>
+            <small id="forwardPaceProjectedProfitMeta">Net projection over the run.</small>
+          </div>
+        </div>
+
+        <div class="forwardPaceSignalStrip">
+          <div class="forwardPaceSignalCard">
+            <span>Projection End</span>
+            <strong id="forwardPaceProjectionEndSignal">--</strong>
+          </div>
+          <div class="forwardPaceSignalCard">
+            <span>Weekly Net Pace</span>
+            <strong id="forwardPaceWeeklyNetSignal">$0.00</strong>
+          </div>
+          <div class="forwardPaceSignalCard">
+            <span>Runway</span>
+            <strong id="forwardPaceRunwayLabel">0 trading weeks</strong>
+          </div>
+        </div>
+
+        <div class="forwardPaceTrajectoryCard" id="forwardPaceTrajectoryCard" data-tone="positive">
+          <div class="forwardPaceTrajectoryHead">
+            <span>Balance Trajectory</span>
+            <strong id="forwardPaceTrajectoryEnd">$0.00</strong>
+          </div>
+          <div class="forwardPaceTrajectory" id="forwardPaceTrajectory"></div>
+        </div>
+
+        <div class="forwardPaceCommandStats">
+          <div class="forwardPaceMetricGrid">
+            <div><span>Gross</span><strong id="forwardPaceWeeklyGross">$0.00</strong></div>
+            <div><span>Tax</span><strong id="forwardPaceWeeklyTax">$0.00</strong></div>
+            <div><span>Buffer</span><strong id="forwardPaceWeeklyBuffer">$0.00</strong></div>
+            <div><span>Net Pace</span><strong id="forwardPaceWeeklyNet">$0.00</strong></div>
+          </div>
+          <div class="forwardPaceTaxStrip">
+            <div><span>Federal Annual</span><strong id="forwardPaceFederalTax">$0.00</strong></div>
+            <div><span>State Rate</span><strong id="forwardPaceStateRate">0%</strong></div>
+            <div><span>Effective Tax</span><strong id="forwardPaceEffectiveTax">0%</strong></div>
+          </div>
+        </div>
       </div>
     </section>
   </section>

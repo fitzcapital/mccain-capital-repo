@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from ipaddress import ip_address
 from typing import Any, Dict, List
 
 from flask import abort, jsonify, redirect, render_template, request, session, url_for
@@ -15,6 +16,7 @@ PASSKEYS_SETTING_KEY = "auth_passkeys"
 PASSKEY_REGISTER_CHALLENGE_KEY = "_passkey_register_challenge"
 PASSKEY_AUTH_CHALLENGE_KEY = "_passkey_auth_challenge"
 PASSKEY_AUTH_NEXT_KEY = "_passkey_auth_next"
+LOCAL_PASSKEY_RP_ID = "localhost"
 
 try:
     from webauthn import (
@@ -99,12 +101,42 @@ def _request_proto() -> str:
     return str(request.scheme or "https").strip().lower() or "https"
 
 
+def _split_host_port(host: str) -> tuple[str, str]:
+    host = str(host or "").strip()
+    if host.startswith("["):
+        name, _, rest = host[1:].partition("]")
+        port = rest[1:] if rest.startswith(":") else ""
+        return name.strip().lower(), port.strip()
+    if host.count(":") == 1:
+        name, port = host.rsplit(":", 1)
+        if port.isdigit():
+            return name.strip().lower(), port.strip()
+    return host.strip("[]").lower(), ""
+
+
+def _is_loopback_ip(host: str) -> bool:
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _passkey_host() -> str:
+    host, port = _split_host_port(_request_host())
+    if _is_loopback_ip(host):
+        return f"{LOCAL_PASSKEY_RP_ID}:{port}" if port else LOCAL_PASSKEY_RP_ID
+    return _request_host()
+
+
 def _rp_id() -> str:
-    return _request_host().split(":", 1)[0].strip("[]").lower()
+    host, _ = _split_host_port(_request_host())
+    if _is_loopback_ip(host):
+        return LOCAL_PASSKEY_RP_ID
+    return host
 
 
 def _expected_origins() -> List[str]:
-    host = _request_host()
+    host = _passkey_host()
     proto = _request_proto()
     origin_header = str(request.headers.get("Origin") or "").strip()
     origins = {
@@ -113,10 +145,19 @@ def _expected_origins() -> List[str]:
     }
     if origin_header:
         origins.add(origin_header.rstrip("/"))
-    bare_host = host.split(":", 1)[0].strip("[]").lower()
+    bare_host, _ = _split_host_port(host)
     if bare_host not in {"127.0.0.1", "localhost", "::1"}:
         origins.add(f"https://{host}".rstrip("/"))
     return sorted(origin for origin in origins if origin)
+
+
+def passkey_localhost_redirect():
+    host, port = _split_host_port(_request_host())
+    if not _is_loopback_ip(host):
+        return None
+    local_host = f"{LOCAL_PASSKEY_RP_ID}:{port}" if port else LOCAL_PASSKEY_RP_ID
+    url = request.url.replace(_request_host(), local_host, 1)
+    return redirect(url, code=302)
 
 
 def _display_passkey_rows() -> List[Dict[str, Any]]:
@@ -139,6 +180,9 @@ def _display_passkey_rows() -> List[Dict[str, Any]]:
 def passkeys_page():
     if not auth.auth_enabled():
         return redirect(url_for("setup_page"))
+    local_redirect = passkey_localhost_redirect()
+    if local_redirect is not None:
+        return local_redirect
     _ensure_webauthn_available()
     content = render_template(
         "auth/passkeys.html",
