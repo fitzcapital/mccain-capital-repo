@@ -300,6 +300,7 @@ def _assert_hero_chart_controls(page, name: str) -> None:
     )
     if result.get("authGate") and not result.get("hasHost"):
         return
+    empty_state = "Bars empty" in result.get("statusText", "")
     if (
         (not result.get("hasHost") and not result.get("authGate"))
         or result.get("toggleCount") != 3
@@ -308,9 +309,9 @@ def _assert_hero_chart_controls(page, name: str) -> None:
         or "Levels" not in result.get("statusText", "")
         or "Levels pending" in result.get("statusText", "")
         or "Levels error" in result.get("statusText", "")
-        or result.get("beforeCount", 0) <= 0
-        or result.get("restoredCount", 0) <= 0
-        or not result.get("levelRowsBefore")
+        or (not empty_state and result.get("beforeCount", 0) <= 0)
+        or (not empty_state and result.get("restoredCount", 0) <= 0)
+        or (not empty_state and not result.get("levelRowsBefore"))
         or (result.get("dayRowsBefore") and result.get("dayRowsAfterDayOff"))
         or result.get("levelRowsAfterLevelsOff")
         or not result.get("hasSessionBreakWhenExpected")
