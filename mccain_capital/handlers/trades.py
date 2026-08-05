@@ -75,6 +75,10 @@ def trades_sync_live():
     return trades_sync.trades_sync_live()
 
 
+def trades_sync_live_equity():
+    return trades_sync.trades_sync_live_equity()
+
+
 def trades_sync_live_last_run():
     return trades_sync.trades_sync_live_last_run()
 

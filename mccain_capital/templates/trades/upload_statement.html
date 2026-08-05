@@ -376,7 +376,6 @@
               <strong>{{ selected_account.account_name if selected_account else 'Create or select an account' }}</strong>
               {% if selected_account and selected_account.display_broker_account_id %}<span class="trendChip">{{ selected_account.display_broker_account_id }}</span>{% endif %}
               {% if selected_account and selected_account.account_size %}<span class="trendChip positive">{{ money(selected_account.account_size) }}</span>{% endif %}
-              {% if selected_account and selected_account.get('broker_equity') is not none %}<span class="trendChip positive">Equity {{ money(selected_account.get('broker_equity')) }}</span>{% endif %}
               {% set live_remaining_dd = selected_account.get('broker_remaining_drawdown') if selected_account and selected_account.get('broker_remaining_drawdown') is not none else selected_account.get('max_drawdown') if selected_account else none %}
               {% if live_remaining_dd is not none %}
                 {% set live_dd_tone = 'positive' if live_remaining_dd > 2250 else 'negative' if live_remaining_dd < 1500 else 'warning' %}
@@ -401,7 +400,17 @@
               {% endif %}
               {% if not selected_account %}<span class="trendChip warning">Required before import</span>{% endif %}
             </div>
-            <div class="tiny line15 syncCredentialHint">Live upload updates equity · remaining drawdown is manual · rollover-aware dedupe</div>
+            <div class="tiny line15 syncCredentialHint">
+              Live Sync imports completed transactions and recalculates Ledger Equity · remaining drawdown is manual · rollover-aware dedupe
+            </div>
+            {% if ledger_equity.get('available') %}
+              <div class="syncAccountInlineSummaryHead" aria-label="Ledger Equity calculation">
+                <span class="trendChip positive">Ledger Equity {{ money(ledger_equity.get('ledger_equity')) }}</span>
+                <span class="trendChip">Opening {{ money(ledger_equity.get('opening_balance')) }}</span>
+                <span class="trendChip">Net realized P&amp;L {{ money(ledger_equity.get('realized_pnl')) }}</span>
+              </div>
+              <div class="tiny line15">Ledger Equity = account opening balance + recorded net realized trading P&amp;L.</div>
+            {% endif %}
           </div>
           <details class="syncDetails stack10">
             <summary><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>Historical or Snapshot Sync</span></summary>

@@ -44,6 +44,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "broker_remaining_drawdown",
             "broker_max_loss",
             "broker_metrics_updated_at",
+            "broker_equity_source",
         }.issubset(account_cols)
 
         applied = [
@@ -64,6 +65,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0012_full_trading_host_coverage",
             "0013_multi_account_ledgers",
             "0014_account_broker_metrics",
+            "0015_broker_equity_source",
         ]
     finally:
         conn.close()

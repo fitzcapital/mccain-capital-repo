@@ -102,6 +102,12 @@ def register(app):
         methods=["GET", "POST"],
     )
     app.add_url_rule(
+        "/trades/sync/live/equity",
+        endpoint="trades_sync_live_equity",
+        view_func=h.trades_sync_live_equity,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/trades/sync/live/last-run",
         endpoint="trades_sync_live_last_run",
         view_func=h.trades_sync_live_last_run,
