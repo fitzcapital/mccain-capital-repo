@@ -9,6 +9,11 @@ function initCalendarPreview(root = document) {
   const balance = root.querySelector("#previewBalance");
   const open = root.querySelector("#calendarPreviewOpen");
   const close = root.querySelector("#calendarPreviewClose");
+  const journal = root.querySelector("#calendarPreviewJournal");
+  const debrief = root.querySelector("#calendarPreviewDebrief");
+  const reconcile = root.querySelector("#calendarPreviewReconcile");
+  const reviewState = root.querySelector("#calendarPreviewReviewState");
+  const reviewDetail = root.querySelector("#calendarPreviewReviewDetail");
   if (!preview || !title || !status || !net || !trades || !record || !balance || !open || !close) return;
 
   const buttons = Array.from(root.querySelectorAll(".dayPreviewButton"));
@@ -35,14 +40,25 @@ function initCalendarPreview(root = document) {
       record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L (${winRate}%)`;
       balance.textContent = d.balance || "—";
       open.href = d.openUrl || (d.iso ? `/trades?d=${encodeURIComponent(d.iso)}` : "/trades");
-      preview.hidden = false;
+      const encodedDate = encodeURIComponent(d.iso || "");
+      if (journal) journal.href = d.iso ? `/journal?d=${encodedDate}` : "/journal";
+      if (debrief) debrief.href = d.iso ? `/journal/new?d=${encodedDate}&entry_type=trade_debrief&link_all_day=1&auto_draft=1` : "/journal/new?entry_type=trade_debrief";
+      if (reconcile) reconcile.href = d.iso ? `/trades/upload/statement?ws=reconcile&d=${encodedDate}` : "/trades/upload/statement?ws=reconcile";
+      if (reviewState) reviewState.textContent = Number(d.tradeCount || 0) > 0 ? "Session ready for review" : "No trades logged for this session";
+      if (reviewDetail) reviewDetail.textContent = Number(d.tradeCount || 0) > 0
+        ? "Open the one-day ledger, capture the debrief, or reconcile imported activity."
+        : "The date remains available for journaling even when no trades are recorded.";
+      if (window.dashboardSurfaces?.open) window.dashboardSurfaces.open(preview, button);
+      else preview.hidden = false;
     });
   });
 
   close.addEventListener("click", () => {
     clearActive();
-    preview.hidden = true;
+    if (window.dashboardSurfaces?.close) window.dashboardSurfaces.close(preview);
+    else preview.hidden = true;
   });
+  preview.addEventListener("dashboard:surface-closed", clearActive);
 
   if (root.dataset) {
     root.dataset.calendarPreviewBound = "1";
@@ -119,7 +135,7 @@ const marketSessionState = (now = new Date()) => {
   const shell = document.getElementById("dashboardModeShell");
   if (!shell) return;
 
-  const storageKey = String(shell.dataset.playbookTickerStorageKey || "mc_playbook_ticker");
+  const storageKey = String(shell.dataset.playbookTickerStorageKey || "mc_dashboard_ticker");
   const selectedTicker = String(shell.dataset.selectedTicker || "SPY").toUpperCase();
   const supportedTickers = new Set(["QQQ", "SPY", "SPX"]);
   const switchLinks = Array.from(document.querySelectorAll("[data-dashboard-ticker-switch]"));
@@ -147,14 +163,6 @@ const marketSessionState = (now = new Date()) => {
 
   const url = new URL(window.location.href);
   const queryTicker = normalizeTicker(url.searchParams.get("ticker"));
-  const storedTicker = normalizeTicker(storageGet(storageKey));
-  const staleLegacyDefault = selectedTicker === "SPY" && ["SPX", "QQQ"].includes(storedTicker);
-  if (!queryTicker && storedTicker && storedTicker !== selectedTicker && !staleLegacyDefault) {
-    url.searchParams.set("ticker", storedTicker);
-    window.location.replace(url.toString());
-    return;
-  }
-
   storageSet(storageKey, queryTicker || selectedTicker || "SPY");
   switchLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
@@ -1814,8 +1822,22 @@ const marketSessionState = (now = new Date()) => {
         if (tapeHasRenderableValues()) {
           setStreamStatus("Live", payload.updated_label || "just now");
         }
+        document.dispatchEvent(new CustomEvent("dashboard:operation-result", {
+          detail: {
+            controlId: "dashboardTapeRefreshBtn",
+            state: "success",
+            message: "Market tape updated",
+          },
+        }));
       } catch (_error) {
         // Keep existing rows/status if the manual refresh fails.
+        document.dispatchEvent(new CustomEvent("dashboard:operation-result", {
+          detail: {
+            controlId: "dashboardTapeRefreshBtn",
+            state: "error",
+            message: "Market tape refresh failed. Confirmed values remain visible.",
+          },
+        }));
       } finally {
         if (showLoading && typeof window.completeDashboardLoading === "function") {
           window.completeDashboardLoading();
@@ -2038,8 +2060,22 @@ const marketSessionState = (now = new Date()) => {
         window.setTimeout(() => {
           syncMindsetAnchoredFromPlanning(payload);
         }, 0);
+        document.dispatchEvent(new CustomEvent("dashboard:operation-result", {
+          detail: {
+            controlId: "dashboardPlanningRefreshBtn",
+            state: "success",
+            message: "Planning context updated",
+          },
+        }));
       } catch (_error) {
         // Keep the current planning state visible if the manual refresh fails.
+        document.dispatchEvent(new CustomEvent("dashboard:operation-result", {
+          detail: {
+            controlId: "dashboardPlanningRefreshBtn",
+            state: "error",
+            message: "Planning refresh failed. Confirmed context remains visible.",
+          },
+        }));
       } finally {
         if (showLoading && typeof window.completeDashboardLoading === "function") {
           window.completeDashboardLoading();
@@ -2307,8 +2343,12 @@ const marketSessionState = (now = new Date()) => {
   const openResetModal = () => {
     if (!resetModal) return;
     setResetFeedback("");
-    resetModal.hidden = false;
-    document.body.classList.add("modalOpen");
+    if (window.dashboardSurfaces?.open) {
+      window.dashboardSurfaces.open(resetModal, document.activeElement);
+    } else {
+      resetModal.hidden = false;
+      document.body.classList.add("modalOpen");
+    }
     document.dispatchEvent(new CustomEvent("dashboard:urgency-check", {
       detail: { openedAt: new Date().toISOString() },
     }));
@@ -2316,8 +2356,12 @@ const marketSessionState = (now = new Date()) => {
 
   const closeResetModal = () => {
     if (!resetModal) return;
-    resetModal.hidden = true;
-    document.body.classList.remove("modalOpen");
+    if (window.dashboardSurfaces?.close) {
+      window.dashboardSurfaces.close(resetModal);
+    } else {
+      resetModal.hidden = true;
+      document.body.classList.remove("modalOpen");
+    }
   };
 
   applyUiState();
@@ -2394,6 +2438,9 @@ const marketSessionState = (now = new Date()) => {
         planningSection?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       } else if (action === "proceed") {
+        if (window.dashboardPressureCheck && !window.dashboardPressureCheck.validateProceed()) {
+          return;
+        }
         if (uiState.disciplineMode !== "a-plus-only") {
           setResetFeedback("Mode is not set for new risk. Stand down or return to plan before acting.");
           return;
@@ -3230,7 +3277,6 @@ const marketSessionState = (now = new Date()) => {
   let activeJobId = String(syncPanel.dataset.activeJobId || "").trim();
   let pollTimer = 0;
 
-  const hasLastRequest = () => syncPanel.dataset.hasLastRequest === "1";
   const credentialsReady = () => syncPanel.dataset.credentialsReady === "1";
   const disabledReason = () => String(syncPanel.dataset.disabledReason || "").trim();
   const stageLabel = (value) => {
@@ -3283,9 +3329,13 @@ const marketSessionState = (now = new Date()) => {
       case "running":
         return "Today: Running";
       case "completed":
-        return "Today: Ran";
+        return "Today: Imported";
       case "failed":
         return "Today: Failed";
+      case "cancelled":
+        return "Today: Cancelled";
+      case "diagnostic":
+        return "Today: Diagnostic only";
       default:
         return "Today: Pending";
     }
@@ -3319,16 +3369,10 @@ const marketSessionState = (now = new Date()) => {
     if (runLabel && label) {
       runLabel.textContent = label;
     } else if (runLabel && !loading) {
-      runLabel.textContent = "Run Last Sync";
+      runLabel.textContent = "Sync Today";
     }
   };
   const refreshAvailability = () => {
-    if (!hasLastRequest()) {
-      syncPanel.dataset.canRun = "0";
-      setRunLoading(false);
-      setRunDisabled(true, disabledReason() || "No previous live-sync request is available yet.");
-      return false;
-    }
     if (!credentialsReady()) {
       syncPanel.dataset.canRun = "0";
       setRunLoading(false);
@@ -3361,6 +3405,28 @@ const marketSessionState = (now = new Date()) => {
     if (todayNode) todayNode.textContent = todayBadge(todayStatus);
     if (noteNode && note) noteNode.textContent = note;
     setRunLoading(running, running ? "Sync Running" : "");
+  };
+  const applyCanonicalState = (sync) => {
+    if (!sync) return false;
+    const preflight = sync.preflight || {};
+    activeJobId = String(sync.active_job_id || "").trim();
+    syncPanel.dataset.activeJobId = activeJobId;
+    syncPanel.dataset.syncOutcome = String(sync.outcome || "ready");
+    syncPanel.dataset.credentialsReady = preflight.credentials_ready ? "1" : "0";
+    syncPanel.dataset.disabledReason = String(sync.disabled_reason || preflight.disabled_reason || "");
+    syncPanel.dataset.canRun = sync.can_run ? "1" : "0";
+    updateStatusCard({
+      tone: sync.tone,
+      state: sync.state_label,
+      detail: sync.current_sync_label,
+      meta: sync.last_attempt_at_et ? `Last attempt: ${sync.last_attempt_at_et}` : "Last attempt: None yet",
+      updatedAtRaw: sync.last_attempt_at,
+      todayStatus: sync.today_status,
+      note: sync.detail,
+      running: sync.outcome === "running",
+    });
+    setRunDisabled(!sync.can_run, sync.disabled_reason || preflight.disabled_reason || "");
+    return true;
   };
   const applyIdleState = () => {
     activeJobId = "";
@@ -3419,6 +3485,13 @@ const marketSessionState = (now = new Date()) => {
         todayStatus: todayRan ? "completed" : "pending",
         note: todayRan ? "Upload sync completed for today." : "No sync has run today yet.",
       });
+      document.dispatchEvent(new CustomEvent("dashboard:operation-result", {
+        detail: {
+          controlId: "dashboardSyncRunBtn",
+          state: "success",
+          message: "Live upload sync completed",
+        },
+      }));
     } else if (status === "failed" || status === "cancelled") {
       updateStatusCard({
         tone: "warning",
@@ -3429,6 +3502,13 @@ const marketSessionState = (now = new Date()) => {
         todayStatus: todayRan ? "failed" : "pending",
         note: todayRan ? "Last sync failed. Review logs and retry." : "No sync has run today yet.",
       });
+      document.dispatchEvent(new CustomEvent("dashboard:operation-result", {
+        detail: {
+          controlId: "dashboardSyncRunBtn",
+          state: "error",
+          message: "Live upload sync failed. Review diagnostics and retry.",
+        },
+      }));
     }
   };
   const pollJob = async () => {
@@ -3446,7 +3526,7 @@ const marketSessionState = (now = new Date()) => {
       if (!response.ok || !payload?.ok || !payload.job) {
         throw new Error("dashboard_sync_poll_failed");
       }
-      applyJobState(payload.job);
+      if (!applyCanonicalState(payload.sync)) applyJobState(payload.job);
       const status = String(payload.job.status || "").trim().toLowerCase();
       if (!finalStates.has(status)) {
         pollTimer = window.setTimeout(() => {
@@ -3491,7 +3571,7 @@ const marketSessionState = (now = new Date()) => {
         if (!response.ok && payload.job) {
           activeJobId = String(payload.job?.id || "").trim();
           syncPanel.dataset.activeJobId = activeJobId;
-          applyJobState(payload.job);
+          if (!applyCanonicalState(payload.sync)) applyJobState(payload.job);
           stopPolling();
           if (activeJobId) {
             pollTimer = window.setTimeout(() => {
@@ -3518,7 +3598,9 @@ const marketSessionState = (now = new Date()) => {
         }
         activeJobId = String(payload.job?.id || "").trim();
         syncPanel.dataset.activeJobId = activeJobId;
-        if (payload.job) {
+        if (payload.sync) {
+          applyCanonicalState(payload.sync);
+        } else if (payload.job) {
           applyJobState(payload.job);
         }
         stopPolling();
@@ -3553,7 +3635,7 @@ const marketSessionState = (now = new Date()) => {
       void pollJob();
     }, 1200);
   } else {
-    applyIdleState();
+    refreshAvailability();
   }
 })();
 

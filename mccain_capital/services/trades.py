@@ -1209,7 +1209,7 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
     _reset_browser_boot_lane_after_resource_failure(payload)
     _safe_write_json(_broker_sync_status_path(), payload)
     status = str(payload.get("status") or "").strip().lower()
-    if status not in {"success", "failed", "debug_only"}:
+    if status not in {"success", "failed", "debug_only", "cancelled"}:
         return
     history = _load_sync_history()
     requested = payload.get("requested") if isinstance(payload.get("requested"), dict) else {}
@@ -1223,6 +1223,8 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
             "message": str(payload.get("message") or ""),
             "source": source,
             "mode": mode,
+            "requested": requested,
+            "inserted": payload.get("inserted"),
             "duration_sec": (
                 float(payload.get("duration_sec"))
                 if payload.get("duration_sec") is not None
@@ -1424,10 +1426,28 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
             row["_ts"] = ts
             recent.append(row)
     recent.sort(key=lambda x: x["_ts"])
+    def category(entry: Dict[str, Any]) -> str:
+        status = str(entry.get("status") or "").strip().lower()
+        requested = entry.get("requested") if isinstance(entry.get("requested"), dict) else {}
+        if status == "debug_only" or bool(requested.get("debug_only")):
+            return "diagnostic_only"
+        if status == "success":
+            return "success"
+        if status == "failed":
+            return "failed"
+        if status == "cancelled":
+            return "cancelled"
+        return "unknown"
+
+    categories = [category(entry) for entry in recent]
+    success = categories.count("success")
+    failed = categories.count("failed")
+    cancelled = categories.count("cancelled")
+    diagnostic_only = categories.count("diagnostic_only")
+    unknown = categories.count("unknown")
+    import_attempts = success + failed
     attempts = len(recent)
-    success = len([e for e in recent if str(e.get("status")) == "success"])
-    failed = len([e for e in recent if str(e.get("status")) == "failed"])
-    success_rate = (success / attempts * 100.0) if attempts else 0.0
+    success_rate = (success / import_attempts * 100.0) if import_attempts else None
     durations = [
         float(e.get("duration_sec"))
         for e in recent
@@ -1449,17 +1469,28 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
     by_source: Dict[str, Dict[str, int]] = {}
     for e in recent:
         src = str(e.get("source") or "unknown")
-        bucket = by_source.setdefault(src, {"attempts": 0, "success": 0, "failed": 0})
+        bucket = by_source.setdefault(
+            src,
+            {
+                "attempts": 0,
+                "success": 0,
+                "failed": 0,
+                "cancelled": 0,
+                "diagnostic_only": 0,
+                "unknown": 0,
+            },
+        )
         bucket["attempts"] += 1
-        if str(e.get("status")) == "success":
-            bucket["success"] += 1
-        elif str(e.get("status")) == "failed":
-            bucket["failed"] += 1
+        bucket[category(e)] += 1
     return {
         "days": int(days),
         "attempts": attempts,
+        "import_attempts": import_attempts,
         "success": success,
         "failed": failed,
+        "cancelled": cancelled,
+        "diagnostic_only": diagnostic_only,
+        "unknown": unknown,
         "success_rate": success_rate,
         "avg_duration_sec": avg_duration_sec,
         "top_failure_stage": top_failure_stage,
@@ -2881,6 +2912,9 @@ def trades_upload_pdf():
     sync_job = _get_bg_job(sync_job_id) if sync_job_id else {}
     if not sync_job:
         sync_job = _latest_active_sync_job()
+    from mccain_capital.services import trades_sync as sync_orchestration
+
+    live_sync_state = sync_orchestration.dashboard_live_sync_state()
     content = render_template(
         "trades/upload_statement.html",
         workspace=workspace,
@@ -2897,6 +2931,7 @@ def trades_upload_pdf():
         ),
         sync_reliability=sync_reliability,
         sync_job=sync_job,
+        live_sync_state=live_sync_state,
         reconcile_summary=reconcile_summary,
         import_history=list(reversed(import_history[-40:])),
         sync_stage_help=SYNC_STAGE_HELP,

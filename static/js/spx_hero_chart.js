@@ -291,6 +291,8 @@
   let priceLines = [];
   let spotPriceLines = [];
   let dayLevelLines = [];
+  let gammaSelectionLine = null;
+  let lastGammaSelectionTimestamp = 0;
   let polling = {
     session_phase: "open",
     bars_interval_ms: 10000,
@@ -351,6 +353,12 @@
     "next_call_wall",
     "next_put_wall",
   ];
+  const RAIL_LEVEL_KEYS = {
+    main: "main_flip",
+    local: "local_flip",
+    call: "call_wall",
+    put: "put_wall",
+  };
   const OFF_CHART_LEVEL_PCT = 0.018;
 
   const asNum = (value) => {
@@ -1309,6 +1317,44 @@
     );
   };
 
+  const clearGammaSelectionLine = () => {
+    if (!gammaSelectionLine) return;
+    try {
+      candleSeries.removePriceLine(gammaSelectionLine);
+    } catch (_) {}
+    gammaSelectionLine = null;
+  };
+
+  const handleGammaLevelSelection = (event) => {
+    const detail = event.detail && typeof event.detail === "object" ? event.detail : {};
+    if (String(detail.symbol || "").toUpperCase() !== symbol) return;
+    const timestamp = Number(detail.timestamp) || 0;
+    if (timestamp && timestamp < lastGammaSelectionTimestamp) return;
+    if (timestamp && Date.now() - timestamp > 5 * 60 * 1000) return;
+    lastGammaSelectionTimestamp = Math.max(lastGammaSelectionTimestamp, timestamp);
+    if (detail.mode === "cleared") {
+      clearGammaSelectionLine();
+      return;
+    }
+    const price = Number(detail.price);
+    if (detail.valid === false || !Number.isFinite(price) || price <= 0) return;
+    clearGammaSelectionLine();
+    const title = String(detail.key || "Gamma level")
+      .replace(/^strike-/, "Strike ")
+      .replaceAll("_", " ")
+      .toUpperCase();
+    gammaSelectionLine = candleSeries.createPriceLine({
+      price,
+      color: "#71BAFF",
+      lineWidth: 2,
+      lineStyle: detail.mode === "preview" ? 2 : 0,
+      axisLabelVisible: true,
+      axisLabelColor: "#2F6BFF",
+      axisLabelTextColor: "#F7FBFF",
+      title,
+    });
+  };
+
   const highLowForCandles = (candles) => {
     if (!Array.isArray(candles) || !candles.length) return null;
     const highs = candles.map((bar) => asNum(bar.high)).filter((value) => value !== null);
@@ -1559,7 +1605,7 @@
     }
 
     levelRail.innerHTML = plottedRows.map((row) => `
-      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" title="${row.title} ${fmt(row.value, railDigitsForKind(row.kind))}" style="top:${Math.max(12, row.displayY)}px">
+      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" data-market-pulse-chart-level-key="${RAIL_LEVEL_KEYS[row.kind] || ""}" title="${row.title} ${fmt(row.value, railDigitsForKind(row.kind))}" style="top:${Math.max(12, row.displayY)}px">
         <span>${row.title}</span>
         <strong>${fmt(row.value, railDigitsForKind(row.kind))}</strong>
       </div>
@@ -1574,6 +1620,20 @@
 
     updateHeaderSummary(levels);
     setText("marketPulseHeaderSpot", fmt(levels.spot, 2));
+    document.dispatchEvent(new CustomEvent("market-pulse:levels-updated", {
+      detail: {
+        symbol,
+        spot: asNum(levels.spot),
+        timestamp: Date.parse(String(levels.updated_at || levels.timestamp || "")) || Date.now(),
+        levels: HERO_LEVEL_KEYS.filter((key) => ["main_flip", "local_flip", "call_wall", "put_wall"].includes(key)).map((key) => ({
+          key,
+          price: asNum(levels[key]),
+          classification: key.includes("flip") ? "flip" : key === "call_wall" ? "resistance" : "support",
+          symbol,
+          valid: asNum(levels[key]) !== null,
+        })),
+      },
+    }));
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || `${symbol} Spot`);
     setText("marketPulseHeroGamma", regimeDisplayLabel(String(levels.gamma_regime || "").toLowerCase(), levels.gamma_regime_label || "Regime Unavailable"));
@@ -2052,6 +2112,7 @@
   syncIntervalControls();
   bindDisplayToggles();
   bindIntervalToggles();
+  document.addEventListener("market-pulse:gamma-level-selected", handleGammaLevelSelection);
   applyLevelVisibility();
   renderDrawings();
   window.addEventListener("resize", () => {

@@ -1,0 +1,137 @@
+/* Adaptive application shell.
+   This file loads last so one width contract governs legacy and modernized pages. */
+
+:root{
+  --shell-chrome-max:1440px;
+  --shell-standard-max:1280px;
+  --shell-wide-max:1440px;
+  --shell-dense-max:1600px;
+}
+
+body.shellMode-standard{
+  --shell-content-max:var(--shell-standard-max);
+}
+
+body.shellMode-wide{
+  --shell-content-max:var(--shell-wide-max);
+}
+
+body.shellMode-dense{
+  --shell-content-max:var(--shell-dense-max);
+}
+
+body.is-mobile-app{
+  --mobile-shell-bottom-clearance:
+    calc(var(--mobile-app-tab-h, 68px) + 86px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width:760px){
+  body.is-mobile-app .wrap{
+    padding-bottom:var(--mobile-shell-bottom-clearance) !important;
+  }
+}
+
+body.shellMode .wrap{
+  width:100% !important;
+  max-width:none !important;
+  margin-inline:auto !important;
+}
+
+body.shellMode .topbar,
+body.shellMode .flashStack{
+  box-sizing:border-box;
+  width:min(100%, var(--shell-chrome-max)) !important;
+  max-width:var(--shell-chrome-max) !important;
+  margin-right:auto !important;
+  margin-left:auto !important;
+}
+
+body.shellMode #pageShell{
+  box-sizing:border-box;
+  width:min(100%, var(--shell-content-max)) !important;
+  max-width:var(--shell-content-max) !important;
+  min-width:0;
+  margin-right:auto !important;
+  margin-left:auto !important;
+}
+
+body.shellMode :is(
+  .pageSub,
+  .summaryLead,
+  .dashboardLead,
+  .workspaceSectionLead,
+  .dashboardOperationalLead
+){
+  max-width:72ch;
+}
+
+body.shellMode :is(
+  .marketPulseHeroChart,
+  .analyticsChartCard,
+  .tradesChartCard,
+  .tradesReplayChartCard,
+  .candleShell,
+  .marketPulseNewsFeedShell,
+  .tableWrap
+){
+  min-width:0;
+  max-width:100%;
+}
+
+/* Notification footer controls must remain square even when legacy mobile
+   button padding is active. Without an explicit flex basis the SVGs collapse. */
+body.shellMode .notifDropdownFooter{
+  align-items:center;
+  gap:8px;
+}
+
+body.shellMode .notifDropdownFooter .notifFooterIconBtn{
+  box-sizing:border-box;
+  display:inline-flex !important;
+  flex:0 0 42px;
+  width:42px !important;
+  min-width:42px !important;
+  height:42px !important;
+  min-height:42px !important;
+  margin:0 !important;
+  padding:0 !important;
+  align-items:center;
+  justify-content:center;
+  border-radius:12px;
+}
+
+body.shellMode .notifDropdownFooter .notifFooterIconBtn svg{
+  display:block;
+  flex:0 0 20px;
+  width:20px !important;
+  min-width:20px;
+  height:20px !important;
+  opacity:1;
+  stroke:currentColor;
+}
+
+body.shellMode .notifDropdownFooter .notifClearBtn{
+  color:rgba(255, 214, 226, .96) !important;
+  border-color:rgba(255, 120, 150, .38) !important;
+}
+
+body.shellMode .notifDropdownFooter .notifManageBtn{
+  color:rgba(205, 226, 255, .94) !important;
+  border-color:rgba(120, 170, 220, .32) !important;
+}
+
+body.shellMode .notifDropdownFooter .notifViewAll{
+  color:rgba(190, 245, 229, .94) !important;
+  border-color:rgba(132, 214, 194, .32) !important;
+}
+
+@media (max-width:900px){
+  body.shellMode .wrap,
+  body.shellMode .topbar,
+  body.shellMode .flashStack,
+  body.shellMode #pageShell{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0;
+  }
+}

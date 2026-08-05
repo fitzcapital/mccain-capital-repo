@@ -7,32 +7,35 @@
 </span>
 {%- endmacro %}
 
-<div class="card pageHero candleHero">
+<div class="candleWorkflow" data-candle-workflow>
+<div class="card pageHero candleHero" data-candle-workflow-region="command">
   <div class="toolbar">
     <div class="pageHeroHead">
-      <div>
-        <div class="pill">🕯️ Timing Map</div>
+      <div class="candleCommandIdentity">
+        <div class="pill candleCommandKicker">Candle Opens</div>
         <div class="pageTitleRow candleTitleRow">
-          <h2 class="pageTitle">{{ month_name }} Opportunity Density</h2>
+          <h2 class="pageTitle">{{ month_name }}</h2>
           <details class="candleInlineNote">
             <summary class="candleInlineNoteToggle" aria-label="Candle opens help">?</summary>
             <div class="candleInlineNoteBody">Day intervals use the market-session count from the first session of the year. Week and month intervals print on the first tradable session that qualifies.</div>
           </details>
         </div>
+        <div class="candleCommandSub">Opportunity density · session resets · USD macro timing</div>
       </div>
-      <div class="actionRow">
-        <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
-        <a class="btn primary" href="/candle-opens">This Month</a>
-        <a class="btn" href="/candle-opens?y={{ next_y }}&m={{ next_m }}">Next</a>
+      <div class="actionRow candleMonthNavigator" role="group" aria-label="Candle Opens month navigation">
+        <a class="btn candleMonthStep" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}" aria-label="Previous month">‹</a>
+        <a class="btn primary candleMonthToday" href="/candle-opens">This Month</a>
+        <a class="btn candleMonthStep" href="/candle-opens?y={{ next_y }}&m={{ next_m }}" aria-label="Next month">›</a>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card candleTodaySnapshot is-{{ today_snapshot.importance_class }}" data-today-date="{{ today_snapshot.iso }}">
-  <div>
+<div class="card candleTodaySnapshot is-{{ today_snapshot.importance_class }}" data-today-date="{{ today_snapshot.iso }}" data-candle-workflow-region="today">
+  <div class="candleTodayLead">
     <div class="pill">Today Snapshot</div>
     <div class="candleTodaySnapshotDate">{{ today_snapshot.date_label }}</div>
+    <div class="candleTodaySession">{{ today_snapshot.session_label }}</div>
   </div>
   <div class="candleTodaySnapshotGrid">
     <div>
@@ -57,7 +60,7 @@
   </div>
 </div>
 
-<div class="metricStrip metricStripCompact candleMetricStrip" data-no-mobile-compact="1">
+<div class="metricStrip metricStripCompact candleMetricStrip candleReferenceMetrics" data-no-mobile-compact="1" data-candle-workflow-region="reference-metrics">
   <div class="metric">
     <div class="label">Trading Days</div>
     <div class="value">{{ trading_days }}</div>
@@ -97,6 +100,14 @@
   </div>
 </div>
 
+<section class="candleCatalystRegion" data-candle-workflow-region="catalysts" aria-labelledby="candleCatalystTitle">
+  <div class="candleSectionIntro">
+    <div>
+      <div class="pill">Upcoming Catalysts</div>
+      <h3 id="candleCatalystTitle">What matters after today</h3>
+    </div>
+    <span>Reset clusters and macro collisions</span>
+  </div>
 {% if focus_cards %}
 <div class="candleFocusStrip">
   {% for item in focus_cards %}
@@ -124,8 +135,9 @@
   {% endfor %}
 </div>
 {% endif %}
+</section>
 
-<div class="card candleCyclePanel">
+<div class="card candleCyclePanel" data-candle-workflow-region="cycle-reference">
   <div class="toolbar">
     <div class="pill">Cycles</div>
     <div class="candleCycleGrid">
@@ -145,7 +157,7 @@
   </div>
 </div>
 
-<details class="card candleMacroFold" data-mobile-default="closed">
+<details class="card candleMacroFold" data-mobile-default="closed" data-candle-workflow-region="macro-agenda">
   <summary class="candleMacroSummary">
     <span class="pill">Macro Events</span>
     <span class="candleMacroSummaryTitle">{{ news_high + news_medium }} USD macro folders this month</span>
@@ -284,8 +296,15 @@
   </div>
 </details>
 
-<div class="card candleShell">
+<div class="card candleShell" data-candle-workflow-region="calendar">
   <div class="toolbar">
+    <div class="candleWorkspaceHead">
+      <div>
+        <div class="pill">Timing Workspace</div>
+        <h3>{{ month_name }} Calendar</h3>
+      </div>
+      <span>Select a session to inspect its complete timing profile.</span>
+    </div>
     <div class="candleLegendCompact candlePillHelpRow">
       <div class="pill">Legend</div>
       <details class="candleInlineNote">
@@ -554,6 +573,7 @@
       </aside>
     </div>
   </div>
+</div>
 </div>
 
 <script>

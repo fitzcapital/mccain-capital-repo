@@ -202,8 +202,9 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
     assert "Archive selected" in body
     assert f"/trades/upload/statement?ws=live&account_id={account_id}" in body
     assert (
-        f'<a class="btn ctaLink" href="/trades/upload/statement?ws=live&account_id={account_id}">'
-        "Import</a>"
+        f'<a class="btn dashboardSyncDetailsLink" '
+        f'href="/trades/upload/statement?ws=live&account_id={account_id}">'
+        "Full sync details</a>"
         in body
     )
     assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
@@ -784,7 +785,8 @@ def test_market_pulse_page_uses_deferred_context_refresh_button(client):
     assert 'id="marketPulseContextRefreshBtn"' in body
     assert "/api/market-pulse/context" in body
     assert "if (!pageLoaded || !coreReady) return;" in body
-    assert 'id="marketPulseFeedFold" open' in body
+    assert 'id="marketPulseFeedFold"' in body
+    assert 'id="marketPulseFeedFold" open' not in body
     assert "Source standby" in body
     assert "Actionability" in body
     assert "Gamma Data" in body
@@ -1247,6 +1249,8 @@ def test_executive_dashboard_renders_command_center(client):
     assert "BOA-Based Projection" in body
     assert "Projection Controls" in body
     assert "Enter BOA balance. The system calculates the rest from the operating plan." in body
+    assert "data-exec-recalculate-status" in body
+    assert 'aria-live="polite"' in body
     assert "Advanced assumptions hidden" in body
     assert "Show Advanced Assumptions" in body
     assert "Add Adjustment" in body
@@ -1264,11 +1268,9 @@ def test_executive_dashboard_renders_command_center(client):
     assert '"currentPaycheck2": 4700' in body
     assert "July 2027" in body
     assert "CEO Weekly Scorecard" in body
-    assert "Net Worth Tracker" in body
     assert "BOA Treasury Growth" in body
     assert "Company Metrics" in body
     assert "2026 Annual Targets" in body
-    assert "Capital Allocation" in body
     assert "12-Month Roadmap" in body
     assert "McCain Capital Timeline" in body
     assert "Projected BOA Close" in body
@@ -1283,6 +1285,189 @@ def test_executive_dashboard_renders_command_center(client):
     assert "Placeholder" not in body
     assert 'href="/executive"' in body
     assert "Trading Dashboard" in body
+
+
+def test_executive_recalculate_reads_current_controls_and_confirms_update():
+    script = Path("static/js/executive_command_center.js").read_text()
+
+    for contract in (
+        "function recalculateFromControls(button)",
+        "nextInputs[key] = parsed",
+        "state.inputs[month.id] = nextInputs",
+        "Projected close ${formatMoney(projection.projectedBOAClose)}",
+        'button.textContent = "Projection Updated"',
+        "recalculateFromControls(event.target.closest",
+    ):
+        assert contract in script
+
+
+def test_executive_august_guardrails_remain_independent(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    match = re.search(
+        r'<script id="executive-operating-months" type="application/json">(.*?)</script>',
+        body,
+        re.DOTALL,
+    )
+    assert match
+    months = json.loads(match.group(1))
+    august = next(month for month in months if month["id"] == "2026-08")
+
+    assert august["redLine"] == 4000
+    assert august["openingBOA"] == 4400
+    assert august["protectedFloor"] == 5500
+    assert august["targetCloseLow"] == 6500
+    assert august["temporaryFloor"] == 4000
+    assert august["permanentFloorGoal"] == 10000
+    assert august["floorActivationMonth"] == "2026-09"
+    assert august["deposits"]["currentPaycheck1"] == 1873.78
+    assert august["deposits"]["boaPaycheck1"] == 1873.78
+    for month in months:
+        verizon_bills = [bill for bill in month["bills"] if bill["name"] == "Verizon"]
+        assert len(verizon_bills) == 1
+        assert verizon_bills[0]["amount"] == 267
+        assert verizon_bills[0]["dueDay"] == 26
+        assert all("catch-up" not in bill["name"].lower() for bill in month["bills"])
+    assert august["paySchedule"]["anchorDate"] == "2026-07-31"
+    assert august["paySchedule"]["cadenceDays"] == 14
+    assert august["paySchedule"]["regularCurrent"] == 1873.78
+    assert august["paySchedule"]["regularBOA"] == 1873.78
+    food_bills = [bill for bill in august["bills"] if bill["name"] == "Food"]
+    assert food_bills == [
+        {"name": "Food", "account": "Current", "amount": 450, "timing": "Monthly"}
+    ]
+    assert all(bill["name"] != "Food / Dates" for bill in august["bills"])
+    chase_bills = [bill for bill in august["bills"] if bill["name"] == "Chase fixed payment"]
+    assert chase_bills == [
+        {
+            "name": "Chase fixed payment",
+            "account": "BOA",
+            "amount": 376,
+            "timing": "Paycheck 1",
+            "dueDay": 17,
+        }
+    ]
+    september = next(month for month in months if month["id"] == "2026-09")
+    assert september["paySchedule"]["exceptions"]["2026-09-25"] == {
+        "boa": 4700,
+        "current": 4700,
+        "estimated": True,
+    }
+
+
+def test_executive_capital_flow_projection_contract():
+    script = Path("static/js/executive_command_center.js").read_text()
+
+    assert "boaObligations" in script
+    assert "cycle.boaObligations.length === 1" in script
+    assert "cycle.boaObligations.length > 1" in script
+
+    for contract in (
+        "const normalizedEntry = (month, entry, index)",
+        ".sort((a, b) => a.dueDay - b.dueDay",
+        "const dailyPath = [{ day: asOfDay, boa, current",
+        "const projectedLow = lowPoint.boa",
+        "const fundingGap = Math.max(0, activeHardFloor - projectedLow)",
+        "const absorbableUnexpectedExpense = Math.max(0, monthPathCushion)",
+        "const asOfDay = projectionAsOfDay(month)",
+        'if (["Paid", "Skipped"].includes(saved.status)) return 0',
+        "Math.max(asOfDay, entry.dueDay)",
+        'floorStatus = "Temporary Floor at Risk"',
+        'floorStatus = "$10K Floor Secured"',
+        'floorStatus = "Rebuilding Secured Floor"',
+        'let floorPhase = "build"',
+        'floorPhase = "secured"',
+        'floorPhase = "recovery"',
+        "dailyPath.slice(index).every",
+        "const activeHardFloor = floorPhase === \"build\" ? temporaryFloor : permanentFloorGoal",
+        "state.permanentFloorSecured = true",
+        "const fundingCycleForDate = (date)",
+        "new Date(2026, 6, 31)",
+        "entry.cycleSettled",
+        "const buildRequiredFloatEntries = (month, inputs, entries)",
+        "Required Current float · Day ${day}",
+        "Settled cycle <strong>",
+        "$9,400 estimated",
+        "projectionLog: []",
+        "Recent projection snapshots",
+        "].slice(-24)",
+        "septemberExceptionEstimated: true",
+        "timingEstimated: !hasExplicitDay",
+        "The previous projection was kept",
+        "renderCapitalFlow(month, projection)",
+        "Cycle settled",
+    ):
+        assert contract in script
+
+
+def test_executive_capital_flow_receiving_surface(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'data-exec-capital-flow' in body
+    assert 'aria-label="Daily capital flow"' in body
+    assert "Active floor ${formatMoney(projection.activeHardFloor)}" in Path(
+        "static/js/executive_command_center.js"
+    ).read_text()
+
+
+def test_executive_desktop_cleanup_contract(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    script = Path("static/js/executive_command_center.js").read_text()
+    assert 'aria-label="Executive decision band"' in body
+    assert "12-month planning baseline" in body
+    assert "Year View" not in body
+    assert "Net Worth Tracker" not in body
+    assert "Capital Allocation" not in body
+    assert 'selectedMonth: currentOperatingMonth.id' in script
+    assert '["Current BOA", formatMoney(monthInputs(month).openingBOA)' in script
+    assert "Absorbable Cushion" in script
+    assert "Planning baseline, not bank sync" in script
+    assert "projected: itemProjection.projectedBOAClose" in script
+    assert "months.slice(startIndex, startIndex + 12)" in script
+    assert "currentToBOATransfers" in script
+    assert "Current Carryover" in script
+    assert "Committed Current" in script
+    assert "Free Current" in script
+    assert "Next-Cycle Support" in script
+    assert "Estimated paycheck · Sep 25 · $9,400" in script
+    assert "const fundingCycleRows = (month, count = 5)" in script
+    assert "const nextCycleCommitment = (month, projection)" in script
+    assert "Paycheck-to-paycheck funding map" in script
+    assert "Settled in as-of balances" in script
+    assert "Current pays cycle obligations" in script
+    assert "Avoid unplanned evaluation purchases" in body
+    assert "Finish July without more eval purchases" not in body
+    assert "Estimated paycheck · $9,400 combined" in script
+    assert "Current shortfall" in script
+    assert "const currentObligations = isSettled ? [] : entries" in script
+    assert "Why BOA support is needed" in script
+    assert "Largest cycle obligations" in script
+    assert "Other cycle obligations" in script
+    assert "otherObligationsTotal" in script
+    assert "View all ${cycle.currentObligations.length} cycle bills" in script
+    assert "Total Current bills" in script
+    assert "Current bills" in script
+    assert "BOA covers only the remaining gap" in script
+    assert 'tabindex="0" role="group" aria-label="Explain BOA support of' in script
+    assert "Remaining BOA path stays at or above $10K" in script
+    assert "Estimated paychecks are planning placeholders" in script
+    assert "Updates automatically when the local date changes." in script
+    assert "const refreshForCalendarChange = () =>" in script
+    assert 'document.addEventListener("visibilitychange"' in script
+    assert script.count('class="executiveTableScroll"') == 2
+    assert "September post-bill surplus sweep" not in script
+    assert "CEO Score" not in script
+    assert "Cash Runway" not in script
+    assert 'entry.cycleSettled ? \'<small class="executiveTimingEstimate">Automatic</small>\'' in script
+    assert 'data-exec-quick-expense-description' in script
+    assert "executiveReviewComparison" in script
 
 
 def test_vanquish_blocklist_download_endpoint(client):

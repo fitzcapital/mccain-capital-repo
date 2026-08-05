@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import flash, jsonify, redirect, request, url_for
@@ -136,6 +136,218 @@ def _credential_save_result(*, remember_credentials: bool, username: str, passwo
     }
 
 
+_ACTIVE_SYNC_STATUSES = {"queued", "running"}
+_FAILED_SYNC_STATUSES = {"failed", "error", "blocked"}
+_RECOVERY_SYNC_STAGES = {
+    "auth_required",
+    "capture_statement_html",
+    "reset_required",
+    "stale",
+    "storage_io",
+    "system_resource",
+}
+
+
+def _selected_broker_account(selected_account: dict | None) -> str:
+    account = selected_account or {}
+    return legacy.repo.normalize_broker_account_id(
+        account.get("display_broker_account_id")
+        or legacy.repo.display_broker_account_id(account.get("broker_account_id"))
+        or account.get("broker_account_id")
+        or ""
+    )
+
+
+def _masked_broker_account(account: str) -> str:
+    normalized = legacy.repo.normalize_broker_account_id(account)
+    if len(normalized) <= 4:
+        return normalized or "Not configured"
+    return f"••••{normalized[-4:]}"
+
+
+def _sync_outcome(payload: dict, *, active: bool = False) -> str:
+    status = str(payload.get("status") or "idle").strip().lower() or "idle"
+    stage = str(payload.get("stage") or "").strip().lower()
+    requested = payload.get("requested") if isinstance(payload.get("requested"), dict) else {}
+    if active or status in _ACTIVE_SYNC_STATUSES:
+        return "running"
+    if status == "debug_only" or bool(requested.get("debug_only")) and status == "success":
+        return "diagnostic_only"
+    if status == "success":
+        inserted = payload.get("inserted")
+        if inserted is None and isinstance(payload.get("summary"), dict):
+            inserted = payload["summary"].get("inserted")
+        return "no_new_trades" if inserted == 0 else "completed"
+    if status == "cancelled":
+        return "cancelled"
+    if status == "stale" or stage in _RECOVERY_SYNC_STAGES:
+        return "needs_recovery"
+    if status in _FAILED_SYNC_STATUSES:
+        return "failed"
+    if status in {"", "idle", "ready"}:
+        return "ready"
+    return "needs_recovery"
+
+
+def _next_auto_run(auto_cfg: dict, *, now_et: datetime) -> str:
+    if not bool(auto_cfg.get("enabled")):
+        return ""
+    raw_time = str(auto_cfg.get("run_time_et") or "16:15").strip()
+    try:
+        hour, minute = [int(part) for part in raw_time.split(":", 1)]
+    except (TypeError, ValueError):
+        hour, minute = 16, 15
+    candidate = now_et.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= now_et:
+        candidate += timedelta(days=1)
+    if not bool(auto_cfg.get("run_weekends")):
+        while candidate.weekday() >= 5:
+            candidate += timedelta(days=1)
+    return candidate.isoformat()
+
+
+def _last_successful_import(last_status: dict, history: list[dict]) -> dict:
+    if _sync_outcome(last_status) in {"completed", "no_new_trades"}:
+        return last_status
+    for row in reversed(history):
+        requested = row.get("requested") if isinstance(row.get("requested"), dict) else {}
+        status = str(row.get("status") or "").strip().lower()
+        if status == "success" and not bool(requested.get("debug_only")):
+            return row
+    return {}
+
+
+def _build_sync_today_preflight(
+    *,
+    selected_account: dict | None = None,
+    cfg: dict | None = None,
+    requested: dict | None = None,
+    active_job: dict | None = None,
+    today_et: str | None = None,
+) -> dict:
+    selected = selected_account if selected_account is not None else legacy._selected_account()
+    saved_request = requested or {}
+    loaded_cfg, username, stored_password = _broker_credential_context(
+        username=str(saved_request.get("username") or ""),
+        cfg=cfg,
+    )
+    account = _selected_broker_account(selected)
+    disabled_reason = ""
+    if active_job:
+        disabled_reason = "A live sync is already running."
+    elif not selected:
+        disabled_reason = "Select a local account ledger before syncing."
+    elif not account:
+        disabled_reason = "The selected ledger needs a broker account ID before syncing."
+    elif not username or not stored_password:
+        disabled_reason = "Saved live-sync credentials are missing."
+    elif not str(loaded_cfg.get("base_url") or "").strip():
+        disabled_reason = "The broker base URL is missing."
+    day = today_et or legacy.today_iso()
+    return {
+        "selected_account_id": int(selected["id"]) if selected else None,
+        "ledger_name": str((selected or {}).get("account_name") or "No ledger selected"),
+        "broker_account": account,
+        "broker_account_masked": _masked_broker_account(account),
+        "from_date": day,
+        "to_date": day,
+        "mode": "broker",
+        "mode_label": "Broker fills → trades",
+        "debug_only": False,
+        "intent_label": "Normal import",
+        "username": username,
+        "credentials_ready": bool(username and stored_password),
+        "base_url": str(loaded_cfg.get("base_url") or "").strip(),
+        "can_run": not bool(disabled_reason),
+        "disabled_reason": disabled_reason,
+    }
+
+
+def _canonical_live_sync_state(
+    *,
+    last_status: dict,
+    active_job: dict,
+    history: list[dict],
+    auto_cfg: dict,
+    preflight: dict,
+    now_et: datetime | None = None,
+) -> dict:
+    now = now_et or datetime.now(ZoneInfo("America/New_York"))
+    today = now.date().isoformat()
+    effective = active_job or last_status
+    outcome = _sync_outcome(effective, active=bool(active_job))
+    last_success = _last_successful_import(last_status, history)
+    attempt_at = str(effective.get("updated_at") or last_status.get("updated_at") or "").strip()
+    success_at = str(last_success.get("updated_at") or "").strip()
+    attempted_today = _parse_et_date(attempt_at) == today
+    import_completed_today = _parse_et_date(success_at) == today
+    labels = {
+        "ready": ("READY", "Ready for today's import", "ready"),
+        "running": ("SYNC RUNNING", "Live broker import in progress", "running"),
+        "completed": ("IMPORT COMPLETE", "Trades imported successfully", "success"),
+        "no_new_trades": ("NO NEW TRADES", "Import completed; no new fills found", "success"),
+        "diagnostic_only": ("DIAGNOSTIC COMPLETE", "Test finished; nothing was imported", "warning"),
+        "cancelled": ("SYNC CANCELLED", "Today's import is still pending", "warning"),
+        "failed": ("SYNC FAILED", "Today's import is still pending", "warning"),
+        "needs_recovery": ("RECOVERY NEEDED", "Review the failure evidence before retrying", "warning"),
+    }
+    state_label, current_label, tone = labels[outcome]
+    if outcome == "ready" and not preflight.get("can_run"):
+        current_label = str(preflight.get("disabled_reason") or "Sync setup is incomplete.")
+        tone = "warning"
+    message = str(effective.get("message") or last_status.get("message") or "").strip()
+    if outcome == "running":
+        detail = message or "Running now. Controls unlock when complete."
+    elif import_completed_today:
+        detail = "Today's broker import is complete."
+    elif outcome in {"cancelled", "failed", "needs_recovery", "diagnostic_only"}:
+        detail = message or current_label
+    else:
+        detail = "Today's broker import is pending."
+    return {
+        "outcome": outcome,
+        "status": str(effective.get("status") or "idle").strip().lower() or "idle",
+        "stage": str(effective.get("stage") or "").strip().lower(),
+        "state_label": state_label,
+        "current_sync_label": current_label,
+        "tone": tone,
+        "detail": detail,
+        "message": message,
+        "attempted_today": attempted_today,
+        "import_completed_today": import_completed_today,
+        "last_attempt_at": attempt_at,
+        "last_attempt_at_et": _format_last_sync_at_et(attempt_at),
+        "last_successful_import_at": success_at,
+        "last_successful_import_at_et": _format_last_sync_at_et(success_at),
+        "today_status": (
+            "running"
+            if outcome == "running"
+            else "completed"
+            if import_completed_today
+            else "failed"
+            if attempted_today and outcome in {"failed", "needs_recovery"}
+            else "cancelled"
+            if attempted_today and outcome == "cancelled"
+            else "diagnostic"
+            if attempted_today and outcome == "diagnostic_only"
+            else "pending"
+        ),
+        "recommended_next_action": (
+            "Wait for the active sync to finish."
+            if outcome == "running"
+            else "No manual sync is needed today."
+            if import_completed_today
+            else "Review recovery guidance before retrying."
+            if outcome == "needs_recovery"
+            else "Run today's normal import when ready."
+        ),
+        "automation_enabled": bool(auto_cfg.get("enabled")),
+        "automation_next_run_at": _next_auto_run(auto_cfg, now_et=now),
+        "automation_run_time_et": str(auto_cfg.get("run_time_et") or "16:15"),
+        "preflight": preflight,
+    }
+
+
 def dashboard_live_sync_state() -> dict:
     last_status = legacy._load_last_sync_status() or {}
     active_job = legacy._latest_active_sync_job() or {}
@@ -144,122 +356,63 @@ def dashboard_live_sync_state() -> dict:
         if active_job
         else {}
     )
-    requested = last_status.get("requested") if isinstance(last_status.get("requested"), dict) else {}
-    cfg, username, stored_password = _broker_credential_context(
-        username=str(requested.get("username") or ""),
+    requested = (
+        last_status.get("requested") if isinstance(last_status.get("requested"), dict) else {}
+    )
+    cfg = legacy._load_broker_sync_config() or {}
+    selected_account = legacy._selected_account()
+    preflight = _build_sync_today_preflight(
+        selected_account=selected_account,
+        cfg=cfg,
+        requested=requested,
+        active_job=active_job_payload,
+    )
+    canonical = _canonical_live_sync_state(
+        last_status=last_status,
+        active_job=active_job_payload,
+        history=legacy._load_sync_history(),
+        auto_cfg=legacy._load_auto_sync_config(),
+        preflight=preflight,
     )
     has_last_request = bool(requested)
-    credentials_ready = bool(username and stored_password)
+    credentials_ready = bool(preflight["credentials_ready"])
     credential_save_status = str(requested.get("credential_save_status") or "").strip().lower()
     credential_save_detail = str(requested.get("credential_save_detail") or "").strip()
-    effective = active_job_payload or last_status
-    status = str(effective.get("status") or "idle").strip().lower() or "idle"
-    stage = str(effective.get("stage") or "").strip().lower()
-    updated_human = str(
-        effective.get("updated_at_human") or last_status.get("updated_at_human") or ""
-    ).strip()
-    updated_at_raw = str(effective.get("updated_at") or last_status.get("updated_at") or "").strip()
-    message = str(effective.get("message") or last_status.get("message") or "").strip()
     active_job_id = str(active_job_payload.get("id") or "").strip()
-    today_et = legacy.today_iso()
-    updated_et_day = _parse_et_date(updated_at_raw)
-    ran_today = bool(updated_et_day and updated_et_day == today_et)
-    current_label = _human_sync_stage(stage) or message
-    last_sync_at_et = _format_last_sync_at_et(updated_at_raw)
-
-    if active_job_id:
-        state_label = "Sync running"
-        detail = message or f"{_human_sync_stage(stage)} in progress."
-        tone = "running"
-    elif status in {"success", "debug_only"}:
-        state_label = "Sync complete"
-        detail = message or "Most recent live sync finished."
-        tone = "success"
-    elif status in {"failed", "error", "blocked", "stale", "cancelled"}:
-        state_label = "Needs review"
-        detail = message or "The most recent live sync needs review before retrying."
-        tone = "warning"
-    elif has_last_request and credentials_ready:
-        state_label = "Ready to run"
-        detail = "Run the most recent live-sync settings from the dashboard."
-        tone = "ready"
-    elif not has_last_request:
-        state_label = "No saved run"
-        detail = "Run a live sync once from Import to save the request."
-        tone = "idle"
-    elif credential_save_status == "failed" and credential_save_detail:
-        state_label = "Credentials not saved"
-        detail = credential_save_detail
-        tone = "warning"
-    else:
-        state_label = "Credentials missing"
-        detail = (
-            credential_save_detail
-            if credential_save_status == "failed" and credential_save_detail
-            else "Saved live-sync credentials are required before quick run is available."
-        )
-        tone = "warning"
-
-    if active_job_id:
-        sync_status_today = "running"
-        sync_ran_today = True
-        state_label = "SYNC RUNNING"
-        current_label = _human_sync_stage(stage) or message or "Opening statement dialog"
-        detail = "Running now. Controls unlock when complete."
-    elif status in {"success", "debug_only"} and ran_today:
-        sync_status_today = "completed"
-        sync_ran_today = True
-        state_label = "COMPLETED TODAY"
-        current_label = _human_sync_stage(stage) or "Import complete"
-        detail = "Upload sync completed for today."
-    elif status in {"failed", "error", "blocked", "stale", "cancelled"} and ran_today:
-        sync_status_today = "failed"
-        sync_ran_today = True
-        state_label = "FAILED TODAY"
-        current_label = _human_sync_stage(stage) or "Sync failed"
-        detail = "Last sync failed. Review logs and retry."
-    else:
-        sync_status_today = "pending"
-        sync_ran_today = False
-        state_label = "NOT RUN TODAY"
-        current_label = "No sync today"
-        detail = "No sync has run today yet."
-
-    disabled_reason = ""
-    if active_job_id:
-        disabled_reason = "A live sync is already running."
-    elif not has_last_request:
-        disabled_reason = "No previous live-sync request is available yet."
-    elif not credentials_ready:
-        disabled_reason = (
-            credential_save_detail
-            if credential_save_status == "failed" and credential_save_detail
-            else "Saved live-sync credentials are missing."
-        )
+    disabled_reason = str(preflight["disabled_reason"] or "")
 
     return {
-        "status": status,
-        "stage": stage,
-        "state_label": state_label,
-        "detail": detail,
-        "updated_human": updated_human,
-        "updated_at_raw": updated_at_raw,
-        "last_sync_at_et": last_sync_at_et,
-        "tone": tone,
-        "message": message,
-        "sync_ran_today": sync_ran_today,
-        "sync_status_today": sync_status_today,
-        "current_sync_label": current_label,
+        **canonical,
+        "updated_human": canonical["last_attempt_at_et"],
+        "updated_at_raw": canonical["last_attempt_at"],
+        "last_sync_at_et": canonical["last_attempt_at_et"],
+        "sync_ran_today": canonical["attempted_today"],
+        "sync_status_today": canonical["today_status"],
         "has_last_request": has_last_request,
         "credentials_ready": credentials_ready,
         "credential_save_status": credential_save_status,
         "credential_save_detail": credential_save_detail,
-        "can_run": not bool(disabled_reason),
+        "can_run": bool(preflight["can_run"]),
         "disabled_reason": disabled_reason,
         "active_job_id": active_job_id,
         "active_job": active_job_payload,
         "last_requested": requested,
         "run_endpoint": url_for("trades_sync_live_last_run"),
+    }
+
+
+def live_sync_monitoring_state() -> dict:
+    """Return a passive, redacted projection of the canonical Live Sync state."""
+    state = dashboard_live_sync_state()
+    return {
+        "outcome": state["outcome"],
+        "stage": state["stage"],
+        "attempted_today": state["attempted_today"],
+        "import_completed_today": state["import_completed_today"],
+        "last_attempt_at": state["last_attempt_at"],
+        "last_successful_import_at": state["last_successful_import_at"],
+        "automation_enabled": state["automation_enabled"],
+        "automation_next_run_at": state["automation_next_run_at"],
     }
 
 
@@ -345,15 +498,27 @@ def trades_sync_live():
     if from_date > to_date:
         from_date, to_date = to_date, from_date
     selected_account = legacy._sync_account(request.form.get("selected_account_id"), account)
-    if selected_account:
-        selected_broker_account = legacy.repo.normalize_broker_account_id(
-            selected_account.get("display_broker_account_id")
-            or legacy.repo.display_broker_account_id(selected_account.get("broker_account_id"))
-            or selected_account.get("broker_account_id")
-            or ""
-        )
-        if selected_broker_account:
-            account = selected_broker_account
+    selected_broker_account = _selected_broker_account(selected_account)
+    requested_broker_account = legacy.repo.normalize_broker_account_id(account)
+    if not selected_account:
+        message = "Select a local account ledger before syncing."
+        if _wants_async_json():
+            return _json_error(message, status_code=409)
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+    if not selected_broker_account:
+        message = "The selected ledger needs a broker account ID before syncing."
+        if _wants_async_json():
+            return _json_error(message, status_code=409)
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+    if requested_broker_account and requested_broker_account != selected_broker_account:
+        message = "Selected ledger and broker account do not match. Update the account selection."
+        if _wants_async_json():
+            return _json_error(message, status_code=409)
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+    account = selected_broker_account
 
     requested = legacy._sync_requested_payload(
         source="manual_live",
@@ -455,15 +620,8 @@ def trades_sync_live_last_run():
     requested_last = (
         last_status.get("requested") if isinstance(last_status.get("requested"), dict) else {}
     )
-    if not requested_last:
-        message = "No previous live-sync request is available yet."
-        if _wants_async_json():
-            return _json_error(message, status_code=409)
-        flash(message, "warn")
-        return redirect(url_for("dashboard"))
-
     cfg = legacy._load_broker_sync_config() or {}
-    mode = str(requested_last.get("mode") or "broker").strip() or "broker"
+    mode = "broker"
     guardrail = legacy.trade_lockout_state(legacy.today_iso())
     if guardrail["locked"] and mode == "broker":
         message = (
@@ -490,35 +648,25 @@ def trades_sync_live_last_run():
         flash(message, "warn")
         return redirect(url_for("dashboard"))
 
-    base_url = str(requested_last.get("base_url") or cfg.get("base_url") or "").strip()
-    account = str(requested_last.get("account") or cfg.get("account") or "").strip()
-    if not base_url or not account:
-        message = "Base origin and account are required for live login sync."
-        if _wants_async_json():
-            return _json_error(message, status_code=409)
-        flash(message, "warn")
-        return redirect(url_for("dashboard"))
-
-    from_date = legacy._normalize_iso_date(
-        str(requested_last.get("from_date") or ""),
-        legacy.today_iso(),
-    )
-    to_date = legacy._normalize_iso_date(
-        str(requested_last.get("to_date") or ""),
-        legacy.today_iso(),
-    )
-    if from_date > to_date:
-        from_date, to_date = to_date, from_date
     selected_account = legacy._selected_account()
-    if not selected_account:
-        message = "Please select an account before uploading trades."
+    preflight = _build_sync_today_preflight(
+        selected_account=selected_account,
+        cfg=cfg,
+        requested=requested_last,
+    )
+    if not preflight["can_run"]:
+        message = str(preflight["disabled_reason"] or "Sync Today is not ready.")
         if _wants_async_json():
             return _json_error(message, status_code=409)
         flash(message, "warn")
         return redirect(url_for("dashboard"))
+    base_url = str(preflight["base_url"])
+    account = str(preflight["broker_account"])
+    from_date = str(preflight["from_date"])
+    to_date = str(preflight["to_date"])
 
     requested = legacy._sync_requested_payload(
-        source="dashboard_live_last_run",
+        source="dashboard_sync_today",
         mode=mode,
         from_date=from_date,
         to_date=to_date,
@@ -528,9 +676,9 @@ def trades_sync_live_last_run():
         time_zone=str(requested_last.get("time_zone") or cfg.get("time_zone") or "America/New_York"),
         date_locale=str(requested_last.get("date_locale") or cfg.get("date_locale") or "en-US"),
         report_locale=str(requested_last.get("report_locale") or cfg.get("report_locale") or "en"),
-        headless=bool(requested_last.get("headless", True)),
-        debug_capture=bool(requested_last.get("debug_capture", True)),
-        debug_only=bool(requested_last.get("debug_only", False)),
+        headless=bool(cfg.get("headless", True)),
+        debug_capture=bool(cfg.get("debug_capture", True)),
+        debug_only=False,
         username=username,
     )
     requested["remember_connection"] = bool(requested_last.get("remember_connection"))
@@ -544,7 +692,7 @@ def trades_sync_live_last_run():
         selected_account_id=int(selected_account["id"]),
         title="Live Sync",
         source_label="LIVE LOGIN HTML",
-        record_source="DASHBOARD LIVE LAST RUN",
+        record_source="DASHBOARD SYNC TODAY",
         mode=mode,
         username=username,
         password=stored_password,
@@ -743,6 +891,7 @@ def trades_sync_job_status(job_id: str):
         {
             "ok": True,
             "job": job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp),
+            "sync": dashboard_live_sync_state(),
         }
     )
 

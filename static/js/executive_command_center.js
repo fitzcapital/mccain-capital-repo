@@ -17,6 +17,11 @@
     const compact = absolute >= 1000 ? `$${(absolute / 1000).toFixed(1)}K` : money.format(absolute);
     return `${sign}${compact}`;
   };
+  const localDateKey = (date) => [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
   const escapeHtml = (value) =>
     String(value ?? "").replace(/[&<>"']/g, (char) => ({
       "&": "&amp;",
@@ -36,10 +41,13 @@
   }
   if (!Array.isArray(months) || !months.length) return;
 
+  let observedCalendarDateKey = localDateKey(new Date());
+  const calendarMonthId = observedCalendarDateKey.slice(0, 7);
+  const currentOperatingMonth = months.find((month) => month.id === calendarMonthId) || months[0];
+
   const defaultState = {
-    selectedMonth: months[0].id,
+    selectedMonth: currentOperatingMonth.id,
     activeTab: "overview",
-    yearViewOpen: false,
     advancedOpen: false,
     inputs: {},
     ledger: {},
@@ -56,6 +64,9 @@
     ledgerSort: "timing",
     ledgerPage: 1,
     centerMonthOnRender: false,
+    permanentFloorSecured: false,
+    permanentFloorSecuredAt: "",
+    projectionLog: [],
   };
   const loadState = () => {
     try {
@@ -65,6 +76,10 @@
     }
   };
   let state = loadState();
+  if (state.lastDefaultMonth !== currentOperatingMonth.id) {
+    state.selectedMonth = currentOperatingMonth.id;
+    state.lastDefaultMonth = currentOperatingMonth.id;
+  }
   const saveState = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   const monthById = new Map(months.map((month) => [month.id, month]));
   const selectedMonth = () => monthById.get(state.selectedMonth) || months[0];
@@ -89,12 +104,12 @@
     advancedPanel: root.querySelector("[data-exec-advanced-panel]"),
     advancedState: root.querySelector("[data-exec-advanced-state]"),
     advancedToggle: root.querySelector("[data-exec-toggle-advanced]"),
+    recalculateStatus: root.querySelector("[data-exec-recalculate-status]"),
     monthSelector: root.querySelector("[data-exec-month-selector]"),
     monthHeader: root.querySelector("[data-exec-month-header]"),
     selectedLabel: root.querySelector("[data-exec-selected-label]"),
     kpiBand: root.querySelector("[data-exec-kpi-band]"),
-    summary: root.querySelector("[data-exec-projection-summary]"),
-    action: root.querySelector("[data-exec-action-card]"),
+    capitalFlow: root.querySelector("[data-exec-capital-flow]"),
     overviewSummary: root.querySelector("[data-exec-overview-summary]"),
     miniTrends: root.querySelector("[data-exec-mini-trends]"),
     insights: root.querySelector("[data-exec-insights]"),
@@ -111,8 +126,6 @@
     treasuryCharts: root.querySelector("[data-exec-treasury-charts]"),
     reviewAccordion: root.querySelector("[data-exec-review-accordion]"),
     timeline: root.querySelector("[data-exec-projection-timeline]"),
-    yearView: root.querySelector("[data-exec-year-view]"),
-    yearGrid: root.querySelector("[data-exec-year-grid]"),
     sidePanel: root.querySelector("[data-exec-side-panel]"),
     priorities: root.querySelector("[data-exec-priorities]"),
     adjustmentList: root.querySelector("[data-exec-adjustment-list]"),
@@ -134,9 +147,10 @@
   });
   const effectiveAmount = (entry) => {
     const saved = ledgerState(entry);
-    if (saved.status === "Skipped") return 0;
+    if (entry.cycleSettled) return 0;
+    if (["Paid", "Skipped"].includes(saved.status)) return 0;
     const actual = numberValue(saved.actual);
-    return actual > 0 && ["Paid", "Adjusted"].includes(saved.status) ? actual : numberValue(entry.amount);
+    return actual > 0 && saved.status === "Adjusted" ? actual : numberValue(entry.amount);
   };
   const isIncome = (entry) => ["Deposit", "Payout"].includes(entry.type);
   const isOutflow = (entry) => ["Bill", "Eval"].includes(entry.type);
@@ -145,20 +159,26 @@
     return isIncome(entry) || entry.type === "Sweep" ? amount : -amount;
   };
   const treasuryStatus = (month, projection) => {
-    const projected = numberValue(projection.projectedBOAClose);
-    const target = numberValue(month.targetCloseLow);
-    const floor = numberValue(month.protectedFloor);
-    const absoluteFloor = numberValue(month.redLine);
-    if (projected < absoluteFloor) return { label: "Danger / Emergency Defense", tone: "danger", risk: "Critical" };
-    if (projected < floor) return { label: "Caution / Protect Cash", tone: "watch", risk: "High" };
-    if (projected < target) return { label: "Healthy / Watch Spending", tone: "watch", risk: "Moderate" };
-    return { label: "Target Secured", tone: "target", risk: "Low" };
+    if (projection.floorPhase === "recovery") {
+      return { label: "Rebuilding Secured Floor", tone: "danger", risk: "High", reason: "Remaining BOA path falls below $10K" };
+    }
+    if (projection.floorPhase === "secured") {
+      return { label: "$10K Floor Secured", tone: "target", risk: "Low", reason: "Remaining BOA path stays at or above $10K" };
+    }
+    if (projection.fundingGap > 0) {
+      return { label: "Temporary Floor at Risk", tone: "danger", risk: "High", reason: "Projected low falls below the active floor" };
+    }
+    return { label: "Building Normally", tone: "watch", risk: "Moderate", reason: "Temporary floor remains protected" };
   };
   const compactStatus = (label) => {
     if (String(label).includes("Target Secured")) return "Secured";
-    if (String(label).includes("Healthy")) return "Watch";
-    if (String(label).includes("Caution")) return "Protect Cash";
-    if (String(label).includes("Danger")) return "Emergency";
+    if (String(label).includes("$10K Floor Secured")) return "$10K Secured";
+    if (String(label).includes("Building Normally")) return "Building";
+    if (String(label).includes("Temporary Floor")) return "Floor Risk";
+    if (String(label).includes("Rebuilding")) return "Recovery";
+    if (String(label).includes("Stable")) return "Building";
+    if (String(label).includes("Protect Cash")) return "Protect Cash";
+    if (String(label).includes("Funding Gap")) return "Funding Gap";
     return label;
   };
   const compactChartLabel = (label) => String(label)
@@ -190,7 +210,7 @@
   const paydayDaysForMonth = (year, monthNumber) => biweeklyDaysForMonth(
     year,
     monthNumber,
-    new Date(2026, 6, 3),
+    new Date(2026, 6, 31),
   );
   const wifeContributionDaysForMonth = (year, monthNumber) => biweeklyDaysForMonth(
     year,
@@ -209,6 +229,157 @@
     if (timing.includes("Pending")) return 10;
     if (timing.includes("Trading")) return 20;
     return 12 + (index % 12);
+  };
+
+  const monthDayCount = (month) => {
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    return new Date(year, monthNumber, 0).getDate();
+  };
+
+  const projectionAsOfDay = (month) => {
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    const now = new Date();
+    const selectedKey = year * 12 + monthNumber;
+    const currentKey = now.getFullYear() * 12 + now.getMonth() + 1;
+    if (selectedKey < currentKey) return monthDayCount(month);
+    if (selectedKey > currentKey) return 1;
+    return Math.min(now.getDate(), monthDayCount(month));
+  };
+
+  const isCurrentCalendarMonth = (month) => {
+    const now = new Date();
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    return year === now.getFullYear() && monthNumber === now.getMonth() + 1;
+  };
+
+  const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+  const fundingCycleForDate = (date) => {
+    const anchor = new Date(2026, 6, 31);
+    const diffDays = Math.floor((date - anchor) / 86400000);
+    const cycleIndex = Math.floor(diffDays / 14);
+    const start = addDays(anchor, cycleIndex * 14);
+    return { start, next: addDays(start, 14) };
+  };
+  const shortDate = (date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const dateKey = localDateKey;
+  const activeFundingCycle = (month) => {
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    const asOfDate = new Date(year, monthNumber - 1, projectionAsOfDay(month));
+    const cycle = fundingCycleForDate(asOfDate);
+    return {
+      ...cycle,
+      settled: isCurrentCalendarMonth(month),
+      label: `${shortDate(cycle.start)} cycle`,
+      nextLabel: shortDate(cycle.next),
+    };
+  };
+
+  const monthForDate = (date) => monthById.get(dateKey(date).slice(0, 7));
+  const entriesInDateRange = (start, end) => months.flatMap((month) => {
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    return baseLedgerEntries(month).map((entry) => ({
+      ...entry,
+      calendarDate: new Date(year, monthNumber - 1, entry.dueDay),
+    }));
+  }).filter((entry) => entry.calendarDate >= start && entry.calendarDate < end);
+
+  const fundingCyclePay = (start) => {
+    const month = monthForDate(start);
+    const exception = month?.paySchedule?.exceptions?.[dateKey(start)];
+    return {
+      current: numberValue(exception?.current ?? month?.paySchedule?.regularCurrent ?? 1873.78),
+      boa: numberValue(exception?.boa ?? month?.paySchedule?.regularBOA ?? 1873.78),
+      estimated: Boolean(exception?.estimated),
+    };
+  };
+
+  const fundingCycleRows = (month, count = 5) => {
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    const asOfDate = new Date(year, monthNumber - 1, projectionAsOfDay(month));
+    const active = fundingCycleForDate(asOfDate);
+    return Array.from({ length: count }, (_, index) => {
+      const start = addDays(active.start, index * 14);
+      const next = addDays(start, 14);
+      const isSettled = index === 0 && isCurrentCalendarMonth(month);
+      const pay = fundingCyclePay(start);
+      const entries = entriesInDateRange(start, next);
+      const currentObligations = isSettled ? [] : entries
+        .filter((entry) => isOutflow(entry) && entry.account === "Current" && effectiveAmount(entry) > 0)
+        .map((entry) => ({
+          description: entry.description,
+          amount: effectiveAmount(entry),
+          date: shortDate(entry.calendarDate),
+        }))
+        .sort((left, right) => right.amount - left.amount);
+      const currentBills = currentObligations.reduce((total, entry) => total + entry.amount, 0);
+      const featuredObligations = currentObligations.slice(0, 4);
+      const otherObligations = currentObligations.slice(4);
+      const otherObligationsTotal = otherObligations.reduce((total, entry) => total + entry.amount, 0);
+      const boaObligations = isSettled ? [] : entries
+        .filter((entry) => isOutflow(entry) && entry.account === "BOA")
+        .map((entry) => ({
+          description: entry.description,
+          amount: effectiveAmount(entry),
+          date: shortDate(entry.calendarDate),
+        }))
+        .sort((left, right) => right.amount - left.amount);
+      const boaBills = boaObligations.reduce((total, entry) => total + entry.amount, 0);
+      return {
+        start,
+        next,
+        label: `${shortDate(start)}–${shortDate(addDays(next, -1))}`,
+        isSettled,
+        pay,
+        currentBills,
+        currentObligations,
+        featuredObligations,
+        otherObligations,
+        otherObligationsTotal,
+        boaBills,
+        boaObligations,
+        boaSupport: isSettled ? 0 : Math.max(0, currentBills - pay.current),
+        currentRemainder: isSettled ? 0 : Math.max(0, pay.current - currentBills),
+      };
+    });
+  };
+
+  const nextCycleCommitment = (month, projection) => {
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    const monthEnd = new Date(year, monthNumber, 0);
+    const cycle = fundingCycleForDate(monthEnd);
+    const afterMonthEnd = addDays(monthEnd, 1);
+    const currentBills = entriesInDateRange(afterMonthEnd, cycle.next)
+      .filter((entry) => isOutflow(entry) && entry.account === "Current")
+      .reduce((total, entry) => total + effectiveAmount(entry), 0);
+    const currentCarryover = Math.max(0, projection.projectedCurrentClose);
+    return {
+      cycleLabel: `${shortDate(cycle.start)}–${shortDate(addDays(cycle.next, -1))}`,
+      currentCarryover,
+      currentBills,
+      committedCurrent: Math.min(currentCarryover, currentBills),
+      freeCurrent: Math.max(0, currentCarryover - currentBills),
+      boaSupport: Math.max(0, currentBills - currentCarryover),
+    };
+  };
+
+  const normalizedEntry = (month, entry, index) => {
+    const explicitDay = Number.parseInt(entry.dueDay, 10);
+    const hasExplicitDay = Number.isFinite(explicitDay) && explicitDay > 0 && !entry.timingEstimated;
+    const fallbackDay = timingDay(entry, index);
+    const dueDay = Math.max(1, Math.min(monthDayCount(month), hasExplicitDay ? explicitDay : fallbackDay));
+    const cycle = activeFundingCycle(month);
+    const [year, monthNumber] = month.id.split("-").map(Number);
+    const entryDate = new Date(year, monthNumber - 1, dueDay);
+    const cycleSettled = Boolean(entry.cycleManaged)
+      && cycle.settled
+      && entryDate >= cycle.start
+      && entryDate < cycle.next;
+    return {
+      ...entry,
+      dueDay,
+      timingEstimated: !hasExplicitDay,
+      cycleSettled,
+    };
   };
 
   const eventToneClass = (entry) => {
@@ -275,6 +446,11 @@
       description,
       amount: numberValue(amount),
       dueDay: Number.parseInt(timing, 10) || timingDay({ timing }, index),
+      timingEstimated: false,
+      cycleManaged: true,
+      amountEstimated: Boolean(
+        month.paySchedule?.exceptions?.[`${month.id}-${String(timing).padStart(2, "0")}`]?.estimated,
+      ),
     }));
     const wifeContribution = numberValue(deposits.wifeContribution);
     if (wifeContribution) {
@@ -289,11 +465,14 @@
           description: "Wife contribution",
           amount: wifeDepositAmount,
           dueDay: day,
+          timingEstimated: false,
+          cycleManaged: true,
         });
       });
     }
     [...(month.bills || []), ...(month.subscriptions || [])].forEach((bill, index) => {
       const repeatDays = Array.isArray(bill.repeatDays) ? bill.repeatDays : [];
+      const hasExplicitDay = repeatDays.length || numberValue(bill.dueDay) > 0;
       const scheduledDays = repeatDays.length ? repeatDays : [timingDay(bill, index)];
       scheduledDays.forEach((day, repeatIndex) => {
         entries.push({
@@ -304,6 +483,8 @@
           description: bill.name,
           amount: numberValue(bill.amount),
           dueDay: day,
+          timingEstimated: !hasExplicitDay,
+          cycleManaged: true,
         });
       });
     });
@@ -318,27 +499,44 @@
     description: item.description || "Adjustment",
     amount: numberValue(item.amount),
     dueDay: timingDay(item, index),
+    timingEstimated: !(numberValue(item.dueDay) > 0),
     isAdjustment: true,
   })).filter((entry) => entry.amount);
 
-  const calculateRequiredFloat = (inputs, entries) => {
-    const openingCurrent = numberValue(inputs.openingCurrent);
-    const currentIncome = entries
-      .filter((entry) => entry.account === "Current" && isIncome(entry))
-      .reduce((total, entry) => total + effectiveAmount(entry), 0);
-    const currentBills = entries
-      .filter((entry) => entry.account === "Current" && isOutflow(entry))
-      .reduce((total, entry) => total + effectiveAmount(entry), 0);
-    return Math.max(0, currentBills - currentIncome - openingCurrent);
+  const buildRequiredFloatEntries = (month, inputs, entries) => {
+    let current = numberValue(inputs.openingCurrent);
+    const asOfDay = projectionAsOfDay(month);
+    const normalized = entries
+      .map((entry, index) => normalizedEntry(month, entry, index))
+      .map((entry) => ({
+        ...entry,
+        dueDay: effectiveAmount(entry) > 0 ? Math.max(asOfDay, entry.dueDay) : entry.dueDay,
+      }));
+    const transfers = [];
+    for (let day = asOfDay; day <= monthDayCount(month); day += 1) {
+      normalized.filter((entry) => entry.dueDay === day).forEach((entry) => {
+        const amount = effectiveAmount(entry);
+        if (entry.account === "BOA → Current") current += amount;
+        else if (entry.account === "Current → BOA") current -= amount;
+        else if (entry.account === "Current") current += signedImpact(entry);
+      });
+      if (current < 0) {
+        const amount = Math.abs(current);
+        transfers.push({
+          id: `${month.id}:transfer:auto-current-float:${day}`,
+          timing: `Day ${day}`,
+          account: "BOA → Current",
+          type: "Transfer",
+          description: `Required Current float · Day ${day}`,
+          amount,
+          dueDay: day,
+          timingEstimated: false,
+        });
+        current = 0;
+      }
+    }
+    return transfers;
   };
-
-  const calculateCurrentClose = (inputs, entries) => entries.reduce((balance, entry) => {
-    const amount = effectiveAmount(entry);
-    if (entry.account === "BOA → Current") return balance + amount;
-    if (entry.account === "Current → BOA") return balance - amount;
-    if (entry.account === "Current") return balance + signedImpact(entry);
-    return balance;
-  }, numberValue(inputs.openingCurrent));
 
   const buildProjectionEntries = (month, inputs) => {
     const baseEntries = baseLedgerEntries(month);
@@ -357,36 +555,11 @@
       description,
       amount: numberValue(amount),
       dueDay: timingDay({ timing }, index),
+      timingEstimated: true,
     })).filter((entry) => entry.amount > 0);
     const entriesBeforeFloat = [...baseEntries, ...advancedEntries, ...adjustmentEntries(month)];
-    const requiredFloat = calculateRequiredFloat(inputs, entriesBeforeFloat);
-    const floatEntry = {
-      id: `${month.id}:transfer:auto-current-float`,
-      timing: "Auto-calculated",
-      account: "BOA → Current",
-      type: "Transfer",
-      description: "Required Current float",
-      amount: requiredFloat,
-      dueDay: 1,
-    };
-    const entriesWithFloat = requiredFloat > 0
-      ? [...entriesBeforeFloat, floatEntry]
-      : entriesBeforeFloat;
-    const septemberSurplus = month.id === "2026-09"
-      ? Math.max(0, calculateCurrentClose(inputs, entriesWithFloat))
-      : 0;
-    const septemberSweep = {
-      id: `${month.id}:sweep:september-post-bill-surplus`,
-      timing: "After bills clear",
-      account: "Current → BOA",
-      type: "Sweep",
-      description: "September post-bill surplus sweep",
-      amount: septemberSurplus,
-      dueDay: 30,
-    };
-    return septemberSurplus > 0
-      ? [...entriesWithFloat, septemberSweep]
-      : entriesWithFloat;
+    const floatEntries = buildRequiredFloatEntries(month, inputs, entriesBeforeFloat);
+    return [...entriesBeforeFloat, ...floatEntries];
   };
 
   function projectMonth(month, inputs, entries) {
@@ -396,62 +569,143 @@
     let totalBills = 0;
     let remainingBills = 0;
     const openingBOA = boa;
+    const daysInMonth = monthDayCount(month);
+    const asOfDay = projectionAsOfDay(month);
+    const orderedEntries = entries
+      .map((entry, index) => normalizedEntry(month, entry, index))
+      .map((entry) => ({
+        ...entry,
+        dueDay: effectiveAmount(entry) > 0 ? Math.max(asOfDay, entry.dueDay) : entry.dueDay,
+      }))
+      .sort((a, b) => a.dueDay - b.dueDay || String(a.id).localeCompare(String(b.id)));
     const requiredCurrentFloat = entries
-      .filter((entry) => entry.description === "Required Current float")
+      .filter((entry) => entry.description.startsWith("Required Current float"))
+      .reduce((total, entry) => total + effectiveAmount(entry), 0);
+    const currentToBOATransfers = orderedEntries
+      .filter((entry) => entry.account === "Current → BOA")
       .reduce((total, entry) => total + effectiveAmount(entry), 0);
 
-    entries.forEach((entry) => {
-      const saved = ledgerState(entry);
-      const amount = effectiveAmount(entry);
-      if (isIncome(entry)) totalIncome += amount;
-      if (isOutflow(entry)) {
-        totalBills += amount;
-        if (!["Paid", "Skipped"].includes(saved.status)) remainingBills += amount;
-      }
-      if (entry.account === "BOA → Current") {
-        boa -= amount;
-        current += amount;
-      } else if (entry.account === "Current → BOA") {
-        current -= amount;
-        boa += amount;
-      } else if (entry.account === "BOA") {
-        boa += signedImpact(entry);
-      } else if (entry.account === "Current") {
-        current += signedImpact(entry);
-      } else if (entry.account === "Trading") {
-        boa += signedImpact(entry);
-      }
-    });
+    const dailyPath = [{ day: asOfDay, boa, current, netBOA: 0, netCurrent: 0, entries: [], isOpening: true }];
+    for (let day = asOfDay; day <= daysInMonth; day += 1) {
+      const dayEntries = orderedEntries.filter((entry) => entry.dueDay === day);
+      const startBOA = boa;
+      const startCurrent = current;
+      dayEntries.forEach((entry) => {
+        const saved = ledgerState(entry);
+        const amount = effectiveAmount(entry);
+        if (isIncome(entry)) totalIncome += amount;
+        if (isOutflow(entry)) {
+          totalBills += amount;
+          if (!["Paid", "Skipped"].includes(saved.status)) remainingBills += amount;
+        }
+        if (entry.account === "BOA → Current") {
+          boa -= amount;
+          current += amount;
+        } else if (entry.account === "Current → BOA") {
+          current -= amount;
+          boa += amount;
+        } else if (entry.account === "BOA") {
+          boa += signedImpact(entry);
+        } else if (entry.account === "Current") {
+          current += signedImpact(entry);
+        } else if (entry.account === "Trading") {
+          boa += signedImpact(entry);
+        }
+      });
+      dailyPath.push({
+        day,
+        boa,
+        current,
+        netBOA: boa - startBOA,
+        netCurrent: current - startCurrent,
+        entries: dayEntries,
+      });
+    }
 
     const projectedBOAClose = boa;
     const protectedFloor = numberValue(month.protectedFloor);
-    const redLine = numberValue(month.redLine);
+    const temporaryFloor = numberValue(month.temporaryFloor || 4000);
+    const permanentFloorGoal = numberValue(month.permanentFloorGoal || 10000);
     const targetClose = numberValue(month.targetCloseLow);
-    let floorStatus = "Target Secured";
-    let recommendedAction = "Target hit. Hold the floor and promote only after all bills clear.";
-    if (projectedBOAClose < redLine) {
-      floorStatus = "Danger / Emergency Defense";
-      recommendedAction = "Freeze extras. Repair treasury before optional spending or trading purchases.";
-    } else if (projectedBOAClose < protectedFloor) {
-      floorStatus = "Caution / Protect Cash";
-      recommendedAction = "Protect treasury first. No extra evaluations.";
-    } else if (projectedBOAClose < targetClose) {
-      floorStatus = "Healthy / Watch Spending";
-      recommendedAction = "Safe but below target. Keep discipline and avoid leaks.";
+    const lowPoint = dailyPath.reduce(
+      (lowest, point) => point.boa < lowest.boa ? point : lowest,
+      dailyPath[0],
+    );
+    const projectedLow = lowPoint.boa;
+    const projectedLowDay = lowPoint.day;
+    const projectedLowIsOpening = Boolean(lowPoint.isOpening);
+    const projectedSecureIndex = dailyPath.findIndex((point, index) =>
+      point.boa >= permanentFloorGoal
+      && dailyPath.slice(index).every((remainingPoint) => remainingPoint.boa >= permanentFloorGoal));
+    const projectedSecureDay = projectedSecureIndex >= 0
+      ? dailyPath[projectedSecureIndex].day
+      : null;
+    const openingSecuresGoal = openingBOA >= permanentFloorGoal
+      && dailyPath.every((point) => point.boa >= permanentFloorGoal);
+    const previouslySecured = Boolean(state.permanentFloorSecured);
+    let floorPhase = "build";
+    if (previouslySecured && projectedLow < permanentFloorGoal) floorPhase = "recovery";
+    else if (previouslySecured || openingSecuresGoal) floorPhase = "secured";
+    const activeHardFloor = floorPhase === "build" ? temporaryFloor : permanentFloorGoal;
+    const recoveryPoint = projectedLow < activeHardFloor
+      ? dailyPath.find((point) => point.day > projectedLowDay && point.boa >= activeHardFloor)
+      : null;
+    const immediateCushion = Math.max(0, openingBOA - activeHardFloor);
+    const monthPathCushion = projectedLow - activeHardFloor;
+    const fundingGap = Math.max(0, activeHardFloor - projectedLow);
+    const absorbableUnexpectedExpense = Math.max(0, monthPathCushion);
+    const gapToFloorGoal = Math.max(0, permanentFloorGoal - projectedBOAClose);
+    let floorStatus = "Building Normally";
+    let recommendedAction = projectedSecureDay
+      ? `Keep the plan intact. The $10K floor is projected to secure on day ${projectedSecureDay}.`
+      : `Protect the ${formatMoney(temporaryFloor)} temporary floor and keep building toward $10K.`;
+    if (floorPhase === "recovery") {
+      floorStatus = "Rebuilding Secured Floor";
+      recommendedAction = `Rebuild ${formatMoney(fundingGap)} to restore the secured $10K floor.`;
+    } else if (floorPhase === "secured") {
+      floorStatus = "$10K Floor Secured";
+      recommendedAction = `Hold $10K. ${formatMoney(absorbableUnexpectedExpense)} is absorbable above the permanent floor.`;
+    } else if (projectedLow < temporaryFloor) {
+      floorStatus = "Temporary Floor at Risk";
+      recommendedAction = `Bridge ${formatMoney(fundingGap)} to protect the temporary floor.`;
     }
+    const fundingCycle = activeFundingCycle(month);
     return {
+      dailyPath,
+      orderedEntries,
+      asOfDay,
       projectedBOAClose,
       projectedCurrentClose: current,
+      projectedLow,
+      projectedLowDay,
+      projectedLowIsOpening,
+      floorPhase,
+      activeHardFloor,
+      temporaryFloor,
+      permanentFloorGoal,
+      projectedSecureDay,
+      openingSecuresGoal,
+      gapToFloorGoal,
+      recoveryDay: recoveryPoint?.day || null,
+      immediateCushion,
+      monthPathCushion,
+      fundingGap,
+      absorbableUnexpectedExpense,
       requiredCurrentFloat,
+      currentToBOATransfers,
       totalIncome,
       totalBills,
       netCashFlow: totalIncome - totalBills,
       treasuryGrowth: projectedBOAClose - openingBOA,
-      surplusAboveFloor: projectedBOAClose - protectedFloor,
+      surplusAboveFloor: projectedLow - activeHardFloor,
       gapToTarget: targetClose - projectedBOAClose,
       remainingBills,
       floorStatus,
       recommendedAction,
+      settledCycleLabel: fundingCycle.settled ? fundingCycle.label : "No automatic settlement",
+      nextPaydayLabel: fundingCycle.nextLabel,
+      regularCurrentPay: numberValue(month.paySchedule?.regularCurrent || 1873.78),
+      regularBOAPay: numberValue(month.paySchedule?.regularBOA || 1873.78),
     };
   }
 
@@ -669,8 +923,9 @@
   function rollingRows(startMonth) {
     let rollingBOA = 0;
     let rollingCurrent = 0;
-    return months.slice(0, 12).map((item, index) => {
-      const resetToConfiguredOpening = index === 0 || item.id === startMonth.id;
+    const startIndex = Math.max(0, months.findIndex((item) => item.id === startMonth.id));
+    return months.slice(startIndex, startIndex + 12).map((item, index) => {
+      const resetToConfiguredOpening = index === 0;
       const inputs = {
         ...monthInputs(item),
         openingBOA: resetToConfiguredOpening ? monthInputs(item).openingBOA : rollingBOA,
@@ -684,11 +939,12 @@
         month: item,
         projection: itemProjection,
         openingBOA: inputs.openingBOA,
+        openingCurrent: inputs.openingCurrent,
         label: item.label.split(" ")[0],
-        floor: item.protectedFloor,
+        floor: itemProjection.activeHardFloor,
         target: item.targetCloseLow,
-        absoluteFloor: item.redLine,
-        projected: itemProjection.projectedBOAClose || item.targetCloseLow,
+        floorGoal: itemProjection.permanentFloorGoal,
+        projected: itemProjection.projectedBOAClose,
       };
     });
   }
@@ -698,7 +954,7 @@
     const inputs = monthInputs(month);
     const entries = buildProjectionEntries(month, inputs);
     const projection = projectMonth(month, inputs, entries);
-    return { month, inputs, entries, projection };
+    return { month, inputs, entries: projection.orderedEntries, projection };
   }
 
   function renderInputs(month) {
@@ -727,7 +983,7 @@
   }
 
   function renderMonthSelector(month, shouldCenter = false) {
-    const currentIndex = 0;
+    const currentIndex = Math.max(0, months.findIndex((item) => item.id === currentOperatingMonth.id));
     nodes.monthSelector.innerHTML = months.map((item, index) => {
       const completed = index < currentIndex;
       const future = index > currentIndex && item.id !== month.id;
@@ -748,24 +1004,67 @@
   }
 
   function renderMonthHeader(month, projection, entries) {
-    const outflows = entries.filter(isOutflow);
-    const remainingCount = outflows.filter((entry) => !["Paid", "Skipped"].includes(ledgerState(entry).status)).length;
-    const monthEnd = new Date(`${month.id}-28T12:00:00`);
-    const now = new Date();
-    const daysRemaining = Math.max(0, Math.ceil((monthEnd - now) / 86400000));
     nodes.monthHeader.innerHTML = `
       <div class="executiveMonthTitle">
         <h3>${escapeHtml(month.label)}</h3>
         <span>${escapeHtml(month.phase)}</span>
       </div>
-      ${[
-        ["Current Treasury", formatMoney(monthInputs(month).openingBOA)],
-        ["Protected Floor", formatMoney(month.protectedFloor)],
-        ["Absolute Floor", formatMoney(month.redLine)],
-        ["Projected Close", formatMoney(projection.projectedBOAClose)],
-        ["Status", compactStatus(projection.floorStatus)],
-        ["Days Remaining", daysRemaining],
-      ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("")}
+    `;
+  }
+
+  function renderCapitalFlow(month, projection) {
+    if (!nodes.capitalFlow) return;
+    const values = projection.dailyPath.map((point) => point.boa);
+    const chartMin = Math.min(...values, projection.activeHardFloor);
+    const chartMax = Math.max(...values, projection.permanentFloorGoal);
+    const range = Math.max(1, chartMax - chartMin);
+    const lowLabel = projection.projectedLowIsOpening ? "Current balance" : `Day ${projection.projectedLowDay}`;
+    const secureLabel = projection.floorPhase === "secured"
+      ? "Active now"
+      : projection.projectedSecureDay ? `Projected day ${projection.projectedSecureDay}` : "Still building";
+    const projectionHistory = (state.projectionLog || [])
+      .filter((item) => item.monthId === month.id)
+      .slice(-5)
+      .reverse();
+    nodes.capitalFlow.innerHTML = `
+      <div class="executiveCapitalFlowHead">
+        <div><span>Daily Capital Flow · As of day ${projection.asOfDay}</span><strong>Plan-based BOA liquidity path</strong></div>
+        <p>${escapeHtml(projection.floorStatus)} · Active floor ${formatMoney(projection.activeHardFloor)}</p>
+      </div>
+      <div class="executiveCapitalFlowMetrics">
+        ${[
+          ["Projected Low", formatMoney(projection.projectedLow), lowLabel],
+          [projection.fundingGap > 0 ? "Funding Gap" : "Absorbable Expense", formatMoney(projection.fundingGap || projection.absorbableUnexpectedExpense), projection.fundingGap > 0 ? "Bridge required" : `Above ${formatMoney(projection.activeHardFloor)} floor`],
+          ["$10K Floor Goal", secureLabel, projection.gapToFloorGoal > 0 ? `${formatMoney(projection.gapToFloorGoal)} closing gap` : "Goal reached"],
+          ["Projected Close", formatMoney(projection.projectedBOAClose), `Phase: ${projection.floorPhase}`],
+        ].map(([label, value, detail]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><em>${escapeHtml(detail)}</em></article>`).join("")}
+      </div>
+      <div class="executiveFundingCycleStrip">
+        <span>Settled cycle <strong>${escapeHtml(projection.settledCycleLabel)}</strong></span>
+        <span>Next paycheck <strong>${escapeHtml(projection.nextPaydayLabel)}</strong></span>
+        <span>Regular split <strong>${formatMoney(projection.regularCurrentPay)} Current + ${formatMoney(projection.regularBOAPay)} BOA</strong></span>
+        <span>Sep 25 exception <strong>$9,400 estimated</strong></span>
+      </div>
+      <div class="executiveCapitalFlowChart" role="img" aria-label="Daily BOA balance path from ${formatMoney(values[0])} to ${formatMoney(projection.projectedBOAClose)}">
+        ${projection.dailyPath.map((point) => {
+          const height = 12 + ((point.boa - chartMin) / range) * 88;
+          const tone = point.boa < projection.activeHardFloor ? "is-breach" : point.boa < projection.permanentFloorGoal ? "is-reserve" : "is-safe";
+          return `<i class="${tone} ${point.day === projection.projectedLowDay ? "is-low" : ""}" style="height:${height}%" title="${point.day ? `Day ${point.day}` : "Opening"}: ${formatMoney(point.boa)}"><b></b><span>${point.day === 0 || point.day === projection.projectedLowDay || point.day === projection.dailyPath.length - 1 ? (point.day || "O") : ""}</span></i>`;
+        }).join("")}
+      </div>
+      <div class="executiveCapitalFlowLegend"><span class="is-safe">$10K secured</span><span class="is-reserve">Building</span><span class="is-breach">Below active floor</span></div>
+      <details class="executiveProjectionLog" ${projectionHistory.length ? "" : "hidden"}>
+        <summary>Recent projection snapshots · ${projectionHistory.length}</summary>
+        <div>
+          ${projectionHistory.map((item) => `
+            <article>
+              <span>${escapeHtml(new Date(item.createdAt).toLocaleString())} · ${escapeHtml(item.settledCycle)}</span>
+              <strong>${formatMoney(item.projectedLow)} low → ${formatMoney(item.projectedClose)} close</strong>
+              <em>BOA ${formatMoney(item.openingBOA)} · Next ${escapeHtml(item.nextPayday)} · Float ${formatMoney(item.requiredCurrentFloat)} · ${escapeHtml(item.floorPhase)}</em>
+            </article>
+          `).join("")}
+        </div>
+      </details>
     `;
   }
 
@@ -794,12 +1093,10 @@
       </div>
       <div class="executiveOverviewGrid">
         ${[
-          ["Current Treasury", formatMoney(monthInputs(month).openingBOA), "Starting BOA position"],
-          ["Projected Close", formatMoney(projection.projectedBOAClose), compactStatus(status.label)],
-          ["Floor / Target", `${formatMoney(month.protectedFloor)} / ${formatMoney(month.targetCloseLow)}`, `${formatMoney(Math.max(0, projection.gapToTarget))} gap`],
           ["Next Cash Event", eventSummary(nextCash), "Deposit / transfer watch"],
           ["Next Bill Event", eventSummary(nextBill), "Obligation watch"],
-          ["CEO Action", projection.gapToTarget > 0 ? "Protect floor first" : "Hold floor and avoid leaks", status.risk],
+          ["CEO Action", projection.recommendedAction, status.risk],
+          ["Projection Basis", `As of day ${projection.asOfDay}`, `${projection.settledCycleLabel} settled`],
         ].map(([label, value, meta]) => `
           <article>
             <span>${escapeHtml(label)}</span>
@@ -813,26 +1110,14 @@
 
   function renderSummary(month, projection) {
     nodes.selectedLabel.textContent = `${month.label} · ${month.phase}`;
-    const status = treasuryStatus(month, projection);
     nodes.kpiBand.innerHTML = [
-      ["Current Treasury", formatMoney(monthInputs(month).openingBOA), "Blue"],
-      ["Projected Close", formatMoney(projection.projectedBOAClose), compactStatus(status.label)],
-      ["Floor", formatMoney(month.protectedFloor), "Protected"],
-      ["Absolute Floor", formatMoney(month.redLine), "Never cross"],
-      ["Target", formatMoney(month.targetCloseLow), projection.gapToTarget > 0 ? "Open" : "Hit"],
-      ["Cash Runway", `${Math.max(1, Math.round(projection.projectedBOAClose / Math.max(1, projection.totalBills) * 30))} days`, status.risk],
-      ["CEO Score", `${staticModel.score_total || 60}/80`, "B+"],
+      ["Current BOA", formatMoney(monthInputs(month).openingBOA), `As of day ${projection.asOfDay}`],
+      ["Projected Low", formatMoney(projection.projectedLow), projection.projectedLowIsOpening ? "Current balance" : `Day ${projection.projectedLowDay}`],
+      ["Active Floor", formatMoney(projection.activeHardFloor), projection.floorPhase],
+      [projection.fundingGap > 0 ? "Funding Gap" : "Absorbable Cushion", formatMoney(projection.fundingGap || projection.absorbableUnexpectedExpense), projection.fundingGap > 0 ? "Bridge required" : "Above active floor"],
+      ["Projected Close", formatMoney(projection.projectedBOAClose), compactStatus(projection.floorStatus)],
+      ["Next Paycheck", projection.nextPaydayLabel, `${formatMoney(projection.regularBOAPay)} BOA`],
     ].map(([label, value, itemStatus]) => `<article class="executiveKpiCard is-${label.toLowerCase().replace(/[^a-z]+/g, "-")}"><span>${label}</span><strong>${value}</strong><em>${itemStatus}</em></article>`).join("");
-    nodes.summary.innerHTML = [
-      ["Current Treasury", formatMoney(monthInputs(month).openingBOA)],
-      ["Projected BOA Close", formatMoney(projection.projectedBOAClose)],
-      ["Floor", formatMoney(month.protectedFloor)],
-      ["Absolute Floor", formatMoney(month.redLine)],
-      ["Target", formatMoney(month.targetCloseLow)],
-      ["Status", compactStatus(projection.floorStatus)],
-    ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
-    nodes.action.className = `executiveActionCard is-${status.tone}`;
-    nodes.action.innerHTML = `<span>${status.label}</span><strong>${projection.recommendedAction}</strong>`;
     const priorityActions = [
       "Protect the monthly floor",
       "Keep evaluation discipline clean",
@@ -844,14 +1129,12 @@
     nodes.priorities.innerHTML = `
       <div class="executivePriorityTable" role="table" aria-label="Current priorities">
         <div class="executivePriorityRow is-head" role="row">
-          <span>Focus</span><span>Status</span><span>Next Action</span><span>Due</span>
+          <span>Focus</span><span>Recommended Action</span>
         </div>
         ${(staticModel.operating_priorities || []).slice(0, 6).map((item, index) => `
           <div class="executivePriorityRow" role="row">
             <span>${escapeHtml(item)}</span>
-            <strong class="is-${index === 0 ? "active" : index === 1 ? "cleared" : index === 2 ? "blocked" : "queued"}">${index === 0 ? "Active" : index === 1 ? "Cleared" : index === 2 ? "Blocked" : "Queued"}</strong>
             <em>${escapeHtml(priorityActions[index] || "Review and execute")}</em>
-            <small>${index < 3 ? "This week" : "Month-end"}</small>
           </div>
         `).join("")}
       </div>
@@ -859,6 +1142,7 @@
   }
 
   function renderVisualGraphs(month, projection, entries) {
+    if (!nodes.chartGrid || !nodes.miniTrends) return;
     const currentIncome = accountTotal(entries, "Current", isIncome);
     const currentBills = accountTotal(entries, "Current", isOutflow);
     const boaIncome = accountTotal(entries, "BOA", isIncome);
@@ -880,11 +1164,11 @@
     const categories = Array.from(categoryMap, ([label, value]) => ({ label, value })).filter((row) => row.value > 0);
 
     nodes.miniTrends.innerHTML = [
-      ["Current Treasury", monthInputs(month).openingBOA, "Blue"],
-      ["Projected Close", projection.projectedBOAClose, compactStatus(status.label)],
-      ["Floor", month.protectedFloor, "Protected"],
-      ["Hard Floor", month.redLine, "Emergency line"],
-      ["Target", month.targetCloseLow, projection.gapToTarget > 0 ? "Open" : "Hit"],
+      ["Current BOA", monthInputs(month).openingBOA, "As of balance"],
+      ["Projected Low", projection.projectedLow, projection.projectedLowIsOpening ? "Current balance" : `Day ${projection.projectedLowDay}`],
+      ["Active Floor", projection.activeHardFloor, projection.floorPhase],
+      ["$10K Floor Goal", projection.permanentFloorGoal, projection.projectedSecureDay ? `Day ${projection.projectedSecureDay}` : "Building"],
+      ["Month-End Target", month.targetCloseLow, projection.gapToTarget > 0 ? "Open" : "Hit"],
       ["Scheduled Bills", totalBills, "On Plan"],
     ].map(([label, value, status]) => {
       const progress = label === "Rule Score" ? numberValue(value) / 80 * 100 : Math.min(100, Math.abs(numberValue(value)) / Math.max(1, month.targetCloseLow) * 100);
@@ -892,8 +1176,8 @@
     }).join("");
     if (nodes.insights) {
       nodes.insights.innerHTML = [
-        projection.projectedBOAClose >= month.protectedFloor ? "Treasury above Floor." : "Floor is under pressure.",
-        projection.projectedBOAClose >= month.redLine ? "Hard Floor protected." : "Hard Floor defense.",
+        `${projection.floorStatus}. Active floor ${formatMoney(projection.activeHardFloor)}.`,
+        projection.fundingGap === 0 ? `Absorbable cushion ${formatMoney(projection.absorbableUnexpectedExpense)}.` : `Active-floor gap ${formatMoney(projection.fundingGap)}.`,
         projection.treasuryGrowth >= 0 ? `Surplus ${formatMoney(projection.treasuryGrowth)}.` : "Treasury contraction.",
         projection.gapToTarget <= 0 ? "Target pace intact." : `${formatMoney(projection.gapToTarget)} to Target.`,
         `${formatMoney(totalBills)} bills planned.`,
@@ -923,24 +1207,15 @@
 
   function renderTreasury(month, projection, entries) {
     const rows = rollingRows(month, projection).slice(0, 12);
-    const totalBills = entries.filter(isOutflow).reduce((total, entry) => total + effectiveAmount(entry), 0);
-    const allocation = (staticModel.allocation || []).map(([label, value]) => ({ label, value: numberValue(value) }));
     nodes.treasuryCharts.innerHTML = `
-      ${chartCard("12-Month Treasury Path", lineChart(rows, ["projected"]))}
-      ${chartCard("Protection Ladder", lineChart(rows, ["target", "floor", "absoluteFloor", "projected"]))}
+      ${chartCard("Daily Capital Path", lineChart(projection.dailyPath.map((point) => ({ label: `D${point.day}`, projected: point.boa })), ["projected"]))}
       ${chartCard("Monthly Cash Flow", barChart([
         { label: "Income", value: projection.totalIncome },
-        { label: "Bills", value: projection.totalBills },
+        { label: "Obligations", value: projection.totalBills },
         { label: "Net flow", value: projection.netCashFlow },
-        { label: "Treasury growth", value: projection.treasuryGrowth },
       ]))}
-      ${chartCard("Floor Progress", progressVisual("Projected close vs floor", projection.projectedBOAClose, month.protectedFloor, `${formatMoney(projection.surplusAboveFloor)} above floor`))}
-      ${chartCard("Reserve Ratio", progressVisual("BOA close vs monthly bills", projection.projectedBOAClose, Math.max(1, projection.totalBills * 2), `${(projection.projectedBOAClose / Math.max(1, projection.totalBills)).toFixed(1)}x bills`))}
-      ${chartCard("Gap to Target", progressVisual("Projected close vs target", projection.projectedBOAClose, month.targetCloseLow, projection.gapToTarget > 0 ? `${formatMoney(projection.gapToTarget)} gap` : "Target covered"))}
-      ${chartCard("Net Worth Trend", lineChart(rows.map((row) => ({ ...row, projected: row.projected - 6000 })), ["projected"]))}
-      ${chartCard("Capital Allocation", donutChart(allocation))}
-      ${chartCard("Year Progress", progressVisual("Months completed", selectedMonthIndex() + 1, 12, `${selectedMonthIndex() + 1}/12 operating checkpoints`))}
-      ${chartCard("Monthly Savings Rate", progressVisual("Net flow vs income", Math.max(0, projection.netCashFlow), projection.totalIncome, `${Math.round(Math.max(0, projection.netCashFlow) / Math.max(1, projection.totalIncome) * 100)}% savings rate`))}
+      ${chartCard("Floor Goal Progress", progressVisual("Projected low vs floor goal", projection.projectedLow, projection.permanentFloorGoal, projection.floorPhase === "build" ? `${formatMoney(projection.gapToFloorGoal)} to floor goal` : `${formatMoney(projection.absorbableUnexpectedExpense)} above active floor`))}
+      ${chartCard("12-Month Planning Baseline", lineChart(rows, ["projected"]))}
     `;
   }
 
@@ -1017,12 +1292,22 @@
   function renderBillDetails(entries, id) {
     const entry = entries.find((item) => item.id === id);
     if (!entry) return;
+    const cycle = activeFundingCycle(selectedMonth());
+    const settlement = entry.cycleSettled ? "Automatically settled" : "Included in forward path";
+    const timing = entry.timingEstimated ? "Estimated timing" : "Scheduled timing";
+    const impact = entry.cycleSettled ? "$0 forward impact" : formatMoney(signedImpact(entry));
     nodes.billDetails.hidden = false;
     nodes.billDetails.innerHTML = `
       <button class="btn" type="button" data-exec-close-bill>Close</button>
       <span>${escapeHtml(entry.account)} · ${escapeHtml(entry.type)}</span>
       <strong>${escapeHtml(entry.description)}</strong>
       <p>${formatMoney(entry.amount)} scheduled for day ${entry.dueDay || "TBD"}.</p>
+      <dl class="executiveEventDetailGrid">
+        <div><dt>Funding cycle</dt><dd>${escapeHtml(cycle.label)}</dd></div>
+        <div><dt>Settlement</dt><dd>${escapeHtml(settlement)}</dd></div>
+        <div><dt>Timing</dt><dd>${escapeHtml(timing)}</dd></div>
+        <div><dt>Projected impact</dt><dd>${escapeHtml(impact)}</dd></div>
+      </dl>
     `;
   }
 
@@ -1074,16 +1359,18 @@
     if (nodes.ledgerSort) nodes.ledgerSort.value = state.ledgerSort;
     nodes.ledger.innerHTML = pageRows.map((entry) => {
       const saved = ledgerState(entry);
+      const completed = entry.cycleSettled || ["Paid", "Skipped"].includes(saved.status);
+      const completionLabel = entry.cycleSettled ? "Cycle settled" : "Completed";
       return `
         <tr>
-          <td>${escapeHtml(entry.timing)}</td>
+          <td>Day ${entry.dueDay}${entry.timingEstimated ? ' <small class="executiveTimingEstimate">Estimated</small>' : ""}</td>
           <td>${escapeHtml(entry.account)}</td>
           <td>${escapeHtml(entry.type)}</td>
           <td>${escapeHtml(entry.description)}</td>
-          <td>${formatMoney(entry.amount)}</td>
-          <td><input type="number" step="0.01" data-exec-actual="${entry.id}" value="${escapeHtml(saved.actual || "")}" placeholder="Actual"></td>
-          <td><select data-exec-status="${entry.id}">${["Planned", "Paid", "Skipped", "Adjusted"].map((status) => `<option value="${status}" ${saved.status === status ? "selected" : ""}>${status}</option>`).join("")}</select></td>
-          <td>${formatMoney(signedImpact(entry))}</td>
+          <td>${formatMoney(entry.amount)}${entry.amountEstimated ? ' <small class="executiveTimingEstimate">Estimated</small>' : ""}</td>
+          <td>${entry.cycleSettled ? '<small class="executiveTimingEstimate">Included in as-of balance</small>' : `<input type="number" step="0.01" data-exec-actual="${entry.id}" value="${escapeHtml(saved.actual || "")}" placeholder="Actual">`}</td>
+          <td>${entry.cycleSettled ? '<small class="executiveTimingEstimate">Automatic</small>' : `<select data-exec-status="${entry.id}">${["Planned", "Paid", "Skipped", "Adjusted"].map((status) => `<option value="${status}" ${saved.status === status ? "selected" : ""}>${status}</option>`).join("")}</select>`}</td>
+          <td>${completed ? `<small class="executiveTimingEstimate">${completionLabel} · $0 forward</small>` : formatMoney(signedImpact(entry))}</td>
           <td><input type="text" data-exec-ledger-note="${entry.id}" value="${escapeHtml(saved.notes || "")}" placeholder="Notes"></td>
         </tr>
       `;
@@ -1096,13 +1383,16 @@
   }
 
   function renderBudgetDetails(month, projection) {
-    const entries = [...(month.bills || []), ...(month.subscriptions || [])];
+    const subscriptions = month.subscriptions || [];
+    const subscriptionNames = new Set(subscriptions.map((item) => item.name));
+    const lifestyleNames = new Set(["Food / Dates", "Gas", "Haircut"]);
+    const bills = month.bills || [];
     const groups = [
-      ["Current", entries.filter((item) => item.account === "Current")],
-      ["BOA", [...entries.filter((item) => item.account === "BOA"), { name: "Wife contribution", amount: 300, timing: "Monthly" }, { name: "Calculated Current float", amount: projection.requiredCurrentFloat, timing: "Auto" }]],
-      ["Subscriptions", month.subscriptions || []],
+      ["Current Essentials", bills.filter((item) => item.account === "Current" && !lifestyleNames.has(item.name) && !subscriptionNames.has(item.name))],
+      ["BOA Obligations", [...bills.filter((item) => item.account === "BOA"), { name: "Calculated Current funding", amount: projection.requiredCurrentFloat, timing: "Auto" }]],
+      ["Subscriptions", subscriptions],
+      ["Lifestyle", bills.filter((item) => lifestyleNames.has(item.name))],
       ["Trading", [{ name: "TradingView / CBOE / eval discipline", amount: 30.9, timing: "Monthly" }]],
-      ["Lifestyle", entries.filter((item) => ["Food / Dates", "Gas", "Haircut"].includes(item.name))],
     ];
     nodes.budgetGroups.innerHTML = groups.map(([label, items], index) => `
       <details class="executiveBudgetGroup" ${index < 2 ? "open" : ""}>
@@ -1119,8 +1409,21 @@
       : "<p>No adjustments added.</p>";
   }
 
-  function renderReview(month) {
-    nodes.reviewAccordion.innerHTML = [1, 2, 3, 4].map((week) => {
+  function renderReview(month, projection) {
+    const adjustments = state.adjustments[month.id] || [];
+    const latestSnapshot = (state.projectionLog || []).filter((item) => item.monthId === month.id).slice(-1)[0];
+    const snapshotDelta = latestSnapshot ? projection.projectedBOAClose - latestSnapshot.projectedClose : 0;
+    const comparison = `
+      <div class="executiveReviewComparison">
+        ${[
+          ["Current BOA", formatMoney(monthInputs(month).openingBOA)],
+          ["Projected Low", formatMoney(projection.projectedLow)],
+          ["Projected Close", formatMoney(projection.projectedBOAClose)],
+          ["Unexpected Adjustments", `${adjustments.length} · ${formatMoney(adjustments.reduce((total, item) => total + signedImpact(item), 0))}`],
+          ["Since Last Recalculation", latestSnapshot ? formatMoney(snapshotDelta) : "No prior snapshot"],
+        ].map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}
+      </div>`;
+    nodes.reviewAccordion.innerHTML = comparison + [1, 2, 3, 4].map((week) => {
       const key = `${month.id}:week-${week}`;
       const saved = state.notes[key] || {};
       return `
@@ -1139,39 +1442,112 @@
 
   function renderTimeline(startProjection) {
     const rows = rollingRows(selectedMonth(), startProjection).slice(0, 12);
-    nodes.timeline.innerHTML = rows.map(({ month, projection, openingBOA }) => {
-      const status = treasuryStatus(month, projection);
-      return `
-        <article class="executiveTimelineProjection is-${status.tone}">
-          <span>${escapeHtml(month.label)}</span>
-          <strong>${formatMoney(projection.projectedBOAClose)}</strong>
-          <small>Opening ${formatMoney(openingBOA)}</small>
-          <small>Floor ${formatMoney(month.protectedFloor)}</small>
-          <small>Target ${formatMoney(month.targetCloseLow)}</small>
-          <em>${escapeHtml(status.label)}</em>
-        </article>
-      `;
-    }).join("");
-  }
-
-  function renderYearView(projection) {
-    nodes.yearView.hidden = !state.yearViewOpen;
-    const rows = rollingRows(selectedMonth(), projection).slice(0, 12);
-    nodes.yearGrid.innerHTML = rows.map(({ month, projection, openingBOA }) => {
-      const entries = buildProjectionEntries(month, monthInputs(month));
-      const bills = entries.filter(isOutflow);
-      const status = treasuryStatus(month, projection);
-      return `
-        <button class="executiveYearCard" type="button" data-exec-month="${month.id}">
-          <span>${escapeHtml(month.label)}</span>
-          <strong>${formatMoney(projection.projectedBOAClose)}</strong>
-          <small>Opening ${formatMoney(openingBOA)}</small>
-          <small>Target ${formatMoney(month.targetCloseLow)}</small>
-          <small>Status ${escapeHtml(status.label)}</small>
-          <small>CEO ${staticModel.score_total || 60}/80 · ${bills.length} bills scheduled</small>
-        </button>
-      `;
-    }).join("");
+    const cycles = fundingCycleRows(selectedMonth());
+    const trackedDate = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    nodes.timeline.innerHTML = `
+      <section class="executiveFundingMap">
+        <div class="executiveFundingMapHead">
+          <div><span>Operating cycles · Tracked as of ${escapeHtml(trackedDate)}</span><strong>Paycheck-to-paycheck funding map</strong><small>Updates automatically when the local date changes.</small></div>
+          <p>Current pays cycle obligations. BOA support appears only when Current pay cannot cover them.</p>
+        </div>
+        <div class="executiveTableScroll" tabindex="0" aria-label="Scroll upcoming paycheck funding cycles horizontally">
+          <div class="executiveFundingTable" role="table" aria-label="Upcoming paycheck funding cycles">
+          <div class="executiveFundingRow is-head" role="row">
+            <span>Cycle</span><span>Current Pay</span><span>BOA Pay</span><span>Current Bills</span><span>BOA Bills</span><span class="is-support">BOA Support</span><span>Current Remainder</span>
+          </div>
+            ${cycles.map((cycle) => `
+            <div class="executiveFundingRow ${cycle.isSettled ? "is-settled" : ""}" role="row">
+              <span><strong>${escapeHtml(cycle.label)}</strong><small class="${cycle.pay.estimated ? "executiveEstimateBadge" : ""}">${cycle.isSettled ? "Settled in as-of balances" : cycle.pay.estimated ? "Estimated paycheck · $9,400 combined" : "Regular funding cycle"}</small></span>
+              <span>${cycle.isSettled ? "—" : formatMoney(cycle.pay.current)}</span>
+              <span>${cycle.isSettled ? "—" : formatMoney(cycle.pay.boa)}</span>
+              <span>${cycle.isSettled ? "$0 remaining" : formatMoney(cycle.currentBills)}</span>
+              <span>
+                ${cycle.isSettled
+                  ? "$0 remaining"
+                  : cycle.boaObligations.length === 1
+                    ? `${escapeHtml(compactCalendarLabel(cycle.boaObligations[0].description))} ${formatMoney(cycle.boaObligations[0].amount)}`
+                    : formatMoney(cycle.boaBills)}
+                ${!cycle.isSettled && cycle.boaObligations.length > 1 ? `<small>${cycle.boaObligations.map((entry) => `${escapeHtml(compactCalendarLabel(entry.description))} ${formatMoney(entry.amount)}`).join(" · ")}</small>` : ""}
+              </span>
+              <span class="executiveFundingSupport ${cycle.boaSupport > 0 ? "is-required" : ""}" ${cycle.boaSupport > 0 ? `tabindex="0" role="group" aria-label="Explain BOA support of ${formatMoney(cycle.boaSupport)}"` : ""}>
+                ${cycle.boaSupport > 0 ? `
+                  <strong>${formatMoney(cycle.boaSupport)}</strong>
+                  <small>Current shortfall · hover for why</small>
+                  <span class="executiveShortfallPopover" role="tooltip">
+                    <strong>Why BOA support is needed</strong>
+                    <span class="executiveShortfallFormula">
+                      <b>${formatMoney(cycle.currentBills)}</b> Current bills
+                      <i>−</i>
+                      <b>${formatMoney(cycle.pay.current)}</b> Current pay
+                      <i>=</i>
+                      <b>${formatMoney(cycle.boaSupport)}</b> support
+                    </span>
+                    <span class="executiveShortfallListLabel">Largest cycle obligations</span>
+                    <span class="executiveShortfallList">
+                      ${cycle.featuredObligations.map((entry) => `
+                        <span><em>${escapeHtml(entry.description)}</em><small>${escapeHtml(entry.date)}</small><b>${formatMoney(entry.amount)}</b></span>
+                      `).join("")}
+                      ${cycle.otherObligationsTotal > 0 ? `
+                        <span class="executiveShortfallOther"><em>Other cycle obligations</em><small>${cycle.otherObligations.length} smaller bills</small><b>${formatMoney(cycle.otherObligationsTotal)}</b></span>
+                      ` : ""}
+                    </span>
+                    <details class="executiveShortfallDetails">
+                      <summary>View all ${cycle.currentObligations.length} cycle bills</summary>
+                      <span class="executiveShortfallList executiveShortfallListAll">
+                        ${cycle.currentObligations.map((entry) => `
+                          <span><em>${escapeHtml(entry.description)}</em><small>${escapeHtml(entry.date)}</small><b>${formatMoney(entry.amount)}</b></span>
+                        `).join("")}
+                        <span class="executiveShortfallTotal"><em>Total Current bills</em><b>${formatMoney(cycle.currentBills)}</b></span>
+                      </span>
+                    </details>
+                    <em class="executiveShortfallNote">BOA covers only the remaining gap so Current reaches $0.00—not below it.</em>
+                  </span>
+                ` : "—"}
+              </span>
+              <span>${cycle.isSettled ? "—" : formatMoney(cycle.currentRemainder)}</span>
+            </div>
+            `).join("")}
+          </div>
+        </div>
+      </section>
+      <div class="executiveTableScroll" tabindex="0" aria-label="Scroll 12-month BOA planning baseline horizontally">
+        <div class="executiveBaselineTable" role="table" aria-label="12-month BOA planning baseline">
+          <div class="executiveBaselineRow is-head" role="row">
+          <span>Month</span>
+          <span>Closing BOA</span>
+          <span>Current Carryover</span>
+          <span>Committed Current</span>
+          <span>Free Current</span>
+          <span>Next-Cycle Support</span>
+          <span>Active Floor</span>
+          <span>Status</span>
+        </div>
+          ${rows.map(({ month, projection }) => {
+          const status = treasuryStatus(month, projection);
+          const commitment = nextCycleCommitment(month, projection);
+          const estimate = month.id === "2026-09"
+            ? '<small class="executiveBaselineEstimate">Estimated paycheck · Sep 25 · $9,400</small>'
+            : "";
+          return `
+            <div class="executiveBaselineRow is-${status.tone}" role="row">
+              <span><strong>${escapeHtml(month.label)}</strong>${estimate}</span>
+              <span><strong>${formatMoney(projection.projectedBOAClose)}</strong></span>
+              <span>${formatMoney(commitment.currentCarryover)}<small>${escapeHtml(commitment.cycleLabel)}</small></span>
+              <span>${formatMoney(commitment.committedCurrent)}</span>
+              <span class="${commitment.freeCurrent > 0 ? "is-positive" : ""}">${formatMoney(commitment.freeCurrent)}</span>
+              <span>${commitment.boaSupport > 0 ? formatMoney(commitment.boaSupport) : "—"}</span>
+              <span>${formatMoney(projection.activeHardFloor)}<small>BOA cushion ${formatMoney(projection.absorbableUnexpectedExpense)}</small></span>
+              <span><em>${escapeHtml(status.label)}</em><small>${escapeHtml(status.reason)}</small><small>Low ${formatMoney(projection.projectedLow)} · Floor ${formatMoney(projection.activeHardFloor)}</small></span>
+            </div>
+          `;
+          }).join("")}
+        </div>
+      </div>
+      <p class="executiveBaselineDisclosure">Planning baseline, not bank sync: BOA is the protected fund. Current carryover is operating cash committed to the payday cycle shown; only Free Current is uncommitted. Estimated paychecks are planning placeholders, not confirmed deposits. Future months repeat configured income, obligations, paycheck rules, and known exceptions until you update them.</p>`;
   }
 
   function renderSidePanel(month, projection, entries) {
@@ -1179,7 +1555,6 @@
     const nextCash = nextEvent(month, entries, (entry) =>
       ["Deposit", "Payout"].includes(entry.type));
     const nextBill = nextEvent(month, entries, isOutflow);
-    const healthPercent = Math.min(100, Math.max(0, projection.projectedBOAClose / Math.max(1, month.targetCloseLow) * 100));
     const activeAction = ["adjustment", "note", "expense"].includes(state.sideAction) ? state.sideAction : "";
     const isExpanded = Boolean(state.sidePanelExpanded);
     nodes.sidePanel.classList.toggle("is-expanded", isExpanded);
@@ -1190,6 +1565,9 @@
           <div><span>Adjustment</span><button class="btn executiveMiniCollapseBtn" type="button" data-exec-side-action-close aria-label="Collapse quick action">⌄</button></div>
           <label><span>Description</span><input type="text" data-exec-quick-adjustment placeholder="Example: Bonus deposit"></label>
           <label><span>Amount</span><input type="number" step="0.01" data-exec-quick-amount></label>
+          <label><span>Account</span><select data-exec-quick-account><option>BOA</option><option>Current</option><option>Trading</option></select></label>
+          <label><span>Direction</span><select data-exec-quick-type><option value="Deposit">Money in</option><option value="Bill">Money out</option></select></label>
+          <label><span>Effective date</span><input type="date" data-exec-quick-date value="${month.id}-${String(projection.asOfDay).padStart(2, "0")}"></label>
           <button class="btn primary" type="button" data-exec-quick-add-adjustment>Add Adjustment</button>
         </div>
       `,
@@ -1202,7 +1580,10 @@
       expense: `
         <div class="executiveQuickActionPanel is-open is-expense">
           <div><span>Expense</span><button class="btn executiveMiniCollapseBtn" type="button" data-exec-side-action-close aria-label="Collapse quick action">⌄</button></div>
+          <label><span>Description</span><input type="text" data-exec-quick-expense-description placeholder="Unexpected expense"></label>
           <label><span>Amount</span><input type="number" step="0.01" data-exec-quick-expense placeholder="Amount"></label>
+          <label><span>Account</span><select data-exec-quick-expense-account><option>Current</option><option>BOA</option><option>Trading</option></select></label>
+          <label><span>Effective date</span><input type="date" data-exec-quick-expense-date value="${month.id}-${String(projection.asOfDay).padStart(2, "0")}"></label>
           <button class="btn primary" type="button" data-exec-quick-add-expense>Add Expense</button>
         </div>
       `,
@@ -1221,8 +1602,7 @@
           <span>Treasury State</span>
           <strong>${escapeHtml(status.risk)} risk</strong>
         </div>
-        <em>${Math.round(healthPercent)}%</em>
-        <i><b style="width:${healthPercent}%"></b></i>
+        <em>${escapeHtml(compactStatus(status.label))}</em>
       </div>
       <div class="executiveSideEventGrid">
         <article><span>Cash</span><strong>${escapeHtml(compactEventSummary(nextCash))}</strong></article>
@@ -1258,6 +1638,10 @@
 
   function render() {
     const { month, entries, projection } = currentContext();
+    if (isCurrentCalendarMonth(month) && projection.openingSecuresGoal && !state.permanentFloorSecured) {
+      state.permanentFloorSecured = true;
+      state.permanentFloorSecuredAt = `${month.id}-${String(projection.asOfDay).padStart(2, "0")}`;
+    }
     root.classList.add("is-rendering");
     window.setTimeout(() => root.classList.remove("is-rendering"), 180);
     renderInputs(month);
@@ -1267,6 +1651,7 @@
     state.centerMonthOnRender = false;
     renderMonthHeader(month, projection, entries);
     renderSummary(month, projection);
+    renderCapitalFlow(month, projection);
     renderOverview(month, projection, entries);
     renderVisualGraphs(month, projection, entries);
     renderTreasury(month, projection, entries);
@@ -1275,9 +1660,8 @@
     renderLedger(entries);
     renderBudgetDetails(month, projection);
     renderAdjustmentList(month);
-    renderReview(month);
+    renderReview(month, projection);
     renderTimeline(projection);
-    renderYearView(projection);
     renderSidePanel(month, projection, entries);
     saveState();
   }
@@ -1290,12 +1674,77 @@
     render();
   }
 
+  function recalculateFromControls(button) {
+    const requestedMonth = monthSelect?.value;
+    if (requestedMonth && monthById.has(requestedMonth)) state.selectedMonth = requestedMonth;
+    const month = selectedMonth();
+    const nextInputs = { ...monthInputs(month) };
+    let invalidInput = null;
+    inputNodes.forEach((input) => {
+      const key = input.dataset.execInput;
+      if (!key || key === "currentMonth") return;
+      const parsed = Number(input.value);
+      if (input.value === "" || !Number.isFinite(parsed) || parsed < 0) {
+        invalidInput ||= input;
+        return;
+      }
+      nextInputs[key] = parsed;
+    });
+    if (invalidInput) {
+      invalidInput.setAttribute("aria-invalid", "true");
+      invalidInput.focus();
+      if (nodes.recalculateStatus) {
+        nodes.recalculateStatus.textContent =
+          "Enter a valid non-negative amount. The previous projection was kept.";
+      }
+      return;
+    }
+    inputNodes.forEach((input) => input.removeAttribute("aria-invalid"));
+    state.inputs[month.id] = nextInputs;
+    const { projection } = currentContext();
+    state.projectionLog = [
+      ...(state.projectionLog || []),
+      {
+        id: `${month.id}:${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        monthId: month.id,
+        asOfDay: projection.asOfDay,
+        openingBOA: numberValue(nextInputs.openingBOA),
+        openingCurrent: numberValue(nextInputs.openingCurrent),
+        settledCycle: projection.settledCycleLabel,
+        nextPayday: projection.nextPaydayLabel,
+        regularCurrentPay: projection.regularCurrentPay,
+        regularBOAPay: projection.regularBOAPay,
+        septemberException: 9400,
+        septemberExceptionEstimated: true,
+        projectedLow: projection.projectedLow,
+        projectedClose: projection.projectedBOAClose,
+        requiredCurrentFloat: projection.requiredCurrentFloat,
+        activeHardFloor: projection.activeHardFloor,
+        floorPhase: projection.floorPhase,
+      },
+    ].slice(-24);
+    render();
+    if (nodes.recalculateStatus) {
+      nodes.recalculateStatus.textContent =
+        `Updated from BOA ${formatMoney(nextInputs.openingBOA)} · ` +
+        `Projected low ${formatMoney(projection.projectedLow)} · ` +
+        `Projected close ${formatMoney(projection.projectedBOAClose)}.`;
+    }
+    if (button) {
+      const originalLabel = button.textContent;
+      button.textContent = "Projection Updated";
+      button.disabled = true;
+      window.setTimeout(() => {
+        button.textContent = originalLabel;
+        button.disabled = false;
+      }, 1200);
+    }
+  }
+
   inputNodes.forEach((input) => {
     input.addEventListener("input", () => {
-      const month = selectedMonth();
-      state.inputs[month.id] = { ...monthInputs(month), [input.dataset.execInput]: input.value };
-      if (input.dataset.execInput === "currentMonth") state.selectedMonth = input.value;
-      render();
+      if (input.dataset.execInput === "currentMonth") selectMonth(input.value);
     });
   });
 
@@ -1373,9 +1822,6 @@
       selectMonth(months[Math.max(0, selectedMonthIndex() - 1)].id);
     } else if (event.target.closest("[data-exec-month-next]")) {
       selectMonth(months[Math.min(months.length - 1, selectedMonthIndex() + 1)].id);
-    } else if (event.target.closest("[data-exec-year-toggle]")) {
-      state.yearViewOpen = !state.yearViewOpen;
-      render();
     } else if (bill) {
       renderBillDetails(currentContext().entries, bill.dataset.execBill);
     } else if (dayDetails) {
@@ -1420,17 +1866,23 @@
       render();
     } else if (event.target.closest("[data-exec-quick-add-adjustment]")) {
       const month = selectedMonth();
-      const description = root.querySelector("[data-exec-quick-adjustment]")?.value || "Quick adjustment";
+      const description = root.querySelector("[data-exec-quick-adjustment]")?.value.trim();
       const amount = numberValue(root.querySelector("[data-exec-quick-amount]")?.value);
-      if (!amount) return;
-      state.adjustments[month.id] = [...(state.adjustments[month.id] || []), { id: `${month.id}:quick:${Date.now()}`, description, amount, account: "BOA", type: "Deposit", timing: "Quick" }];
+      const account = root.querySelector("[data-exec-quick-account]")?.value;
+      const type = root.querySelector("[data-exec-quick-type]")?.value;
+      const effectiveDate = root.querySelector("[data-exec-quick-date]")?.value;
+      if (!description || !amount || !account || !type || !effectiveDate) return;
+      state.adjustments[month.id] = [...(state.adjustments[month.id] || []), { id: `${month.id}:quick:${Date.now()}`, description, amount, account, type, dueDay: Number(effectiveDate.slice(-2)), timing: "Explicit date", effectiveDate }];
       state.sideAction = "";
       render();
     } else if (event.target.closest("[data-exec-quick-add-expense]")) {
       const month = selectedMonth();
+      const description = root.querySelector("[data-exec-quick-expense-description]")?.value.trim();
       const amount = numberValue(root.querySelector("[data-exec-quick-expense]")?.value);
-      if (!amount) return;
-      state.adjustments[month.id] = [...(state.adjustments[month.id] || []), { id: `${month.id}:expense:${Date.now()}`, description: "Quick expense", amount, account: "Current", type: "Bill", timing: "Quick" }];
+      const account = root.querySelector("[data-exec-quick-expense-account]")?.value;
+      const effectiveDate = root.querySelector("[data-exec-quick-expense-date]")?.value;
+      if (!description || !amount || !account || !effectiveDate) return;
+      state.adjustments[month.id] = [...(state.adjustments[month.id] || []), { id: `${month.id}:expense:${Date.now()}`, description, amount, account, type: "Bill", dueDay: Number(effectiveDate.slice(-2)), timing: "Explicit date", effectiveDate }];
       state.sideAction = "";
       render();
     } else if (event.target.closest("[data-exec-remove-adjustment]")) {
@@ -1439,7 +1891,7 @@
       state.adjustments[month.id] = (state.adjustments[month.id] || []).filter((item) => item.id !== remove.dataset.execRemoveAdjustment);
       render();
     } else if (event.target.closest("[data-exec-recalculate]")) {
-      render();
+      recalculateFromControls(event.target.closest("[data-exec-recalculate]"));
     }
   });
 
@@ -1482,6 +1934,23 @@
     if (!document.activeElement?.closest(".executiveCommandPage")) return;
     const direction = event.key === "ArrowRight" ? 1 : -1;
     selectMonth(months[Math.min(months.length - 1, Math.max(0, selectedMonthIndex() + direction))].id);
+  });
+
+  const refreshForCalendarChange = () => {
+    const nextDateKey = localDateKey(new Date());
+    if (nextDateKey === observedCalendarDateKey) return;
+    observedCalendarDateKey = nextDateKey;
+    const nextMonthId = nextDateKey.slice(0, 7);
+    if (monthById.has(nextMonthId) && state.lastDefaultMonth !== nextMonthId) {
+      state.selectedMonth = nextMonthId;
+      state.lastDefaultMonth = nextMonthId;
+      state.centerMonthOnRender = true;
+    }
+    render();
+  };
+  window.setInterval(refreshForCalendarChange, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshForCalendarChange();
   });
 
   render();

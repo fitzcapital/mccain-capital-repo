@@ -378,7 +378,8 @@ def test_upload_statement_workspaces_render(client):
     assert resp_live.status_code == 200
     assert b"Sync Reliability (30D)" in resp_live.data
     assert b"Operator Deck" in resp_live.data
-    assert b"Balanced Run" in resp_live.data
+    assert b"Normal Import" in resp_live.data
+    assert b"Diagnostic Test" in resp_live.data
     assert b"Failure Guide" in resp_live.data
     assert b"Stored securely" in resp_live.data
     assert b"Save username/password securely" in resp_live.data
@@ -603,7 +604,7 @@ def test_statement_upload_accepts_pasted_html(client, monkeypatch):
     assert captured["filename"].endswith(".html")
 
 
-def test_live_sync_uses_selected_account_broker_id_over_stale_config(
+def test_live_sync_rejects_stale_broker_id_for_selected_account(
     client, monkeypatch, tmp_path
 ):
     from mccain_capital.services import trades as trades_svc
@@ -660,9 +661,9 @@ def test_live_sync_uses_selected_account_broker_id_over_stale_config(
         follow_redirects=False,
     )
 
-    assert resp.status_code == 200
-    assert launched["account"] == "default:OPA0003049"
-    assert launched["requested"]["account"] == "default:OPA0003049"
+    assert resp.status_code == 409
+    assert "do not match" in resp.get_json()["message"]
+    assert launched == {}
 
 
 def test_archive_account_hides_it_and_falls_back_to_remaining_active_account(client):
@@ -818,6 +819,15 @@ def test_bulk_archive_accounts_empty_selection_warns_without_archiving(client):
 def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Credential Test",
+        broker_account_id="default:TEST123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
     cfg_store = {
         "base_url": "https://trade.vanquishtrader.com",
         "wl": "vanquishtrader",
@@ -865,6 +875,7 @@ def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path)
             "password": "saved-pass",
             "base_url": "https://trade.vanquishtrader.com",
             "account": "default:TEST123",
+            "selected_account_id": str(account_id),
             "remember_credentials": "1",
         },
         follow_redirects=False,
@@ -1621,7 +1632,7 @@ def test_dashboard_failed_account_refresh_surfaces_diagnostics(client, monkeypat
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Account metrics not found" not in body
+    assert "Account metrics not found" in body
     assert "OPA0003049" in body
     assert "broker_equity, broker_remaining_drawdown" not in body
     assert "Account OPA0003049 was not found" in body
@@ -1675,7 +1686,7 @@ def test_dashboard_seed_vanquish_session_surfaces_success_diagnostics(client, mo
     assert resp.status_code == 200
     assert calls and calls[0]["headless"] is False
     body = resp.get_data(as_text=True)
-    assert "Dashboard session seeded" not in body
+    assert "Dashboard session seeded" in body
     assert "https://www.vanquishtrader.com/dashboard/accounts" not in body
     account = trades_repo.get_account(int(account_id))
     assert account["broker_equity"] == 50123.45
@@ -1716,7 +1727,7 @@ def test_dashboard_seed_vanquish_session_reports_auth_required(client, monkeypat
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Google session required" not in body
+    assert "Google session required" in body
     assert "https://accounts.google.com/" not in body
     account = trades_repo.get_account(int(account_id))
     assert account["broker_equity"] is None
@@ -3013,6 +3024,15 @@ def test_live_sync_job_can_be_cancelled(client, monkeypatch, tmp_path):
 def test_live_sync_async_start_returns_job_json(client, monkeypatch):
     from mccain_capital.services import trades as trades_svc
 
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Async Test",
+        broker_account_id="default:OEXXXXXXXX",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
     monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda _day: {"locked": False})
     monkeypatch.setattr(
         trades_svc,
@@ -3053,6 +3073,7 @@ def test_live_sync_async_start_returns_job_json(client, monkeypatch):
             "password": "demo-pass",
             "base_url": "https://trade.vanquishtrader.com",
             "account": "default:OEXXXXXXXX",
+            "selected_account_id": str(account_id),
         },
         headers={"Accept": "application/json"},
         follow_redirects=False,
@@ -3245,6 +3266,15 @@ def test_live_sync_async_start_ignores_dispatcher_boot_failures(
 ):
     from mccain_capital.services import trades as trades_svc
 
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Dispatcher Test",
+        broker_account_id="default:OEXXXXXXXX",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
     monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
     monkeypatch.setattr(
         trades_svc,
@@ -3285,6 +3315,7 @@ def test_live_sync_async_start_ignores_dispatcher_boot_failures(
             "password": "demo-pass",
             "base_url": "https://trade.vanquishtrader.com",
             "account": "default:OEXXXXXXXX",
+            "selected_account_id": str(account_id),
         },
         headers={"Accept": "application/json"},
         follow_redirects=False,

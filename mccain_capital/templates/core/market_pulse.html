@@ -110,8 +110,14 @@
   {'label': 'CW', 'icon': 'up', 'value': ('%.0f'|format(call_wall_num)) if call_wall_num is not none else '—'},
   {'label': 'PW', 'icon': 'down', 'value': ('%.0f'|format(put_wall_num)) if put_wall_num is not none else '—'}
 ] %}
+{% set gamma_deck_levels = [
+  {'key': 'main_flip', 'label': 'Main Flip', 'short': 'MAIN', 'value': main_flip_num, 'classification': 'Flip / regime boundary'},
+  {'key': 'local_flip', 'label': 'Local Flip', 'short': 'LOCAL', 'value': local_flip_num, 'classification': 'Local structure pivot'},
+  {'key': 'call_wall', 'label': 'Call Wall', 'short': 'CW', 'value': call_wall_num, 'classification': 'Resistance / upside magnet'},
+  {'key': 'put_wall', 'label': 'Put Wall', 'short': 'PW', 'value': put_wall_num, 'classification': 'Support / downside magnet'}
+] %}
 
-<div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
+<div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact" id="marketPulseStatusBar">
   <div class="toolbar gamma-ladder-toolbar">
     <div class="marketPulsePlaybookHero">
       <div class="marketPulsePlaybookTitleZone marketPulseCockpitCommand">
@@ -171,6 +177,24 @@
           </div>
         </div>
         <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</div>
+        <div class="marketPulseStatusReadout" aria-label="Current market status">
+          <div class="marketPulseStatusMetric is-spot">
+            <span>{{ selected_ticker }} Spot</span>
+            <strong id="marketPulseStatusSpot">{{ spot_price_label }}</strong>
+          </div>
+          <div class="marketPulseStatusMetric">
+            <span>Session</span>
+            <strong>{% if guardrail.active %}Locked{% elif market_closed %}Planning{% else %}Live execution{% endif %}</strong>
+          </div>
+          <div class="marketPulseStatusMetric is-{{ gamma_snapshot_status_tone }}">
+            <span>Gamma Data</span>
+            <strong id="marketPulseStatusDataState">{{ gamma_snapshot.get('snapshot_status_label') or macro_regime.subtitle or 'Awaiting snapshot' }}</strong>
+          </div>
+          <div class="marketPulseStatusMetric">
+            <span>Updated</span>
+            <strong id="marketPulseStatusUpdated">{{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</strong>
+          </div>
+        </div>
         <div class="marketPulseHeaderLevels" id="marketPulseHeaderSubline">
           {% for item in level_strip %}
             <div class="marketPulseHeaderLevelItem is-{{ item.label|lower|replace(' ', '-') }}{% if item.label == 'Spot' %} is-live{% endif %}{% if item.label == 'LF' and item.value == 'No local flip in band' %} is-muted{% endif %}">
@@ -221,6 +245,20 @@
           </div>
         </div>
         <div class="marketPulsePlaybookActions marketPulseCockpitUtility">
+          <button
+            class="btn marketPulsePlaybookPinToggle"
+            type="button"
+            aria-pressed="false"
+            title="Keep the Playbook header visible while scrolling"
+            data-playbook-pin-toggle
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 4 6 0"></path>
+              <path d="m10 4 .8 6-3.3 3.4h9L13.2 10 14 4"></path>
+              <path d="M12 13.4V20"></path>
+            </svg>
+            <span data-playbook-pin-label>Pin header</span>
+          </button>
           <button
             id="marketPulseContextRefreshBtn"
             class="notifRefreshBtn marketPulseContextRefreshBtn"
@@ -295,6 +333,50 @@
   </div>
 </div>
 
+{% set permission_label = 'Locked' if guardrail.active else 'Planning only' if market_closed else trade_state_label %}
+{% set permission_detail = guardrail.message if guardrail.active else 'Market closed' if market_closed else 'Existing trade gate applies' %}
+<section
+  class="marketPulseDecisionNarrative marketPulseSection"
+  id="marketPulseDecisionNarrative"
+  aria-label="Market Pulse execution narrative"
+>
+  <div class="marketPulseDecisionNarrativeLead">
+    <span>Execution Read</span>
+    <strong>{{ decision_label }}</strong>
+    <small>{{ decision_detail }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Regime</span>
+    <strong>{{ macro_regime.title }}</strong>
+    <small>{{ macro_regime.subtitle }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Spot / Availability</span>
+    <strong>{{ spot_price_label }}</strong>
+    <small>{% if spot_num is number %}Available · {{ structure_snapshot.get('spot_source_label') or source_label }}{% else %}Unavailable · no valid spot{% endif %}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Permission</span>
+    <strong>{{ permission_label }}</strong>
+    <small>{{ permission_detail }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Freshness</span>
+    <strong>{{ gamma_snapshot_status|replace('_', ' ')|title }}</strong>
+    <small>{{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or 'Timestamp unavailable' }}</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Trigger</span>
+    <strong>{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Confirmation required' }}</strong>
+    <small>Manual confirmation remains authoritative</small>
+  </div>
+  <div class="marketPulseDecisionNarrativeItem">
+    <span>Invalidation</span>
+    <strong>{{ playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'Wait for live structure' }}</strong>
+    <small>Exit the thesis when this condition fails</small>
+  </div>
+</section>
+
 <section class="marketPulseSessionState marketPulseSection {% if guardrail.active %}is-locked{% else %}is-open{% endif %}" aria-label="Market Pulse session and data state">
   <div class="marketPulseSessionStateGrid">
     <div>
@@ -315,7 +397,7 @@
   {% endif %}
 </section>
 
-<section class="card stack12 marketPulseExecutionHero marketPulseSection">
+<section class="card stack12 marketPulseExecutionHero marketPulseSection" id="marketPulseGammaCockpit" aria-label="Gamma and chart cockpit">
   <div class="toolbar">
     <div class="pillRow marketPulseExecutionHeroTopline">
       <span class="pill">Execution</span>
@@ -346,6 +428,55 @@
             <span class="tiny muted">Tradeability</span>
             <strong id="marketPulseHeroTradeability">{{ tradeability_display }}</strong>
           </div>
+        </div>
+      </section>
+
+      <section class="marketPulseExecutionHeroPanel marketPulseGammaLevelDeck" id="marketPulseGammaLevelDeck" aria-label="Gamma Level Deck">
+        <div class="marketPulseGammaLevelDeckHead">
+          <div>
+            <span class="marketPulseGammaLevelDeckKicker">Gamma Level Deck</span>
+            <strong>Map the level, then confirm it on the chart.</strong>
+          </div>
+          <span class="state-pill {{ gamma_pill_class }}">{{ gamma_pill_label }}</span>
+        </div>
+        <div class="marketPulseGammaLevelDeckSpot">
+          <span>Current spot</span>
+          <strong id="marketPulseGammaDeckSpot">{{ spot_price_label }}</strong>
+          <small>{{ location.zone or 'Awaiting structure' }}</small>
+        </div>
+        <div class="marketPulseGammaLevelDeckList" role="list" aria-label="Principal Gamma levels">
+          {% for item in gamma_deck_levels %}
+            {% set level_available = item.value is number %}
+            {% set level_distance = item.value - spot_num if level_available and spot_num is number else none %}
+            <button
+              class="marketPulseGammaLevelRow{% if not level_available %} is-unavailable{% endif %}{% if location.nearest_level_name and item.label|lower in location.nearest_level_name|lower %} is-nearest{% endif %}"
+              type="button"
+              role="listitem"
+              data-market-pulse-level-key="{{ item.key }}"
+              data-market-pulse-level-price="{{ item.value if level_available else '' }}"
+              data-market-pulse-level-classification="{{ item.classification }}"
+              data-market-pulse-level-symbol="{{ selected_ticker }}"
+              aria-pressed="false"
+              {% if not level_available %}disabled aria-disabled="true"{% endif %}
+            >
+              <span class="marketPulseGammaLevelRowIdentity">
+                <small>{{ item.short }}</small>
+                <strong>{{ item.label }}</strong>
+              </span>
+              <span class="marketPulseGammaLevelRowValue" data-market-pulse-level-value="{{ item.key }}">
+                {{ '%.2f'|format(item.value) if level_available else 'Unavailable' }}
+              </span>
+              <span class="marketPulseGammaLevelRowDistance" data-market-pulse-level-distance="{{ item.key }}">
+                {{ '%+.1f pts'|format(level_distance) if level_distance is number else 'No valid distance' }}
+              </span>
+              <span class="marketPulseGammaLevelRowClass">{{ item.classification }}</span>
+            </button>
+          {% endfor %}
+        </div>
+        <div class="marketPulseGammaLevelDeckNearest">
+          <span>Nearest important level</span>
+          <strong>{{ location.nearest_level_name or 'Awaiting valid level' }}</strong>
+          <small>{% if location.distance_points is number %}{{ '%.1f points from spot'|format(location.distance_points) }}{% else %}Distance unavailable{% endif %}</small>
         </div>
       </section>
 
@@ -556,6 +687,28 @@
         </div>
       </section>
 
+      <section class="marketPulseExecutionHeroPanel marketPulseStructureMapPrimary" id="marketPulseStructureMapPrimary" aria-label="Current Gamma structure">
+        <div class="marketPulseStructureMapHead">
+          <div>
+            <span class="tiny muted">Structure Read</span>
+            <strong id="marketPulseStructurePrimaryZone">{{ location.zone or 'Awaiting structure' }}</strong>
+          </div>
+          <span class="trendChip">{{ location.status or 'Awaiting structure' }}</span>
+        </div>
+        <div class="marketPulseStructureMapTrack" aria-label="Put Wall, flips, spot, and Call Wall structure map">
+          <span class="is-put">PW <strong>{{ '%.0f'|format(put_wall_num) if put_wall_num is number else '—' }}</strong></span>
+          <span class="is-local">LF <strong>{{ '%.0f'|format(local_flip_num) if local_flip_num is number else '—' }}</strong></span>
+          <span class="is-spot">SPOT <strong id="marketPulseStructurePrimarySpot">{{ spot_price_label }}</strong></span>
+          <span class="is-main">MAIN <strong>{{ '%.0f'|format(main_flip_num) if main_flip_num is number else '—' }}</strong></span>
+          <span class="is-call">CW <strong>{{ '%.0f'|format(call_wall_num) if call_wall_num is number else '—' }}</strong></span>
+        </div>
+        <div class="marketPulseStructureMapSummary">
+          <span><small>Current zone</small><strong>{{ location.zone or 'Unavailable' }}</strong></span>
+          <span><small>Nearest test</small><strong>{{ location.nearest_level_name or 'Unavailable' }}</strong></span>
+          <span><small>Next read</small><strong>{{ location.read or 'Wait for live structure' }}</strong></span>
+        </div>
+      </section>
+
       <section id="marketPulseTradeReadCard" class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-decision tradeRead-conditional" aria-label="Execution decision box">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Trade Decision</span>
@@ -624,7 +777,7 @@
   </div>
 </section>
 
-<section class="card stack12 marketPulseSection marketPulseTriggerValidationShell">
+<section class="card stack12 marketPulseSection marketPulseTriggerValidationShell" id="marketPulseEntryChecklist">
   <div class="toolbar">
     <div class="pillRow marketPulseTriggerTopline">
       <span class="pill">Entry Checklist</span>
@@ -700,103 +853,134 @@
   aria-label="Dynamic gamma ladder"
 >
   <div class="toolbar gamma-ladder-toolbar">
-    <div class="gamma-ladder-topline">
-      <div class="gamma-ladder-kicker">
-        <div class="pill">Gamma Ladder</div>
-        <span class="tiny muted gamma-ladder-header__sub">Live dealer positioning by symbol.</span>
-      </div>
-      <div class="gamma-ladder-controls">
-        <div class="gamma-symbol-switcher" role="tablist" aria-label="Gamma ladder symbol switcher">
-          {% for gamma_symbol in gamma_ladder_supported_symbols %}
-            <button
-              class="gamma-symbol-pill{% if gamma_symbol == ticker %} active{% endif %}"
-              type="button"
-              role="tab"
-              aria-selected="{{ 'true' if gamma_symbol == ticker else 'false' }}"
-              data-gamma-symbol-pill="{{ gamma_symbol }}"
-            >{{ gamma_symbol }}</button>
-          {% endfor %}
-            <button
-              class="gamma-symbol-searchToggle"
-              type="button"
-              aria-label="Search ticker"
-              aria-expanded="false"
-              data-gamma-symbol-search-toggle
-            >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="6"></circle>
-              <path d="m16 16 4 4"></path>
-            </svg>
-          </button>
-        </div>
-        <div class="gamma-symbol-searchPopover" data-gamma-symbol-search-popover hidden>
-          <form class="gamma-symbol-search" data-gamma-symbol-search aria-label="Search Gamma ladder symbol">
-            <input
-              class="gamma-symbol-search__input"
-              type="search"
-              name="symbol"
-              value="{{ ticker }}"
-              placeholder="NVDA"
-              maxlength="12"
-              autocomplete="off"
-              spellcheck="false"
-              data-gamma-symbol-input
-            />
-            <div class="gamma-symbol-search__quick" aria-label="Quick symbols">
-              {% for gamma_symbol in gamma_ladder_supported_symbols %}
-                <button class="gamma-symbol-search__quickButton" type="button" data-gamma-symbol-quick="{{ gamma_symbol }}">{{ gamma_symbol }}</button>
-              {% endfor %}
-            </div>
-            <button class="gamma-symbol-search__button" type="submit">Search</button>
-            <div class="gamma-symbol-search__message" data-symbol-search-message hidden></div>
-          </form>
-        </div>
-        <div class="gamma-window-switcher" role="tablist" aria-label="Gamma ladder strike window">
-          {% for gamma_window in gamma_ladder_window_presets %}
-            <button
-              class="gamma-window-pill{% if gamma_window == 'standard' %} active{% endif %}"
-              type="button"
-              role="tab"
-              aria-selected="{{ 'true' if gamma_window == 'standard' else 'false' }}"
-              data-gamma-window-pill="{{ gamma_window }}"
-            >{{ gamma_window|title }}</button>
-          {% endfor %}
-        </div>
-        <div class="gamma-dte-control">
-          <div
-            class="gamma-dte-switcher"
-            role="tablist"
-            aria-label="Gamma ladder days to expiration"
-            data-tooltip='{"title":"DTE","body":"DTE means Days To Expiration. Lower DTE usually has stronger intraday impact."}'
-          >
-            {% for gamma_dte in ["0", "1", "3", "7", "all"] %}
-              <button
-                class="gamma-dte-pill{% if gamma_dte == '0' %} active{% endif %}"
-                type="button"
-                role="tab"
-                aria-selected="{{ 'true' if gamma_dte == '0' else 'false' }}"
-                data-gamma-dte-pill="{{ gamma_dte }}"
-              >{{ "All" if gamma_dte == "all" else gamma_dte ~ "DTE" }}</button>
-            {% endfor %}
+    <div class="gamma-ladder-status" id="gammaLadderStatus" data-gamma-status>
+      <div class="gamma-ladder-commandBar" data-gamma-command-bar>
+        <div class="gamma-ladder-commandBar__identity">
+          <div class="gamma-ladder-kicker">
+            <div class="pill">Gamma Ladder</div>
+            <span class="tiny muted gamma-ladder-header__sub">Live dealer positioning by symbol.</span>
           </div>
-          <div class="gamma-dte-limited">Only 3DTE data available</div>
+          <div class="gamma-ladder-meta__headline">
+            <strong data-gamma-symbol>{{ ticker }}</strong>
+            <span data-gamma-spot>Loading spot…</span>
+          </div>
         </div>
-      </div>
-    </div>
-    <div class="gamma-ladder-meta" data-gamma-header>
-      <div class="gamma-ladder-meta__headline">
-        <strong data-gamma-symbol>{{ ticker }}</strong>
-        <span data-gamma-spot>Loading spot…</span>
-      </div>
-      <div class="gamma-ladder-meta__stats">
-        <span class="gamma-ladder-regime gamma-ladder-regime--mixed_gamma" data-gamma-regime>Loading regime</span>
-        <span class="gamma-ladder-meta__stat" data-gamma-expiration>Awaiting expiration</span>
-        <span class="gamma-ladder-meta__stat gamma-ladder-updateStat">
-          <span data-gamma-updated>· Updated —</span>
+        <div class="gamma-ladder-commandBar__actions">
+          <div class="gamma-ladder-controls">
+            <div class="gamma-symbol-switcher" role="tablist" aria-label="Gamma ladder symbol switcher">
+              {% for gamma_symbol in gamma_ladder_supported_symbols %}
+                <button
+                  class="gamma-symbol-pill{% if gamma_symbol == ticker %} active{% endif %}"
+                  type="button"
+                  role="tab"
+                  aria-selected="{{ 'true' if gamma_symbol == ticker else 'false' }}"
+                  data-gamma-symbol-pill="{{ gamma_symbol }}"
+                >{{ gamma_symbol }}</button>
+              {% endfor %}
+              <button
+                class="gamma-symbol-searchToggle"
+                type="button"
+                aria-label="Search ticker"
+                aria-expanded="false"
+                data-gamma-symbol-search-toggle
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <path d="m16 16 4 4"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="gamma-symbol-searchPopover" data-gamma-symbol-search-popover hidden>
+              <form class="gamma-symbol-search" data-gamma-symbol-search aria-label="Search Gamma ladder symbol">
+                <input
+                  class="gamma-symbol-search__input"
+                  type="search"
+                  name="symbol"
+                  value="{{ ticker }}"
+                  placeholder="NVDA"
+                  maxlength="12"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-gamma-symbol-input
+                />
+                <div class="gamma-symbol-search__quick" aria-label="Quick symbols">
+                  {% for gamma_symbol in gamma_ladder_supported_symbols %}
+                    <button class="gamma-symbol-search__quickButton" type="button" data-gamma-symbol-quick="{{ gamma_symbol }}">{{ gamma_symbol }}</button>
+                  {% endfor %}
+                </div>
+                <button class="gamma-symbol-search__button" type="submit">Search</button>
+                <div class="gamma-symbol-search__message" data-symbol-search-message hidden></div>
+              </form>
+            </div>
+          </div>
+          <div class="gamma-ladder-settingsControl">
+            <button
+              class="gamma-ladder-settingsToggle"
+              id="gammaLadderSettingsToggle"
+              type="button"
+              aria-label="Configure Gamma ladder window and days to expiration"
+              aria-expanded="false"
+              aria-controls="gammaLadderSettingsPopover"
+              data-gamma-settings-toggle
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle>
+                <path d="M4 17h2"></path><path d="M10 17h10"></path><circle cx="8" cy="17" r="2"></circle>
+              </svg>
+              <span data-gamma-settings-label>Standard · 0DTE</span>
+              <span class="gamma-ladder-settingsToggle__chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div
+              class="gamma-ladder-settingsPopover"
+              id="gammaLadderSettingsPopover"
+              role="dialog"
+              aria-label="Gamma ladder display settings"
+              data-gamma-settings-popover
+              hidden
+            >
+              <div class="gamma-ladder-settingsGroup">
+                <span class="gamma-ladder-settingsGroup__label">Strike window</span>
+                <div class="gamma-window-switcher" role="tablist" aria-label="Gamma ladder strike window">
+                  {% for gamma_window in gamma_ladder_window_presets %}
+                    <button
+                      class="gamma-window-pill{% if gamma_window == 'standard' %} active{% endif %}"
+                      type="button"
+                      role="tab"
+                      aria-selected="{{ 'true' if gamma_window == 'standard' else 'false' }}"
+                      data-gamma-window-pill="{{ gamma_window }}"
+                    >{{ gamma_window|title }}</button>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="gamma-ladder-settingsGroup">
+                <span class="gamma-ladder-settingsGroup__label">Days to expiration</span>
+                <div class="gamma-dte-control">
+                  <div
+                    class="gamma-dte-switcher"
+                    role="tablist"
+                    aria-label="Gamma ladder days to expiration"
+                    data-tooltip='{"title":"DTE","body":"DTE means Days To Expiration. Lower DTE usually has stronger intraday impact."}'
+                  >
+                    {% for gamma_dte in ["0", "1", "3", "7", "all"] %}
+                      <button
+                        class="gamma-dte-pill{% if gamma_dte == '0' %} active{% endif %}"
+                        type="button"
+                        role="tab"
+                        aria-selected="{{ 'true' if gamma_dte == '0' else 'false' }}"
+                        data-gamma-dte-pill="{{ gamma_dte }}"
+                      >{{ "All" if gamma_dte == "all" else gamma_dte ~ "DTE" }}</button>
+                    {% endfor %}
+                  </div>
+                  <div class="gamma-dte-limited">Only 3DTE data available</div>
+                </div>
+              </div>
+            </div>
+          </div>
           <button
-            class="gamma-ladder-refreshButton"
+            class="gamma-ladder-refreshButton gamma-ladder-refreshButton--command"
             type="button"
             aria-label="Refresh gamma ladder"
+            title="Refresh Gamma ladder"
             data-gamma-refresh
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -807,22 +991,65 @@
             </svg>
             <span class="gamma-ladder-refreshSpinner" aria-hidden="true"></span>
           </button>
-        </span>
+        </div>
+        <div class="gamma-ladder-meta gamma-ladder-commandBar__context" data-gamma-header>
+          <div class="gamma-ladder-meta__stats">
+            <span class="gamma-ladder-regime gamma-ladder-regime--mixed_gamma" data-gamma-regime>Loading regime</span>
+            <span class="gamma-ladder-meta__stat" data-gamma-expiration>Awaiting expiration</span>
+            <span class="gamma-ladder-meta__stat" data-gamma-updated>· Updated —</span>
+          </div>
+          <div class="gamma-ladder-summary tiny muted" data-gamma-summary>Loading focused window…</div>
+        </div>
       </div>
     </div>
-    <div class="gamma-ladder-summary tiny muted" data-gamma-summary>Loading focused window…</div>
+    <div class="gamma-ladder-keyLevels" id="gammaLadderKeyLevels" data-gamma-key-levels aria-live="polite">
+      <div class="gamma-ladder-keyLevel is-spot">
+        <span>Spot</span>
+        <strong data-gamma-key-spot>—</strong>
+        <small data-gamma-key-spot-note>Awaiting market</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-regime">
+        <span>Gamma Regime</span>
+        <strong data-gamma-key-regime>Unavailable</strong>
+        <small>Dealer response environment</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-freshness">
+        <span>Freshness</span>
+        <strong data-gamma-key-freshness>Unavailable</strong>
+        <small data-gamma-key-freshness-note>Awaiting accepted snapshot</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-strongest">
+        <span>Dominant Node</span>
+        <strong data-gamma-key-strongest>Unavailable</strong>
+        <small data-gamma-key-strongest-note>Strongest displayed GEX</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-flip">
+        <span>Gamma Flip</span>
+        <strong data-gamma-key-flip>Unavailable</strong>
+        <small>Regime transition strike</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-support">
+        <span>Nearest Support</span>
+        <strong data-gamma-key-support>Unavailable</strong>
+        <small data-gamma-key-support-note>Below spot</small>
+      </div>
+      <div class="gamma-ladder-keyLevel is-resistance">
+        <span>Nearest Resistance</span>
+        <strong data-gamma-key-resistance>Unavailable</strong>
+        <small data-gamma-key-resistance-note>Above spot</small>
+      </div>
+    </div>
     <div class="gamma-decision-panels" data-gamma-decision-panels hidden>
       <div class="gamma-structure-card" data-gamma-structure-summary></div>
       <div class="gamma-top-levels" data-gamma-top-levels></div>
     </div>
-    <div class="gamma-ladder-stage">
+    <div class="gamma-ladder-stage" id="gammaLadderDepthBoard">
       <div class="gamma-ladder-shimmer" data-gamma-loading aria-hidden="true">
         {% for _ in range(5) %}
           <div class="gamma-ladder-shimmer__row">
             <span class="gamma-ladder-shimmer__label"></span>
             <span class="gamma-ladder-shimmer__bar"></span>
             <span class="gamma-ladder-shimmer__value"></span>
-            <span class="gamma-ladder-shimmer__signal"></span>
           </div>
         {% endfor %}
       </div>
@@ -831,16 +1058,35 @@
         <div class="gamma-ladder-boardShell">
           <div class="gamma-ladder-board__legend">
             <span>Strike</span>
-            <span>Net Gamma Lane</span>
+            <span class="gamma-ladder-board__depthHeading">
+              <strong>Dealer positioning depth</strong>
+              <small><b>PUT / NEG</b><i>ZERO AXIS</i><b>CALL / POS</b></small>
+            </span>
             <span>Net GEX</span>
-            <span>Signal</span>
           </div>
           <div class="gamma-ladder-rows" data-gamma-rows></div>
         </div>
       </div>
       <div class="gamma-ladder-tooltip" data-gamma-tooltip hidden></div>
     </div>
-    <div class="gamma-ladder-legend" aria-label="Gamma ladder legend">
+    <div class="gamma-ladder-selectedInspector" id="gammaLadderSelectedInspector" data-gamma-selected-inspector aria-live="polite">
+      <div class="gamma-ladder-selectedInspector__lead">
+        <span>Selected Level</span>
+        <strong data-gamma-selected-strike>No strike selected</strong>
+      </div>
+      <div class="gamma-ladder-selectedInspector__metrics">
+        <span><small>Role</small><strong data-gamma-selected-role>Choose a row</strong></span>
+        <span><small>Distance</small><strong data-gamma-selected-distance>—</strong></span>
+        <span><small>Net Gamma</small><strong data-gamma-selected-net>—</strong></span>
+        <span><small>State</small><strong data-gamma-selected-state>Inspection ready</strong></span>
+      </div>
+    </div>
+    <details class="gamma-ladder-guide" id="gammaLadderGuide">
+      <summary class="gamma-ladder-guide__summary">
+        <span>How to read this depth map</span>
+        <small>Color, shape, and role labels explained</small>
+      </summary>
+      <div class="gamma-ladder-legend" aria-label="Gamma ladder legend">
       <button class="gamma-ladder-legend__item is-strong-positive" type="button" data-gamma-legend data-tooltip='{"title":"Strong Positive Gamma","body":"Volatility suppression. Dealer positioning often pins price and dampens expansion."}'>
         <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
         <span class="gamma-ladder-legend__copy">
@@ -890,13 +1136,22 @@
           <span>Dominant dealer node</span>
         </span>
       </button>
-    </div>
+      </div>
+    </details>
   </div>
 </section>
 
 {% set spx_priority_change = quote.get('change_pct') if quote else none %}
 {% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
-<section class="marketPulseExecutionContextGrid marketPulseSection">
+<details class="marketPulseSupportFold marketPulseSection" id="marketPulseStructureContextFold">
+  <summary class="marketPulseSupportFoldSummary">
+    <span>
+      <strong>Structure Context</strong>
+      <small>Supporting regime, location, volatility, and distance analysis</small>
+    </span>
+    <span aria-hidden="true">Open analysis</span>
+  </summary>
+<section class="marketPulseExecutionContextGrid">
   {% set structure_values = [spot_num, main_flip_num, local_flip_num, call_wall_num, put_wall_num]|select('number')|list %}
   {% set structure_lo = (structure_values|min) if structure_values else 0 %}
   {% set structure_hi = (structure_values|max) if structure_values else 1 %}
@@ -988,6 +1243,7 @@
     </div>
   </section>
 </section>
+</details>
 
 {% set watch_ns = namespace(leaders=[], laggard='—', laggard_move=None) %}
 {% for q in core_quotes %}
@@ -1001,7 +1257,15 @@
   {% endif %}
 {% endfor %}
 
-<section class="card stack12 marketPulseSection marketPulseTapeShell">
+<details class="marketPulseSupportFold marketPulseSection" id="marketPulseCoreTapeFold">
+  <summary class="marketPulseSupportFoldSummary">
+    <span>
+      <strong>Core Tape</strong>
+      <small>Breadth, leadership, selected-timeframe candles, and source freshness</small>
+    </span>
+    <span aria-hidden="true">Open tape</span>
+  </summary>
+<section class="card stack12 marketPulseTapeShell" id="marketPulseCoreTape">
   <div class="toolbar">
     <div class="pillRow marketPulseTapeTopline">
       <span class="pill">Core Tape</span>
@@ -1128,8 +1392,9 @@
     </div>
   </div>
 </section>
+</details>
 
-<details class="marketPulseFold marketPulseSection" id="marketPulseFeedFold" open>
+<details class="marketPulseFold marketPulseSection" id="marketPulseFeedFold">
   <summary class="marketPulseFoldSummary">
     <span class="pill">Market Feed</span>
     <span class="tiny muted">Real-time market commentary from curated sources.</span>
@@ -1505,7 +1770,9 @@
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}?v={{ market_now_iso|urlencode }}"></script>
 <script src="{{ url_for('static', filename='js/symbol_search_control.js') }}?v={{ static_v }}&rev=symbol-search-20260619a"></script>
+<script src="{{ url_for('static', filename='js/gamma_ladder_presentation.js') }}?v={{ static_v }}&rev=gamma-depth-map-20260714a"></script>
 <script src="{{ url_for('static', filename='js/gamma_ladder.js') }}?v={{ static_v }}&rev=gamma-ladder-20260521a"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_gamma_workflow.js') }}?v={{ static_v }}&rev=gamma-chart-workflow-20260714b"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
@@ -2267,7 +2534,8 @@
 
   const initialItems = currentFeedItems;
   renderFeedLayout(initialItems);
-  updateUnreadBadge(initialItems);
+  syncNotifications(initialItems);
+  storeNotificationOverrides(initialItems);
   document.addEventListener("click", (event) => {
     const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
     if (refreshTrigger) {

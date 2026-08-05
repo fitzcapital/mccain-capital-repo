@@ -168,7 +168,7 @@
           <div><label><input type="checkbox" name="account_scope_enabled" value="1" {% if account_scope and account_scope.enabled %}checked{% endif %}/> Use active account scope</label></div>
           <div>
             <label>Scope Start Date</label>
-            <input type="date" name="account_scope_start" value="{{ account_scope.start_date if account_scope else '' }}" />
+            <input type="date" name="account_scope_start" value="{{ account_scope.start_date if account_scope else '' }}" aria-label="Scope start date" />
           </div>
           <div>
             <label>Scope Start Balance</label>

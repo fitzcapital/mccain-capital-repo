@@ -114,11 +114,11 @@
         </div>
         <div class="fieldGrow1">
           <label>Start Date</label>
-          <input class="tradeDateFilterInput" type="date" name="start_date" value="{{ start_date or '' }}" />
+          <input class="tradeDateFilterInput" type="date" name="start_date" value="{{ start_date or '' }}" aria-label="Start date" />
         </div>
         <div class="fieldGrow1">
           <label>End Date</label>
-          <input class="tradeDateFilterInput" type="date" name="end_date" value="{{ end_date or '' }}" />
+          <input class="tradeDateFilterInput" type="date" name="end_date" value="{{ end_date or '' }}" aria-label="End date" />
         </div>
         <div class="fieldGrow1">
           <label>Preset</label>
@@ -618,6 +618,7 @@
                 type="date"
                 name="scope_start_date"
                 value="{{ account_scope.start_date or '' }}"
+                aria-label="Scope start date"
               />
             </div>
             <div class="fieldGrow1">

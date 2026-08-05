@@ -22,13 +22,11 @@
         <button class="btn executiveMonthArrow" type="button" data-exec-month-prev aria-label="Previous month">‹</button>
         <div class="executiveMonthRail" data-exec-month-selector tabindex="0" aria-label="Operating month timeline"></div>
         <button class="btn executiveMonthArrow" type="button" data-exec-month-next aria-label="Next month">›</button>
-        <button class="btn executiveYearToggle" type="button" data-exec-year-toggle>Year View</button>
       </div>
     </div>
 
     <div class="executiveMonthHeader" data-exec-month-header></div>
-    <div class="executiveProjectionCards" data-exec-projection-summary></div>
-    <div class="executiveActionCard" data-exec-action-card></div>
+    <div class="executiveCapitalFlow" data-exec-capital-flow aria-label="Daily capital flow"></div>
 
     <div class="executiveOsTabs" role="tablist" aria-label="CEO Command Center month tabs">
       <button class="btn primary" type="button" data-exec-tab="overview">Overview</button>
@@ -40,15 +38,7 @@
     </div>
   </section>
 
-  <section class="executiveYearView card executiveGridYear" data-exec-year-view hidden>
-    <div class="executiveSectionHead">
-      {{ app_pill('plan', 'Year View') }}
-      <h3>12-month operating runway</h3>
-    </div>
-    <div class="executiveYearGrid" data-exec-year-grid></div>
-  </section>
-
-  <section class="executiveKpiBand executiveGridKpis" data-exec-kpi-band aria-label="Executive KPI band"></section>
+  <section class="executiveKpiBand executiveGridKpis" data-exec-kpi-band aria-label="Executive decision band"></section>
 
   <details class="card executivePanel executiveFoldPanel executiveCurrentState executiveGridProjectionControls" data-executive-current-state>
     <summary class="executiveSectionHead executiveProjectionControlsSummary">
@@ -59,7 +49,16 @@
     <div class="executiveFoldBody">
       <div class="executiveSectionHead executiveProjectionControlsHead">
         <p class="executiveControlHint">Enter BOA balance. The system calculates the rest from the operating plan.</p>
-        <button class="btn primary" type="button" data-exec-recalculate>Recalculate Projection</button>
+        <div class="executiveRecalculateAction">
+          <button class="btn primary" type="button" data-exec-recalculate>Recalculate Projection</button>
+          <span
+            class="executiveRecalculateStatus"
+            data-exec-recalculate-status
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          ></span>
+        </div>
       </div>
       <div class="executiveInputGrid executiveInputGridPrimary">
         <label><span>BOA Current Balance</span><input type="number" step="0.01" data-exec-input="openingBOA"></label>
@@ -90,7 +89,7 @@
             <label><span>Account</span><select data-exec-adjustment="account"><option>BOA</option><option>Current</option><option>Trading</option></select></label>
             <label><span>Type</span><select data-exec-adjustment="type"><option>Deposit</option><option>Bill</option><option>Transfer</option><option>Payout</option><option>Eval</option></select></label>
             <label><span>Amount</span><input type="number" step="0.01" data-exec-adjustment="amount"></label>
-            <label><span>Timing</span><input type="text" data-exec-adjustment="timing" placeholder="Paycheck 1"></label>
+            <label><span>Day</span><input type="number" min="1" max="31" data-exec-adjustment="dueDay" placeholder="15"></label>
             <button class="btn" type="button" data-exec-add-adjustment>Add Adjustment</button>
           </div>
           <div class="executiveAdjustmentList" data-exec-adjustment-list></div>
@@ -114,16 +113,6 @@
       <div class="executiveBillDrawer" data-exec-bill-details hidden></div>
     </div>
   </details>
-
-  <section class="card executivePanel executiveVisualGraphs executiveGridAnalytics">
-    <div class="executiveSectionHead">
-      {{ app_pill('analytics', 'Analytics Workspace') }}
-      <h3>Protection, cash flow, allocation, and risk</h3>
-    </div>
-    <div class="executiveMiniTrendGrid" data-exec-mini-trends></div>
-    <div class="executiveInsights" data-exec-insights></div>
-    <div class="executiveChartGrid" data-exec-chart-grid></div>
-  </section>
 
   <aside class="executiveSidePanel card executiveGridSide" data-exec-side-panel aria-label="CEO side panel"></aside>
 
@@ -209,7 +198,7 @@
         <section class="card executivePanel executiveTreasuryPanel">
           <div class="executiveSectionHead">
             {{ app_pill('payout', 'Treasury Workspace') }}
-            <h3>Charts only: floor, reserve, gap, cash flow</h3>
+            <h3>Capital path, obligations, floor progress, and baseline</h3>
           </div>
           <div class="executiveTreasuryChartGrid" data-exec-treasury-charts></div>
         </section>
@@ -227,9 +216,9 @@
 
       <section class="executiveTabPanel" data-exec-panel="roadmap">
         <section class="card executivePanel executiveProjectionTimeline">
-          <div class="executiveSectionHead">
+          <div class="executiveSectionHead executiveBaselineHead">
             {{ app_pill('plan', 'Roadmap') }}
-            <h3>Timeline only</h3>
+            <h3>12-month planning baseline</h3>
           </div>
           <div class="executiveProjectionTimelineGrid" data-exec-projection-timeline></div>
         </section>
@@ -250,11 +239,9 @@
     Budget Details
     Trading Rules
     CEO Weekly Scorecard
-    Net Worth Tracker
     BOA Treasury Growth
     Company Metrics
     2026 Annual Targets
-    Capital Allocation
     12-Month Roadmap
     McCain Capital Timeline
     Consumer cards are locked and being paid down only.

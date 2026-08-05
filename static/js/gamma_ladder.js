@@ -2,6 +2,8 @@
   const root = document.querySelector("[data-gamma-ladder]");
   if (!root) return;
 
+  const presentation = window.GammaLadderPresentation || null;
+
   const defaultSymbol = String(root.dataset.defaultSymbol || "SPX").toUpperCase();
   const defaultWindowPreset = String(root.dataset.defaultWindow || "standard").toLowerCase();
   const defaultDtePreset = String(root.dataset.defaultDte || "0").toLowerCase();
@@ -20,6 +22,10 @@
   const searchQuickButtons = Array.from(root.querySelectorAll("[data-gamma-symbol-quick]"));
   const windowPills = Array.from(root.querySelectorAll("[data-gamma-window-pill]"));
   const dtePills = Array.from(root.querySelectorAll("[data-gamma-dte-pill]"));
+  const settingsControl = root.querySelector(".gamma-ladder-settingsControl");
+  const settingsToggle = root.querySelector("[data-gamma-settings-toggle]");
+  const settingsPopover = root.querySelector("[data-gamma-settings-popover]");
+  const settingsLabel = root.querySelector("[data-gamma-settings-label]");
   const decisionPanels = root.querySelector("[data-gamma-decision-panels]");
   const structureSummary = root.querySelector("[data-gamma-structure-summary]");
   const topLevelsHost = root.querySelector("[data-gamma-top-levels]");
@@ -36,6 +42,31 @@
   const refreshButton = root.querySelector("[data-gamma-refresh]");
   const summaryNode = root.querySelector("[data-gamma-summary]");
   const legendItems = Array.from(root.querySelectorAll("[data-gamma-legend]"));
+  const keyLevelNodes = {
+    spot: root.querySelector("[data-gamma-key-spot]"),
+    spotNote: root.querySelector("[data-gamma-key-spot-note]"),
+    regime: root.querySelector("[data-gamma-key-regime]"),
+    freshness: root.querySelector("[data-gamma-key-freshness]"),
+    freshnessNote: root.querySelector("[data-gamma-key-freshness-note]"),
+    strongest: root.querySelector("[data-gamma-key-strongest]"),
+    strongestNote: root.querySelector("[data-gamma-key-strongest-note]"),
+    flip: root.querySelector("[data-gamma-key-flip]"),
+    support: root.querySelector("[data-gamma-key-support]"),
+    supportNote: root.querySelector("[data-gamma-key-support-note]"),
+    resistance: root.querySelector("[data-gamma-key-resistance]"),
+    resistanceNote: root.querySelector("[data-gamma-key-resistance-note]"),
+  };
+  const selectedInspector = root.querySelector("[data-gamma-selected-inspector]");
+  const selectedNodes = {
+    strike: root.querySelector("[data-gamma-selected-strike]"),
+    role: root.querySelector("[data-gamma-selected-role]"),
+    distance: root.querySelector("[data-gamma-selected-distance]"),
+    net: root.querySelector("[data-gamma-selected-net]"),
+    state: root.querySelector("[data-gamma-selected-state]"),
+  };
+  const reducedMotionQuery = window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)")
+    : { matches: false };
 
   let currentSymbol = defaultSymbol;
   let currentWindowPreset = defaultWindowPreset;
@@ -50,6 +81,9 @@
   let symbolSearchControl = null;
   let activeTooltipAnchor = null;
   let activeDetailRow = null;
+  let activeSelectedStrike = "";
+  let lastPresentationSnapshot = null;
+  let lastAcceptedTimestamp = 0;
 
   const symbolThemeClass = (symbol) => `gamma-theme-${String(symbol || "").toLowerCase()}`;
   const titleCase = (value) => {
@@ -323,30 +357,6 @@
     const points = Math.abs(Number(distance) || 0);
     return `${formatNumber(points, String(symbol || "").toUpperCase() === "SPX" ? 1 : 2)} points away`;
   };
-  const gammaSignal = ({ row, gammaState, strengthRatio, zoneMeta }) => {
-    if (row.is_strongest) {
-      return { label: "MAGNET", type: "strongest" };
-    }
-    if (row.is_spot_nearest) {
-      return { label: "CURRENT", type: "spot" };
-    }
-    if (row.is_flip) {
-      return { label: "FLIP", type: "flip" };
-    }
-    if (zoneMeta?.type === "compression") {
-      return { label: "COMPRESSION", type: "compression" };
-    }
-    if (zoneMeta?.type === "expansion") {
-      return { label: "EXPANSION", type: "expansion" };
-    }
-    if (strengthRatio < 0.24 || gammaState === "neutral") {
-      return { label: "LIGHT", type: "light" };
-    }
-    if (gammaState.includes("positive")) {
-      return { label: "COMPRESSION", type: "compression" };
-    }
-    return { label: "EXPANSION", type: "expansion" };
-  };
   const formatDistance = (distance, symbol) => {
     const digits = String(symbol || "").toUpperCase() === "SPX" ? 1 : 2;
     const numeric = Number(distance) || 0;
@@ -357,11 +367,128 @@
     const value = String(dtePreset || "3").toLowerCase();
     return value === "all" ? "All" : `${value}DTE`;
   };
+  const windowDisplayLabel = (windowPreset) => {
+    const value = String(windowPreset || "standard").toLowerCase();
+    return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : "Standard";
+  };
+  const updateSettingsLabel = () => {
+    if (!settingsLabel) return;
+    settingsLabel.textContent = `${windowDisplayLabel(currentWindowPreset)} · ${dteDisplayLabel(currentDtePreset)}`;
+  };
+  const setSettingsPopoverOpen = (isOpen, { restoreFocus = false } = {}) => {
+    if (!settingsToggle || !settingsPopover) return;
+    const open = Boolean(isOpen);
+    settingsPopover.hidden = !open;
+    settingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    settingsControl?.classList.toggle("is-open", open);
+    if (!open && restoreFocus) settingsToggle.focus();
+  };
   const regimeShortLabel = (payload) => {
     const regime = String(payload.regime || "");
     if (regime.includes("positive")) return "Positive";
     if (regime.includes("negative")) return "Negative";
     return "Neutral";
+  };
+  const presentationContext = (payload, symbol = currentSymbol) => ({
+    symbol: String(payload?.symbol || symbol || currentSymbol).toUpperCase(),
+    dte: String(currentDtePreset),
+    expiration: String(payload?.expiration || payload?.expiration_label || ""),
+    window: String(payload?.window_preset || currentWindowPreset).toLowerCase(),
+  });
+  const setNodeText = (node, value) => {
+    if (node) node.textContent = String(value ?? "");
+  };
+  const resetKeyLevelSummary = () => {
+    setNodeText(keyLevelNodes.spot, "—");
+    setNodeText(keyLevelNodes.spotNote, "Awaiting market");
+    setNodeText(keyLevelNodes.regime, "Unavailable");
+    setNodeText(keyLevelNodes.freshness, "Unavailable");
+    setNodeText(keyLevelNodes.freshnessNote, "Awaiting accepted snapshot");
+    setNodeText(keyLevelNodes.strongest, "Unavailable");
+    setNodeText(keyLevelNodes.strongestNote, "Strongest displayed GEX");
+    setNodeText(keyLevelNodes.flip, "Unavailable");
+    setNodeText(keyLevelNodes.support, "Unavailable");
+    setNodeText(keyLevelNodes.supportNote, "Below spot");
+    setNodeText(keyLevelNodes.resistance, "Unavailable");
+    setNodeText(keyLevelNodes.resistanceNote, "Above spot");
+  };
+  const updateKeyLevelSummary = (payload, decisionModel) => {
+    const symbol = String(payload.symbol || currentSymbol).toUpperCase();
+    const digits = symbol === "SPX" ? 1 : 2;
+    const updatedAt = Date.parse(String(payload.updated_at || ""));
+    const isStale = payload.is_stale === true || (
+      Number.isFinite(updatedAt) && Date.now() - updatedAt > 5 * 60 * 1000
+    );
+    const flip = (decisionModel.rows || []).find((row) => row.is_flip) || null;
+    const levelValue = (row) => row ? formatNumber(row.strike, digits) : "Unavailable";
+    const levelDistance = (row, fallback) => row
+      ? `${formatDistance(row.distance, symbol)} pts from spot`
+      : fallback;
+    setNodeText(keyLevelNodes.spot, formatNumber(payload.spot, 2));
+    setNodeText(keyLevelNodes.spotNote, payload.updated_label || "Accepted Gamma snapshot");
+    setNodeText(keyLevelNodes.regime, payload.regime_label || `${regimeShortLabel(payload)} Gamma`);
+    setNodeText(keyLevelNodes.freshness, isStale ? "Stale" : "Current");
+    setNodeText(
+      keyLevelNodes.freshnessNote,
+      payload.updated_label || payload.updated_at || "Accepted Gamma snapshot",
+    );
+    setNodeText(keyLevelNodes.strongest, levelValue(decisionModel.magnet));
+    setNodeText(
+      keyLevelNodes.strongestNote,
+      decisionModel.magnet ? formatCompact(decisionModel.magnet.net_gex) : "Strongest displayed GEX",
+    );
+    setNodeText(keyLevelNodes.flip, levelValue(flip));
+    setNodeText(keyLevelNodes.support, levelValue(decisionModel.support));
+    setNodeText(keyLevelNodes.supportNote, levelDistance(decisionModel.support, "Below spot"));
+    setNodeText(keyLevelNodes.resistance, levelValue(decisionModel.resistance));
+    setNodeText(keyLevelNodes.resistanceNote, levelDistance(decisionModel.resistance, "Above spot"));
+  };
+  const dispatchSelectionCleared = () => {
+    document.dispatchEvent(new CustomEvent("market-pulse:gamma-level-selected", {
+      detail: {
+        key: "",
+        price: null,
+        classification: "unavailable",
+        symbol: String(currentSymbol).toUpperCase(),
+        valid: false,
+        mode: "cleared",
+        timestamp: Date.now(),
+      },
+    }));
+  };
+  const clearSelectedInspector = ({ notifyChart = false } = {}) => {
+    activeSelectedStrike = "";
+    root.querySelectorAll("[data-gamma-row].is-selected").forEach((row) => {
+      row.classList.remove("is-selected");
+      row.setAttribute("aria-pressed", "false");
+    });
+    if (selectedInspector) selectedInspector.classList.remove("has-selection");
+    setNodeText(selectedNodes.strike, "No strike selected");
+    setNodeText(selectedNodes.role, "Choose a row");
+    setNodeText(selectedNodes.distance, "—");
+    setNodeText(selectedNodes.net, "—");
+    setNodeText(selectedNodes.state, "Inspection ready");
+    if (notifyChart) dispatchSelectionCleared();
+  };
+  const updateSelectedInspector = (row) => {
+    if (!row) return;
+    activeSelectedStrike = String(row.dataset.gammaRowStrike || row.dataset.gammaLevelPrice || "");
+    root.querySelectorAll("[data-gamma-row]").forEach((candidate) => {
+      const selected = candidate === row;
+      candidate.classList.toggle("is-selected", selected);
+      candidate.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+    if (selectedInspector) selectedInspector.classList.add("has-selection");
+    setNodeText(selectedNodes.strike, `Strike ${row.dataset.gammaRowStrikeLabel || activeSelectedStrike}`);
+    setNodeText(selectedNodes.role, row.dataset.gammaRowRole || "Gamma level");
+    setNodeText(selectedNodes.distance, row.dataset.gammaRowDistance || "—");
+    setNodeText(selectedNodes.net, row.dataset.gammaRowNet || "—");
+    setNodeText(selectedNodes.state, row.dataset.gammaRowState || "Monitoring");
+  };
+  const resetPresentationState = ({ notifyChart = true } = {}) => {
+    lastPresentationSnapshot = null;
+    lastAcceptedTimestamp = 0;
+    clearSelectedInspector({ notifyChart: notifyChart && Boolean(activeSelectedStrike) });
   };
   const statusLevelType = (level) => {
     if (!level) return "";
@@ -505,7 +632,9 @@
   };
 
   const setActiveSymbol = (symbol) => {
-    currentSymbol = sanitizeSymbol(symbol) || defaultSymbol;
+    const nextSymbol = sanitizeSymbol(symbol) || defaultSymbol;
+    if (nextSymbol !== currentSymbol) resetPresentationState();
+    currentSymbol = nextSymbol;
     if (searchInput) searchInput.value = currentSymbol;
     if (symbolSearchControl && symbolSearchControl.selectedSymbol !== currentSymbol) {
       symbolSearchControl.setSelected(currentSymbol);
@@ -519,23 +648,29 @@
   };
 
   const setActiveWindowPreset = (windowPreset) => {
-    currentWindowPreset = String(windowPreset || defaultWindowPreset).toLowerCase();
+    const nextWindowPreset = String(windowPreset || defaultWindowPreset).toLowerCase();
+    if (nextWindowPreset !== currentWindowPreset) resetPresentationState();
+    currentWindowPreset = nextWindowPreset;
     windowPills.forEach((pill) => {
       const pillWindow = String(pill.dataset.gammaWindowPill || "").toLowerCase();
       const isActive = pillWindow === currentWindowPreset;
       pill.classList.toggle("active", isActive);
       pill.setAttribute("aria-selected", isActive ? "true" : "false");
     });
+    updateSettingsLabel();
   };
 
   const setActiveDtePreset = (dtePreset) => {
-    currentDtePreset = String(dtePreset || defaultDtePreset).toLowerCase();
+    const nextDtePreset = String(dtePreset || defaultDtePreset).toLowerCase();
+    if (nextDtePreset !== currentDtePreset) resetPresentationState();
+    currentDtePreset = nextDtePreset;
     dtePills.forEach((pill) => {
       const pillDte = String(pill.dataset.gammaDtePill || "").toLowerCase();
       const isActive = pillDte === currentDtePreset;
       pill.classList.toggle("active", isActive);
       pill.setAttribute("aria-selected", isActive ? "true" : "false");
     });
+    updateSettingsLabel();
   };
 
   const applyAvailableDteOptions = (payload) => {
@@ -661,7 +796,7 @@
     `;
   };
 
-  const GammaRow = ({ row, payload, index, maxSide, meta }) => {
+  const GammaRow = ({ row, payload, index, maxSide, meta, motion = {} }) => {
     const strike = Number(row.strike);
     const spot = Number(payload.spot) || 0;
     const callGex = Number(row.call_gex) || 0;
@@ -721,11 +856,25 @@
     const statusLabel = meta.status || "Approaching";
     const importance = meta.importance || { label: "MINOR", key: "minor" };
     const detailId = `gamma-ladder-detail-${symbol}-${index}`;
-    const tags = `
-      <span class="gamma-ladder-tag gamma-ladder-tag--importance-${importance.key}" data-tooltip="${tooltipData(level.type, statusLabel)}">
-        <span>${escapeHtml(importance.label)}</span>
-      </span>
-    `;
+    const rowKey = String(strike);
+    const motionClass = [
+      motion.inserted?.includes(rowKey) ? "is-entering" : "",
+      motion.changed?.includes(rowKey) ? "is-value-changed" : "",
+      motion.crossed?.includes(rowKey) ? "is-spot-crossed" : "",
+      motion.strongestChanged && row.is_strongest ? "is-new-strongest" : "",
+    ].filter(Boolean).map((value) => ` ${value}`).join("");
+    const structuralBadge = row.is_strongest
+      ? { key: "magnet", label: "Magnet" }
+      : row.is_spot_nearest
+        ? { key: "current", label: "Current" }
+        : row.is_flip
+          ? { key: "flip", label: "Flip" }
+          : importance.key === "primary"
+            ? { key: "primary", label: "Primary" }
+            : null;
+    const structuralBadgeMarkup = structuralBadge
+      ? `<span class="gamma-ladder-row__structuralBadge is-${structuralBadge.key}" data-gamma-structural-badge="${structuralBadge.key}">${structuralBadge.label}</span>`
+      : "";
     const tooltipPayload = escapeHtml(
       JSON.stringify({
         strike: formatNumber(strike, strikeDigits),
@@ -743,17 +892,29 @@
       put: formatCompact(-putGex),
       net: formatCompact(netGex),
       role: levelLabel,
+      importance: importance.label,
       status: statusLabel,
       behavior: generateExpectedBehavior(level),
     };
     return `
-      <div class="gamma-ladder-rowWrap" data-gamma-row-wrap>
+      <div class="gamma-ladder-rowWrap${motionClass}" data-gamma-row-wrap data-gamma-strike="${strike}">
         <button
           class="gamma-ladder-row${flipClass}${strongestClass}${spotClass}${sideClass}${intensityClass}${stateClass}${zoneClass}${levelClass}"
           type="button"
           data-gamma-row
+          data-gamma-row-strike="${strike}"
+          data-gamma-row-strike-label="${escapeHtml(formatNumber(strike, strikeDigits))}"
+          data-gamma-row-role="${escapeHtml(levelLabel)}"
+          data-gamma-row-distance="${escapeHtml(`${distanceLabel} pts from spot`)}"
+          data-gamma-row-net="${escapeHtml(formatCompact(netGex))}"
+          data-gamma-row-state="${escapeHtml(statusLabel)}"
+          data-gamma-level-key="strike-${strike}"
+          data-gamma-level-price="${strike}"
+          data-gamma-level-classification="${gammaState}"
+          data-gamma-level-symbol="${String(payload.symbol || currentSymbol).toUpperCase()}"
           data-tooltip="${tooltipPayload}"
           aria-expanded="false"
+          aria-pressed="false"
           aria-controls="${detailId}"
           aria-label="Strike ${formatNumber(strike, strikeDigits)} net gamma ${formatCompact(netGex)} ${importance.label} ${levelLabel} ${statusLabel} strength ${strength.label}"
         >
@@ -761,8 +922,12 @@
             <span class="gamma-ladder-row__strike">${formatNumber(strike, strikeDigits)}</span>
             <span class="gamma-ladder-row__tone">${isAtSpot ? "At spot" : isAboveSpot ? "Above spot" : "Below spot"}</span>
             <span class="gamma-ladder-row__distance">${distanceLabel} ${isAtSpot ? "at spot" : isAboveSpot ? "above spot" : "below spot"}</span>
+            <span class="gamma-ladder-row__signalLine">
+              ${structuralBadgeMarkup}
+              <span class="gamma-ladder-row__roleText" data-gamma-role-text>${escapeHtml(levelLabel)}</span>
+            </span>
           </span>
-          <span class="gamma-ladder-row__viz">
+          <span class="gamma-ladder-row__viz" style="--gamma-net-x:${netX}%">
             <span class="gamma-ladder-row__laneLabel gamma-ladder-row__laneLabel--negative">NEG</span>
             <span class="gamma-ladder-row__laneLabel gamma-ladder-row__laneLabel--positive">POS</span>
             <svg viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
@@ -789,12 +954,15 @@
             </svg>
             ${row.is_flip ? '<span class="gamma-ladder-row__flipLine" aria-hidden="true"></span>' : ""}
             ${row.is_spot_nearest ? '<span class="gamma-ladder-row__spotMarker" aria-hidden="true"></span>' : ""}
+            ${row.is_spot_nearest ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--spot"><b>SPOT</b></span>' : ""}
+            ${row.is_flip ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--flip"><b>FLIP</b></span>' : ""}
+            ${row.is_strongest ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--dominant"><b>NODE</b></span>' : ""}
+            ${motion.crossed?.includes(rowKey) ? '<span class="gamma-ladder-row__crossing">Spot crossed</span>' : ""}
           </span>
           <span class="gamma-ladder-row__netWrap">
             <span class="gamma-ladder-row__net">${formatCompact(netGex)}</span>
             <span class="gamma-ladder-row__strength gamma-ladder-row__strength--${strength.key}">${strength.label}</span>
           </span>
-          <span class="gamma-ladder-row__micro">${tags}</span>
         </button>
         <div class="gamma-ladder-row-detail" id="${detailId}" data-gamma-row-detail hidden>
           <div class="gamma-ladder-row-detail__label">Details</div>
@@ -804,7 +972,7 @@
             <span><strong>Call GEX</strong><em>${escapeHtml(detailPayload.call)}</em></span>
             <span><strong>Put GEX</strong><em>${escapeHtml(detailPayload.put)}</em></span>
             <span><strong>Distance</strong><em>${escapeHtml(detailPayload.distance)} from spot</em></span>
-            <span><strong>Status</strong><em>${escapeHtml(detailPayload.role)} · ${escapeHtml(detailPayload.status)}</em></span>
+            <span><strong>Status</strong><em>${escapeHtml(detailPayload.importance)} · ${escapeHtml(detailPayload.role)} · ${escapeHtml(detailPayload.status)}</em></span>
           </div>
           <div class="gamma-ladder-row-detail__behavior">${escapeHtml(detailPayload.behavior)}</div>
         </div>
@@ -812,7 +980,145 @@
     `;
   };
 
-  const renderGammaLadderRows = (payload) => {
+  const measureRenderedRows = () => {
+    const measurements = new Map();
+    if (!rowsHost) return measurements;
+    rowsHost.querySelectorAll("[data-gamma-row-wrap][data-gamma-strike]").forEach((row) => {
+      measurements.set(String(row.dataset.gammaStrike), {
+        rect: row.getBoundingClientRect(),
+        node: row,
+      });
+    });
+    return measurements;
+  };
+
+  const removeMotionClass = (node, className, timeout = 620) => {
+    if (!node || !className) return;
+    const cleanup = () => node.classList.remove(className);
+    node.addEventListener("animationend", cleanup, { once: true });
+    window.setTimeout(cleanup, timeout);
+  };
+
+  const animateRemovedRows = (removedKeys, oldMeasurements) => {
+    if (!rowsHost || reducedMotionQuery.matches) return;
+    const hostRect = rowsHost.getBoundingClientRect();
+    removedKeys.forEach((key) => {
+      const measurement = oldMeasurements.get(key);
+      if (!measurement?.node) return;
+      const ghost = measurement.node.cloneNode(true);
+      ghost.className = "gamma-ladder-rowWrap is-removing-ghost";
+      ghost.setAttribute("aria-hidden", "true");
+      ghost.querySelectorAll("button, a, input").forEach((control) => control.setAttribute("tabindex", "-1"));
+      ghost.style.top = `${measurement.rect.top - hostRect.top + rowsHost.scrollTop}px`;
+      ghost.style.left = "0";
+      ghost.style.right = "4px";
+      rowsHost.appendChild(ghost);
+      const removeGhost = () => ghost.remove();
+      ghost.addEventListener("animationend", removeGhost, { once: true });
+      window.setTimeout(removeGhost, 420);
+    });
+  };
+
+  const rowIsVisible = (row) => {
+    if (!row || !rowsHost) return false;
+    const rowRect = row.getBoundingClientRect();
+    const hostRect = rowsHost.getBoundingClientRect();
+    return rowRect.bottom >= hostRect.top && rowRect.top <= hostRect.bottom;
+  };
+
+  const animateBarChanges = (diff, previousSnapshot, nextSnapshot) => {
+    if (!rowsHost || reducedMotionQuery.matches || !window.Element?.prototype.animate) return;
+    diff.changed.forEach((key) => {
+      const row = rowsHost.querySelector(`[data-gamma-row-wrap][data-gamma-strike="${key}"]`);
+      if (!row || !rowIsVisible(row)) return;
+      const before = previousSnapshot?.rows?.[key];
+      const after = nextSnapshot?.rows?.[key];
+      if (!before || !after) return;
+      [
+        [".gamma-ladder-row__callBar", before.callGex, after.callGex, "left center"],
+        [".gamma-ladder-row__putBar", before.putGex, after.putGex, "right center"],
+        [
+          ".gamma-ladder-row__netBar",
+          before.netGex,
+          after.netGex,
+          after.netGex < 0 ? "right center" : "left center",
+        ],
+      ].forEach(([selector, oldValue, newValue, origin]) => {
+        const bar = row.querySelector(selector);
+        if (!bar) return;
+        const denominator = Math.max(Math.abs(Number(newValue) || 0), 0.000001);
+        const startScale = clamp(Math.abs(Number(oldValue) || 0) / denominator, 0.08, 4);
+        bar.style.transformBox = "fill-box";
+        bar.style.transformOrigin = origin;
+        bar.animate(
+          [{ transform: `scaleX(${startScale})` }, { transform: "scaleX(1)" }],
+          { duration: 420, easing: "cubic-bezier(.2,.75,.2,1)" },
+        );
+      });
+    });
+  };
+
+  const animateRenderedRows = (diff, oldMeasurements, previousSnapshot, nextSnapshot) => {
+    if (!rowsHost || reducedMotionQuery.matches || diff.unchanged || diff.contextChanged) return;
+    const newMeasurements = measureRenderedRows();
+    diff.reordered.forEach((key) => {
+      const before = oldMeasurements.get(key);
+      const after = newMeasurements.get(key);
+      if (!before || !after || !rowIsVisible(after.node)) return;
+      const delta = before.rect.top - after.rect.top;
+      if (Math.abs(delta) < 1) return;
+      after.node.style.transition = "none";
+      after.node.style.transform = `translateY(${delta}px)`;
+      window.requestAnimationFrame(() => {
+        after.node.classList.add("is-moving");
+        after.node.style.transition = "transform 420ms cubic-bezier(.2,.75,.2,1)";
+        after.node.style.transform = "translateY(0)";
+        window.setTimeout(() => {
+          after.node.classList.remove("is-moving");
+          after.node.style.removeProperty("transition");
+          after.node.style.removeProperty("transform");
+        }, 450);
+      });
+    });
+    if (diff.spotMoved && previousSnapshot && nextSnapshot) {
+      const oldSpotKey = previousSnapshot.order.find((key) => previousSnapshot.rows[key]?.isSpot);
+      const newSpotKey = nextSnapshot.order.find((key) => nextSnapshot.rows[key]?.isSpot);
+      const before = oldMeasurements.get(oldSpotKey);
+      const after = newMeasurements.get(newSpotKey);
+      const marker = after?.node?.querySelector(".gamma-ladder-row__spotMarker");
+      if (before && after && marker && rowIsVisible(after.node) && window.Element?.prototype.animate) {
+        const delta = before.rect.top - after.rect.top;
+        marker.animate(
+          [
+            { transform: `translateY(${delta}px) scale(.82)`, opacity: .45 },
+            { transform: "translateY(0) scale(1)", opacity: 1 },
+          ],
+          { duration: 520, easing: "cubic-bezier(.2,.75,.2,1)" },
+        );
+      }
+    }
+    diff.inserted.forEach((key) => {
+      const node = rowsHost.querySelector(`[data-gamma-row-wrap][data-gamma-strike="${key}"]`);
+      removeMotionClass(node, "is-entering");
+    });
+    diff.changed.forEach((key) => {
+      const node = rowsHost.querySelector(`[data-gamma-row-wrap][data-gamma-strike="${key}"]`);
+      removeMotionClass(node, "is-value-changed");
+    });
+    diff.crossed.forEach((key) => {
+      const node = rowsHost.querySelector(`[data-gamma-row-wrap][data-gamma-strike="${key}"]`);
+      removeMotionClass(node, "is-spot-crossed", 900);
+    });
+    if (diff.strongestChanged && nextSnapshot.strongestStrike) {
+      const node = rowsHost.querySelector(
+        `[data-gamma-row-wrap][data-gamma-strike="${nextSnapshot.strongestStrike}"]`,
+      );
+      removeMotionClass(node, "is-new-strongest", 900);
+    }
+    animateBarChanges(diff, previousSnapshot, nextSnapshot);
+  };
+
+  const renderGammaLadderRows = (payload, { context = presentationContext(payload) } = {}) => {
     if (!rowsHost) return;
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
     if (!rows.length) {
@@ -829,6 +1135,11 @@
       setVisualState("");
       if (loading) loading.hidden = true;
       if (board) board.hidden = false;
+      resetKeyLevelSummary();
+      clearSelectedInspector({ notifyChart: Boolean(activeSelectedStrike) });
+      if (presentation) {
+        lastPresentationSnapshot = presentation.createPresentationSnapshot(payload, context);
+      }
       return;
     }
     const maxSide = rows.reduce((max, row) => {
@@ -917,13 +1228,94 @@
         meta.strength = decorated.strength;
       }
     });
+    const presentationPayload = {
+      ...payload,
+      rows: rows.map((row, index) => ({
+        ...row,
+        level_type: rowMeta[index]?.level?.type || "level",
+        classification: rowMeta[index]?.gammaState || "neutral",
+      })),
+    };
+    const nextSnapshot = presentation
+      ? presentation.createPresentationSnapshot(presentationPayload, context)
+      : null;
+    const previousSnapshot = lastPresentationSnapshot;
+    const diff = presentation
+      ? presentation.diffPresentationSnapshots(previousSnapshot, nextSnapshot)
+      : {
+          inserted: [], removed: [], reordered: [], changed: [], crossed: [],
+          strongestChanged: false, regimeChanged: false, unchanged: true,
+        };
+    if (diff.contextChanged && activeSelectedStrike) {
+      clearSelectedInspector({ notifyChart: true });
+    }
+    const animate = presentation
+      ? presentation.shouldAnimate({
+          accepted: true,
+          reducedMotion: reducedMotionQuery.matches,
+          unchanged: diff.unchanged || diff.contextChanged,
+        })
+      : false;
+    const motion = animate ? diff : {};
+    const oldMeasurements = animate ? measureRenderedRows() : new Map();
     if (decisionPanels) decisionPanels.hidden = false;
     MarketStructureSummary(payload, decisionModel);
     TopLevelsPanel(decisionModel);
+    updateKeyLevelSummary(payload, decisionModel);
     activeDetailRow = null;
+    let previousLocation = "";
     rowsHost.innerHTML = rows
-      .map((row, index) => GammaRow({ row, payload, index, maxSide, meta: rowMeta[index] }))
+      .map((row, index) => {
+        const strike = Number(row.strike);
+        const spot = Number(payload.spot) || 0;
+        const location = row.is_spot_nearest
+          ? "at"
+          : strike > spot
+            ? "above"
+            : "below";
+        const sectionLabels = {
+          above: ["Above spot", "Upside resistance and acceleration structure"],
+          at: ["At spot", "Current market interaction zone"],
+          below: ["Below spot", "Downside support and expansion structure"],
+        };
+        const [title, description] = sectionLabels[location];
+        const section = location !== previousLocation
+          ? `
+            <div class="gamma-ladder-locationSection gamma-ladder-locationSection--${location}" data-gamma-location-section="${location}">
+              <strong>${title}</strong>
+              <span>${description}</span>
+            </div>
+          `
+          : "";
+        previousLocation = location;
+        return section + GammaRow({
+          row,
+          payload,
+          index,
+          maxSide,
+          meta: rowMeta[index],
+          motion,
+        });
+      })
       .join("");
+    if (animate) {
+      animateRemovedRows(diff.removed, oldMeasurements);
+      window.requestAnimationFrame(() => {
+        animateRenderedRows(diff, oldMeasurements, previousSnapshot, nextSnapshot);
+      });
+      if (diff.regimeChanged) {
+        root.classList.add("is-regime-transition");
+        removeMotionClass(root, "is-regime-transition", 780);
+      }
+    }
+    if (activeSelectedStrike) {
+      const selectedRow = rowsHost.querySelector(
+        `[data-gamma-row][data-gamma-row-strike="${activeSelectedStrike}"]`,
+      );
+      if (selectedRow) updateSelectedInspector(selectedRow);
+      else clearSelectedInspector({ notifyChart: true });
+    }
+    lastPresentationSnapshot = nextSnapshot;
     root.style.setProperty(
       "--gamma-ladder-visible-rows",
       String(Math.max(1, Math.min(rows.length, 12)))
@@ -1057,6 +1449,18 @@
     const row = event.target.closest("[data-gamma-row]");
     if (row) {
       event.preventDefault();
+      updateSelectedInspector(row);
+      document.dispatchEvent(new CustomEvent("market-pulse:gamma-level-selected", {
+        detail: {
+          key: row.dataset.gammaLevelKey,
+          price: Number(row.dataset.gammaLevelPrice),
+          classification: row.dataset.gammaLevelClassification || "unclassified",
+          symbol: String(row.dataset.gammaLevelSymbol || currentSymbol).toUpperCase(),
+          valid: Number.isFinite(Number(row.dataset.gammaLevelPrice)),
+          mode: "advanced-ladder",
+          timestamp: Date.now(),
+        },
+      }));
       openRowDetail(row);
       return;
     }
@@ -1101,8 +1505,52 @@
       if (!response.ok || !payload || payload.ok === false) {
         throw new Error((payload && payload.message) || "Gamma ladder unavailable.");
       }
+      const context = presentationContext(payload, normalized);
+      const parsedPayloadTimestamp = Date.parse(String(payload.updated_at || ""));
+      const payloadTimestamp = Number.isFinite(parsedPayloadTimestamp) ? parsedPayloadTimestamp : 0;
+      const activeContext = {
+        symbol: currentSymbol,
+        dte: currentDtePreset,
+        expiration: String(payload.expiration || payload.expiration_label || ""),
+        window: currentWindowPreset,
+      };
+      const accepted = !presentation || presentation.shouldAcceptPayload({
+        requestId,
+        latestRequestId: requestSequence,
+        symbol: payload.symbol || normalized,
+        activeSymbol: currentSymbol,
+        contextKey: presentation.contextKey(context),
+        activeContextKey: presentation.contextKey(activeContext),
+        timestamp: payloadTimestamp,
+        lastTimestamp: lastAcceptedTimestamp,
+      });
+      if (!accepted) {
+        setVisualState("");
+        if (loading) loading.hidden = true;
+        if (board) board.hidden = !hasLoadedData;
+        if (refreshButton) refreshButton.disabled = false;
+        if (summaryNode) summaryNode.textContent = lastSummaryText;
+        return;
+      }
+      if (payloadTimestamp) {
+        lastAcceptedTimestamp = Math.max(lastAcceptedTimestamp, payloadTimestamp);
+      }
       renderGammaHeader(payload);
-      renderGammaLadderRows(payload);
+      renderGammaLadderRows(payload, { context });
+      document.dispatchEvent(new CustomEvent("market-pulse:gamma-updated", {
+        detail: {
+          symbol: String(payload.symbol || currentSymbol).toUpperCase(),
+          spot: Number(payload.spot),
+          timestamp: Date.parse(String(payload.updated_at || "")) || Date.now(),
+          valid: true,
+          levels: Array.isArray(payload.rows) ? payload.rows.map((row) => ({
+            key: `strike-${Number(row.strike)}`,
+            price: Number(row.strike),
+            classification: Number(row.net_gex) >= 0 ? "positive-gamma" : "negative-gamma",
+            valid: Number.isFinite(Number(row.strike)),
+          })) : [],
+        },
+      }));
       refreshLoop();
     } catch (err) {
       if (err && err.name === "AbortError") return;
@@ -1157,10 +1605,15 @@
   windowPills.forEach((pill) => {
     pill.addEventListener("click", () => {
       const nextWindow = String(pill.dataset.gammaWindowPill || "").toLowerCase();
-      if (!nextWindow || nextWindow === currentWindowPreset) return;
+      if (!nextWindow) return;
+      if (nextWindow === currentWindowPreset) {
+        setSettingsPopoverOpen(false, { restoreFocus: true });
+        return;
+      }
       window.clearTimeout(switchTimer);
       switchTimer = window.setTimeout(() => {
         setActiveWindowPreset(nextWindow);
+        setSettingsPopoverOpen(false, { restoreFocus: true });
         fetchGammaLadder(currentSymbol);
       }, 120);
     });
@@ -1170,15 +1623,26 @@
     pill.addEventListener("click", () => {
       if (pill.disabled) return;
       const nextDte = String(pill.dataset.gammaDtePill || "").toLowerCase();
-      if (!nextDte || nextDte === currentDtePreset) return;
+      if (!nextDte) return;
+      if (nextDte === currentDtePreset) {
+        setSettingsPopoverOpen(false, { restoreFocus: true });
+        return;
+      }
       window.clearTimeout(switchTimer);
       switchTimer = window.setTimeout(() => {
         console.log("Selected DTE:", nextDte);
         setActiveDtePreset(nextDte);
+        setSettingsPopoverOpen(false, { restoreFocus: true });
         fetchGammaLadder(currentSymbol);
       }, 120);
     });
   });
+
+  if (settingsToggle && settingsPopover) {
+    settingsToggle.addEventListener("click", () => {
+      setSettingsPopoverOpen(settingsToggle.getAttribute("aria-expanded") !== "true");
+    });
+  }
 
   if (refreshButton) {
     refreshButton.addEventListener("click", () => {
@@ -1210,11 +1674,17 @@
   });
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (settingsToggle?.getAttribute("aria-expanded") === "true") {
+        setSettingsPopoverOpen(false, { restoreFocus: true });
+      }
       closeRowDetail();
       hideTooltip();
     }
   });
   document.addEventListener("click", (event) => {
+    if (settingsControl && !settingsControl.contains(event.target)) {
+      setSettingsPopoverOpen(false);
+    }
     if (!root.contains(event.target)) {
       closeRowDetail();
       hideTooltip();

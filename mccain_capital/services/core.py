@@ -8320,6 +8320,35 @@ def _market_news_snapshot(
     return result
 
 
+def _notification_items_from_news_snapshot(snapshot: Dict[str, Any], *, limit: int = 5) -> List[Dict[str, Any]]:
+    """Normalize the shared Market Pulse feed for the header notification drawer."""
+    items: List[Dict[str, Any]] = []
+    for row in list(snapshot.get("pulse_feed_items") or [])[: max(1, int(limit or 5))]:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("headline") or row.get("text") or "Market update").strip()
+        summary = str(row.get("summary") or row.get("text") or "").strip()
+        age_label = str(row.get("age_label") or "").strip()
+        published_label = str(
+            row.get("published_et_label")
+            or row.get("published_label")
+            or row.get("absolute_label")
+            or ""
+        ).strip()
+        time_label = " · ".join(part for part in (age_label, published_label) if part)
+        items.append(
+            {
+                "title": title,
+                "text": summary,
+                "time_label": time_label,
+                "published_at": str(row.get("published_at") or ""),
+                "url": str(row.get("url") or ""),
+                "priority": "high" if str(row.get("impact") or "").lower() == "high" else "normal",
+            }
+        )
+    return items
+
+
 def home():
     return redirect(url_for("executive_dashboard"))
 
@@ -8330,12 +8359,6 @@ def executive_dashboard():
         {"name": "Rent #2", "account": "Current", "amount": 1148, "timing": "Paycheck 2"},
         {"name": "Power", "account": "Current", "amount": 136, "timing": "Paycheck 1", "dueDay": 2},
         {
-            "name": "Verizon catch-up / phone",
-            "account": "Current",
-            "amount": 267,
-            "timing": "Paycheck 1",
-        },
-        {
             "name": "Life Insurance",
             "account": "Current",
             "amount": 13,
@@ -8345,7 +8368,7 @@ def executive_dashboard():
         {"name": "Credit One", "account": "Current", "amount": 30, "timing": "Paycheck 1", "dueDay": 9},
         {"name": "Indigo", "account": "Current", "amount": 54, "timing": "Paycheck 1", "dueDay": 15},
         {"name": "Capital One", "account": "Current", "amount": 62, "timing": "Paycheck 1", "dueDay": 12},
-        {"name": "Food / Dates", "account": "Current", "amount": 700, "timing": "Monthly"},
+        {"name": "Food", "account": "Current", "amount": 450, "timing": "Monthly"},
         {"name": "Gas", "account": "Current", "amount": 100, "timing": "Monthly"},
         {
             "name": "Haircut",
@@ -8362,7 +8385,13 @@ def executive_dashboard():
             "dueDay": 16,
         },
         {"name": "AT&T Internet", "account": "Current", "amount": 65, "timing": "Paycheck 2"},
-        {"name": "Verizon", "account": "Current", "amount": 267, "timing": "Paycheck 2"},
+        {
+            "name": "Verizon",
+            "account": "Current",
+            "amount": 267,
+            "timing": "Paycheck 2",
+            "dueDay": 26,
+        },
         {"name": "IRS", "account": "Current", "amount": 402, "timing": "Paycheck 2", "dueDay": 28},
     ]
     boa_bills = [
@@ -8371,7 +8400,7 @@ def executive_dashboard():
             "name": "Chase fixed payment",
             "account": "BOA",
             "amount": 376,
-            "timing": "Split $188 / $188",
+            "timing": "Paycheck 1",
             "dueDay": 17,
         },
         {"name": "AMEX", "account": "BOA", "amount": 172, "timing": "Paycheck 2", "dueDay": 17},
@@ -8392,8 +8421,8 @@ def executive_dashboard():
     ]
     month_specs = [
         ("2026-07", "July 2026", "Transition Month", 4000, 3750, 4500, 4500, 4135),
-        ("2026-08", "August 2026", "System Test Month", 5500, 5000, 6500, 6500, 4900),
-        ("2026-09", "September 2026", "Capital Injection Month", 10000, 9500, 11000, 11000, 7500),
+        ("2026-08", "August 2026", "System Test Month", 5500, 4000, 6500, 6500, 4400),
+        ("2026-09", "September 2026", "Capital Injection Month", 10000, 4000, 11000, 11000, 7500),
         (
             "2026-10",
             "October 2026",
@@ -8419,33 +8448,47 @@ def executive_dashboard():
         month_id,
         label,
         phase,
-        _floor,
-        _red_line,
+        protected_floor,
+        hard_floor,
         target_low,
         target_high,
         opening_boa,
     ) in month_specs:
-        floor = target_low - 500
-        red_line = floor - 250
         operating_months.append(
             {
                 "id": month_id,
                 "label": label,
                 "phase": phase,
-                "protectedFloor": floor,
-                "redLine": red_line,
+                "protectedFloor": protected_floor,
+                "redLine": hard_floor,
+                "temporaryFloor": 4000,
+                "permanentFloorGoal": 10000,
+                "floorActivationMonth": "2026-09",
                 "targetCloseLow": target_low,
                 "targetCloseHigh": target_high,
                 "openingBOA": opening_boa,
                 "openingCurrent": 0,
                 "deposits": {
-                    "currentPaycheck1": 1866,
-                    "boaPaycheck1": 1866,
+                    "currentPaycheck1": 1873.78,
+                    "boaPaycheck1": 1873.78,
                     # September's $9,400 second paycheck is split evenly at deposit.
-                    "currentPaycheck2": 4700 if month_id == "2026-09" else 1866,
-                    "boaPaycheck2": 4700 if month_id == "2026-09" else 1866,
+                    "currentPaycheck2": 4700 if month_id == "2026-09" else 1873.78,
+                    "boaPaycheck2": 4700 if month_id == "2026-09" else 1873.78,
                     "wifeContribution": 300,
                     "tradingPayout": 0,
+                },
+                "paySchedule": {
+                    "anchorDate": "2026-07-31",
+                    "cadenceDays": 14,
+                    "regularCurrent": 1873.78,
+                    "regularBOA": 1873.78,
+                    "exceptions": {
+                        "2026-09-25": {
+                            "current": 4700,
+                            "boa": 4700,
+                            "estimated": True,
+                        }
+                    },
                 },
                 "bills": current_bills + boa_bills,
                 "subscriptions": subscriptions,
@@ -8489,8 +8532,8 @@ def executive_dashboard():
         ],
         "operating_priorities": [
             "Protect BOA above $4,000",
-            "Finish July without more eval purchases",
-            "Split Chase payment $188 / $188",
+            "Avoid unplanned evaluation purchases",
+            "Pay Chase $376 once per month",
             "Keep all credit cards locked",
             "Pass funded evaluation cleanly",
             "Walk 5x per week",
@@ -8551,7 +8594,7 @@ def executive_dashboard():
                 "Debt Elimination",
                 "Watch",
                 "Locked cards, paydown only",
-                "Pay Chase $188 per paycheck.",
+                "Pay Chase $376 once per month from the first pay cycle.",
             ),
             (
                 "Business Development",
@@ -8581,7 +8624,7 @@ def executive_dashboard():
         "debt_policy": {
             "label": "Chase Credit Card — Locked / Paydown Only",
             "payment": "$376/month",
-            "split": ("Paycheck 1: $188", "Paycheck 2: $188"),
+            "split": ("First monthly pay cycle: $376", "Second monthly pay cycle: $0"),
             "policy": "No spending. No swipes. No balance increases. Paydown only.",
             "rules": [
                 "All consumer credit cards are locked.",
@@ -10211,6 +10254,7 @@ def _dashboard_pace_viewmodel(
         gross_pnl = float(applied_avg * sessions)
         net_pnl = gross_pnl - pass_buffer
         est_balance = base_balance + gross_pnl
+        available_balance = est_balance - pass_buffer
         target_day = _advance_market_sessions(projection_anchor, sessions)
         nodes.append(
             {
@@ -10219,6 +10263,7 @@ def _dashboard_pace_viewmodel(
                 "est_pnl": app_runtime.money(net_pnl),
                 "gross_pnl": app_runtime.money(gross_pnl),
                 "est_balance": app_runtime.money(est_balance),
+                "available_balance": app_runtime.money(available_balance),
                 "target_date_label": target_day.strftime("%b %d"),
                 "target_date_full": target_day.strftime("%a, %b %d, %Y"),
                 "tone": "positive" if net_pnl > 0 else "negative" if net_pnl < 0 else "neutral",
@@ -10231,6 +10276,7 @@ def _dashboard_pace_viewmodel(
         "sessions": 0,
         "est_pnl": app_runtime.money(0.0),
         "est_balance": app_runtime.money(base_balance),
+        "available_balance": app_runtime.money(base_balance - pass_buffer),
         "target_date_full": "",
         "tone": "neutral",
         "detail": "Set a target date to see the projected profit by that session.",
@@ -10242,6 +10288,7 @@ def _dashboard_pace_viewmodel(
             target_est_pnl = applied_avg * target_sessions
             target_est_pnl_net = target_est_pnl - pass_buffer
             target_est_balance = base_balance + target_est_pnl
+            target_available_balance = target_est_balance - pass_buffer
             target_projection = {
                 "configured": True,
                 "input": target_date_input,
@@ -10250,6 +10297,7 @@ def _dashboard_pace_viewmodel(
                 "est_pnl": app_runtime.money(target_est_pnl_net),
                 "gross_pnl": app_runtime.money(target_est_pnl),
                 "est_balance": app_runtime.money(target_est_balance),
+                "available_balance": app_runtime.money(target_available_balance),
                 "target_date_full": target_day.strftime("%a, %b %d, %Y"),
                 "tone": (
                     "positive"
@@ -10299,7 +10347,10 @@ def _dashboard_pace_viewmodel(
     elif live_avg > 0.0:
         note = "Live pace is based on recent trading sessions only."
     if pass_buffer_enabled:
-        note += f" Pass buffer {app_runtime.money(pass_buffer)} is subtracted from projected profit."
+        note += (
+            f" Pass buffer {app_runtime.money(pass_buffer)} remains in the account but is "
+            "excluded from projected profit and available balance."
+        )
     note += f" Display set to {scope_label.lower()}; projections stay normalized to trading days."
     return {
         "headline": app_runtime.money(display_avg),
@@ -10342,6 +10393,146 @@ def _dashboard_pace_viewmodel(
         "note": note,
         "nodes": nodes,
         "target": target_projection,
+    }
+
+
+def _dashboard_forward_pace_context(values: Any) -> Dict[str, Any]:
+    """Build the minimal authoritative context needed to redraw Forward Pace."""
+    from mccain_capital.repositories import trades as trades_repo
+
+    anchor = app_runtime.now_et().date()
+
+    def _bounded_int(name: str, default: int, lower: int, upper: int) -> int:
+        try:
+            parsed = int(values.get(name) or default)
+        except (TypeError, ValueError):
+            parsed = default
+        return max(lower, min(upper, parsed))
+
+    year = _bounded_int("y", anchor.year, 2000, 2200)
+    month = _bounded_int("m", anchor.month, 1, 12)
+    selected_ticker = get_supported_playbook_ticker(values.get("ticker"))
+    pace_timeframe_key = _dashboard_pace_timeframe(values.get("pace_tf"))
+    pace_scope = _dashboard_pace_scope_context(year, month, pace_timeframe_key, anchor)
+
+    account_scope = trades_repo.account_scope_snapshot()
+    scope_enabled = bool(account_scope.get("enabled"))
+    scope_active = scope_enabled and str(values.get("scope") or "").strip().lower() != "all"
+    try:
+        scope_account_id = int(account_scope.get("account_id") or 0) or None
+    except (TypeError, ValueError):
+        scope_account_id = None
+    selected_account = trades_repo.get_account(scope_account_id) if scope_account_id else None
+    scoped_account_ids = (
+        trades_repo.account_continuity_ids(scope_account_id)
+        if scope_active and scope_account_id
+        else []
+    )
+    scope_start = str(account_scope.get("start_date") or "")
+    scope_starting_balance = float(account_scope.get("starting_balance") or 0.0)
+    balance_summary = _dashboard_balance_summary(
+        scope_active=scope_active,
+        scope_account_id=scope_account_id,
+        scope_start=scope_start,
+        scope_starting_balance=scope_starting_balance,
+        selected_account=selected_account,
+    )
+    overall_balance = float(balance_summary["overall_balance"])
+    overall_profit = float(balance_summary["overall_profit"])
+    balance_integrity = dict(balance_summary["balance_integrity"])
+    scoped_account_id = scope_account_id if scope_active else None
+
+    proj = trades_repo.projections_from_daily(
+        trades_repo.last_n_trading_day_totals(
+            20,
+            since_date=scope_start if scope_active else "",
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
+        ),
+        overall_balance,
+    )
+    pace_settings = _load_dashboard_pace_settings()
+    selected_pace = (
+        float(pace_settings.get("custom_daily") or 0.0)
+        if bool(pace_settings.get("custom_enabled"))
+        else float(proj.get("avg") or 0.0)
+    )
+    week_anchor = (
+        anchor.isoformat()
+        if year == anchor.year and month == anchor.month
+        else date(year, month, 1).isoformat()
+    )
+    this_week_total = trades_repo.week_total_net(
+        week_anchor,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    mtd_net = trades_repo.month_total_net(
+        year,
+        month,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    ytd_net = trades_repo.ytd_total_net(
+        year,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    today_rows = [
+        dict(row)
+        for row in trades_repo.fetch_trades(
+            d=app_runtime.today_iso(),
+            q="",
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
+        )
+    ]
+    today_net = float(trades_repo.trade_day_stats(today_rows).get("total") or 0.0)
+    milestone = _dashboard_milestone_viewmodel(
+        _load_dashboard_milestone_settings(),
+        today_net=today_net,
+        this_week_total=this_week_total,
+        mtd_net=mtd_net,
+        ytd_net=ytd_net,
+        overall_balance=overall_balance,
+        starting_balance=float(balance_integrity.get("starting_balance") or 0.0),
+        avg_daily_profit=selected_pace,
+    )
+    pace_card = _dashboard_pace_viewmodel(
+        proj,
+        milestone,
+        pace_settings,
+        anchor_day=anchor,
+        pace_scope=pace_scope,
+        profit_base=overall_profit,
+    )
+    range_query = {}
+    range_start = str(values.get("range_start") or "").strip()
+    range_end = str(values.get("range_end") or "").strip()
+    if range_start and range_end:
+        range_query = {"range_start": range_start, "range_end": range_end}
+    scope_mode = "active" if scope_active else "all"
+    return {
+        "pace_card": pace_card,
+        "dashboard_year": year,
+        "dashboard_month": month,
+        "selected_ticker": selected_ticker,
+        "scope_mode": scope_mode,
+        "pace_timeframe": pace_scope,
+        "pace_timeframe_links": {
+            key: url_for(
+                "dashboard",
+                y=year,
+                m=month,
+                scope=scope_mode,
+                ticker=selected_ticker,
+                pace_tf=key,
+                **range_query,
+            )
+            for key in ("d", "w", "m")
+        },
+        "range_start": range_start,
+        "range_end": range_end,
     }
 
 
@@ -10986,17 +11177,38 @@ def dashboard_brief_update():
 
 
 def dashboard_pace_update():
+    inline_request = request.headers.get("X-Dashboard-Partial") == "forward-pace"
     pace_reset = str(request.form.get("pace_reset") or "").strip() == "1"
     custom_daily = app_runtime.parse_float(request.form.get("dashboard_pace_daily") or "") or 0.0
     pass_buffer = app_runtime.parse_float(request.form.get("dashboard_pace_buffer") or "") or 0.0
     start_date = str(request.form.get("dashboard_projection_start_date") or "").strip()
     target_date = str(request.form.get("dashboard_projection_target_date") or "").strip()
+
+    invalid_dates: List[str] = []
+    for field_label, raw_value in (("start date", start_date), ("target date", target_date)):
+        if not raw_value:
+            continue
+        try:
+            date.fromisoformat(raw_value)
+        except ValueError:
+            invalid_dates.append(field_label)
+    if inline_request and invalid_dates:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": f"Invalid {' and '.join(invalid_dates)}. The projection was not saved.",
+                }
+            ),
+            400,
+        )
+
     if pace_reset or custom_daily <= 0.0:
         app_runtime.set_setting_value("dashboard_pace_daily", "")
-        flash("Forward pace reset to live trading pace.", "success")
+        message = "Forward pace reset to live trading pace."
     else:
         app_runtime.set_setting_value("dashboard_pace_daily", f"{max(0.0, custom_daily):.2f}")
-        flash("Forward pace updated.", "success")
+        message = "Forward pace updated."
     if pace_reset or pass_buffer <= 0.0:
         app_runtime.set_setting_value("dashboard_pace_buffer", "")
     else:
@@ -11019,6 +11231,25 @@ def dashboard_pace_update():
         app_runtime.set_setting_value("dashboard_projection_target_date", target_iso)
     else:
         app_runtime.set_setting_value("dashboard_projection_target_date", "")
+
+    if inline_request:
+        try:
+            context = _dashboard_forward_pace_context(request.form)
+            fragment = render_template("dashboard/_forward_pace_card.html", **context)
+        except Exception:
+            current_app.logger.exception("Could not render Dashboard Forward Pace partial")
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "The settings were saved, but the projection could not be redrawn. Reload to verify the latest values.",
+                    }
+                ),
+                500,
+            )
+        return jsonify({"ok": True, "message": message, "fragment": fragment})
+
+    flash(message, "success")
 
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
@@ -12742,6 +12973,8 @@ def dashboard():
         dashboard_year=year,
         dashboard_month=month,
         pace_timeframe=pace_scope,
+        range_start=str(performance_range["start_iso"]) if performance_range.get("active") else "",
+        range_end=str(performance_range["end_iso"]) if performance_range.get("active") else "",
         pace_timeframe_links={
             key: url_for(
                 "dashboard",
@@ -12796,11 +13029,28 @@ def dashboard():
         money=app_runtime.money,
         money_compact=_money_compact,
     )
+    try:
+        dashboard_notification_snapshot = _market_news_snapshot(
+            now_et=app_runtime.now_et(),
+            macro_events=[],
+            force_refresh_feed=False,
+            page_type="market-pulse",
+            feed_limit=5,
+        )
+        dashboard_notifications = _notification_items_from_news_snapshot(
+            dashboard_notification_snapshot,
+            limit=5,
+        )
+    except Exception as exc:
+        LOGGER.warning("dashboard_notification_seed_failed error=%s", exc)
+        dashboard_notifications = []
+
     return render_page(
         content,
         active="dashboard",
         title="McCain Capital · Trading Dashboard",
         vanquish_lock=vanquish_lock,
+        notifications=dashboard_notifications,
     )
 
 

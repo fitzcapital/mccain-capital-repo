@@ -148,7 +148,8 @@ def _float_or_none(value: Any) -> Optional[float]:
 
 def _parse_row_time(row: Dict[str, Any]) -> Optional[datetime]:
     raw = (
-        row.get("datetime")
+        row.get("ts")
+        or row.get("datetime")
         or row.get("timestamp")
         or row.get("time")
         or row.get("date")

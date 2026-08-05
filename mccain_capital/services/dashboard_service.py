@@ -371,17 +371,22 @@ def dashboard_tape_refresh_api():
                     "mini_series": spark_values,
                     "series": [{"v": value, "close": value} for value in spark_values],
                 }
-        hour_source = _dashboard_tape_ohlc_rows(intraday_rows)
-        if not hour_source:
-            try:
-                prior_rows = [
-                    dict(row)
-                    for row in market_data_service.get_prior_session_intraday(sym)
-                    if isinstance(row, dict)
-                ]
-            except Exception:
-                prior_rows = []
-            hour_source = _dashboard_tape_ohlc_rows(prior_rows)
+        current_hour_source = _dashboard_tape_ohlc_rows(intraday_rows)
+        try:
+            prior_rows = [
+                dict(row)
+                for row in market_data_service.get_prior_session_intraday(sym)
+                if isinstance(row, dict)
+            ]
+        except Exception:
+            prior_rows = []
+        prior_hour_source = _dashboard_tape_ohlc_rows(prior_rows)
+
+        # A current-session-only source makes every interval look the same near
+        # the opening bell. Keep the prior session in the timeframe source so
+        # rolling 24H views have the history their label promises; the shorter
+        # windows still trim it away by timestamp.
+        hour_source = prior_hour_source + current_hour_source
         if not hour_source:
             try:
                 cached_replay_points, _cached_day = core_svc._market_pulse_cached_replay_series(sym)

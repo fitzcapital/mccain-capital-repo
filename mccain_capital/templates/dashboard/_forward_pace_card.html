@@ -1,0 +1,181 @@
+{% macro pace_icon() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c2.6-5.6 6.1-8.7 10.5-9.5"></path><path d="M14.5 8.5H20v5.5"></path><path d="m19.8 8.7-6.2 6.1"></path><circle cx="7.2" cy="16.9" r="1.5"></circle></svg>
+{%- endmacro %}
+<div
+  class="card supportCard dashboardProjectionCard dashboardAnalyticsSecondary{% if not pace_card.nodes and not pace_card.target.configured %} is-empty{% endif %}"
+  id="dashboardForwardPaceCard"
+  data-forward-pace-card
+>
+  <div class="toolbar">
+    <div class="dashboardProjectionHead">
+      <div>
+        <div class="pill"><span class="dashboardPillIcon dashboardPillIcon-pace">{{ pace_icon() }}</span><span>Forward Pace</span></div>
+        <div class="summaryLead stack8">Project 5D / 10D / 20D balance paths from live or manual pace.</div>
+      </div>
+      <div class="dashboardPaceScopeSwitch" role="group" aria-label="Forward pace timeframe">
+        {% for key, label in [('d', 'Day'), ('w', 'Week'), ('m', 'Month')] %}
+          <a
+            class="dashboardPaceScopeButton{% if pace_timeframe.key == key %} is-active{% endif %}"
+            href="{{ pace_timeframe_links[key] }}"
+            aria-label="{{ label }} pace"
+            aria-pressed="{{ 'true' if pace_timeframe.key == key else 'false' }}"
+          >{{ key|upper }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    <div
+      class="dashboardForwardPaceStatus tiny"
+      data-forward-pace-status
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+    <div class="dashboardProjectionHero">
+      <div class="dashboardProjectionEmblem" aria-hidden="true">{{ pace_icon() }}</div>
+      <div class="dashboardProjectionHeroMeta">
+        <span class="dashboardProjectionModeBadge{% if pace_card.custom_enabled %} is-active{% endif %}">{{ pace_card.mode_label }}</span>
+        <span class="dashboardProjectionLivePace">Live {{ pace_card.live_headline }}{{ pace_card.headline_suffix }}</span>
+      </div>
+      <div class="dashboardProjectionHeroValue">{{ pace_card.headline }}<small>{{ pace_card.headline_suffix }}</small></div>
+      <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Profit base {{ pace_card.base_profit }}.</div>
+    </div>
+    <details class="dashboardProjectionFold" data-dashboard-optional="pace-fold">
+      <summary>
+        <span class="dashboardProjectionFoldTitle">Set pace / day</span>
+        <span class="dashboardProjectionFoldMeta tiny">
+          {% if pace_card.custom_enabled %}
+            Custom {{ pace_card.daily_headline }}/day{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
+          {% else %}
+            {{ pace_card.trading_day_label }}{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
+          {% endif %}
+        </span>
+      </summary>
+      <form
+        method="post"
+        action="/dashboard/pace"
+        class="dashboardProjectionForm"
+        id="dashboardForwardPaceForm"
+        data-forward-pace-form
+      >
+        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
+        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}"/>
+        {% if range_start %}<input type="hidden" name="range_start" value="{{ range_start }}"/>{% endif %}
+        {% if range_end %}<input type="hidden" name="range_end" value="{{ range_end }}"/>{% endif %}
+        <div class="dashboardProjectionFormGrid">
+          <div class="dashboardProjectionField">
+            <label for="dashboardPaceDaily">Set pace / day</label>
+            <input
+              id="dashboardPaceDaily"
+              name="dashboard_pace_daily"
+              inputmode="decimal"
+              placeholder="{{ pace_card.live_daily_headline|replace('$', '') }}"
+              value="{{ pace_card.custom_input }}"
+            />
+            <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
+          </div>
+          <div class="dashboardProjectionField">
+            <label for="dashboardPaceBuffer">Pass buffer ($)</label>
+            <input
+              id="dashboardPaceBuffer"
+              name="dashboard_pace_buffer"
+              inputmode="decimal"
+              placeholder="5000"
+              value="{{ pace_card.pass_buffer_input }}"
+            />
+            <div class="dashboardProjectionHint tiny">Reserved in the account and excluded from available balance.</div>
+          </div>
+          <div class="dashboardProjectionField">
+            <label for="dashboardProjectionStartDate">Start date</label>
+            <input
+              id="dashboardProjectionStartDate"
+              type="date"
+              name="dashboard_projection_start_date"
+              value="{{ pace_card.start.input }}"
+            />
+            <div class="dashboardProjectionHint tiny">Optional. Defaults to today.</div>
+          </div>
+          <div class="dashboardProjectionField">
+            <label for="dashboardProjectionTargetDate">Target date</label>
+            <input
+              id="dashboardProjectionTargetDate"
+              type="date"
+              name="dashboard_projection_target_date"
+              value="{{ pace_card.target.input }}"
+            />
+            <div class="dashboardProjectionHint tiny">Projects profit through that date from {{ pace_card.start.label }}</div>
+          </div>
+          <div class="dashboardProjectionActions">
+            <button class="btn primary" type="submit" data-forward-pace-submit>Save Projection</button>
+            <button class="btn" type="submit" name="pace_reset" value="1" data-forward-pace-submit>Use Live Pace</button>
+          </div>
+        </div>
+      </form>
+    </details>
+    {% if pace_card.target.configured %}
+      <div class="dashboardProjectionTarget {% if pace_card.target.tone == 'positive' %}is-positive{% elif pace_card.target.tone == 'negative' %}is-negative{% endif %}" title="{{ pace_card.target.target_date_full }}">
+        <div class="dashboardProjectionTargetHead">
+          <div>
+            <span>Target Date</span>
+            <strong>{{ pace_card.target.label }}</strong>
+          </div>
+          <div>
+            <span>Projected Profit After Buffer</span>
+            <strong>{{ pace_card.target.est_pnl }}</strong>
+          </div>
+          <div>
+            <span>Projected Balance</span>
+            <strong>{{ pace_card.target.est_balance }}</strong>
+          </div>
+          <div>
+            <span>Reserved Buffer</span>
+            <strong>{{ pace_card.pass_buffer_label }}</strong>
+          </div>
+          <div>
+            <span>Available Balance After Buffer</span>
+            <strong>{{ pace_card.target.available_balance }}</strong>
+          </div>
+        </div>
+        <div class="dashboardProjectionTargetMeta">
+          <span>{{ pace_card.target.detail }}</span>
+        </div>
+      </div>
+    {% endif %}
+    {% if pace_card.nodes %}
+      <div class="dashboardProjectionRail" aria-hidden="true">
+        {% for node in pace_card.nodes %}
+          <div class="dashboardProjectionRailNode {% if node.tone == 'positive' %}is-positive{% elif node.tone == 'negative' %}is-negative{% endif %}">
+            <span class="dashboardProjectionRailDot"></span>
+            <span class="dashboardProjectionRailLabel">{{ node.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="dashboardProjectionTimeline">
+        {% for node in pace_card.nodes %}
+          <div class="dashboardProjectionNode {% if node.tone == 'positive' %}is-positive{% elif node.tone == 'negative' %}is-negative{% endif %}" title="{{ node.target_date_full }}">
+            <div class="dashboardProjectionNodeHead">
+              <span>{{ node.label }}</span>
+              <em>{{ node.target_date_label }}</em>
+            </div>
+            <strong>{{ node.est_pnl }}</strong>
+            <small>{{ node.est_balance }}</small>
+            <div class="dashboardProjectionNodeDual tiny">
+              <span>Profit after buffer</span>
+              <span>Projected balance</span>
+            </div>
+            <div class="dashboardProjectionNodeAvailable tiny">
+              <span>Available after buffer</span>
+              <strong>{{ node.available_balance }}</strong>
+            </div>
+            <div class="dashboardProjectionNodeMeta tiny">{{ node.sessions }} trading days</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="dashboardProjectionEmpty">No recent weekday sample is in scope yet. Pace will appear once enough closed-trade history is available.</div>
+    {% endif %}
+    <div class="dashboardProjectionFootnote tiny line15">{{ pace_card.note }}</div>
+  </div>
+</div>

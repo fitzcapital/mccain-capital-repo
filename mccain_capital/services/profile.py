@@ -23,6 +23,7 @@ AVATAR_COLORS = {
     "violet": "#a78bfa",
 }
 MAX_PHOTO_BYTES = 750_000
+PROFILE_TICKERS = ("SPX", "SPY", "QQQ")
 
 
 def _normalize_username(value: str) -> str:
@@ -53,10 +54,17 @@ def _default_profile(username: str) -> dict[str, Any]:
         "avatar_initials": _initials(display_name, username),
         "avatar_color": "blue",
         "photo_data_url": "",
+        "market_pulse_default_ticker": "SPY",
+        "dashboard_default_ticker": "SPY",
         "is_admin": username.lower() in DEFAULT_ADMIN_USERS,
         "created_at": now_iso(),
         "updated_at": now_iso(),
     }
+
+
+def _clean_ticker(value: Any, default: str = "SPY") -> str:
+    ticker = str(value or "").strip().upper()
+    return ticker if ticker in PROFILE_TICKERS else default
 
 
 def _load_store() -> dict[str, Any]:
@@ -90,6 +98,12 @@ def _clean_profile(row: dict[str, Any], username: str) -> dict[str, Any]:
                 .upper()[:3],
                 "avatar_color": str(row.get("avatar_color") or base["avatar_color"]).strip(),
                 "photo_data_url": str(row.get("photo_data_url") or "").strip(),
+                "market_pulse_default_ticker": _clean_ticker(
+                    row.get("market_pulse_default_ticker"), base["market_pulse_default_ticker"]
+                ),
+                "dashboard_default_ticker": _clean_ticker(
+                    row.get("dashboard_default_ticker"), base["dashboard_default_ticker"]
+                ),
                 "is_admin": bool(row.get("is_admin")),
                 "created_at": str(row.get("created_at") or base["created_at"]),
                 "updated_at": str(row.get("updated_at") or base["updated_at"]),
@@ -217,6 +231,14 @@ def update_profile_details():
     email = str(request.form.get("email") or "").strip()[:120]
     initials = str(request.form.get("avatar_initials") or "").strip().upper()[:3]
     avatar_color = str(request.form.get("avatar_color") or "").strip()
+    market_pulse_default_ticker = _clean_ticker(
+        request.form.get("market_pulse_default_ticker"),
+        str(profile.get("market_pulse_default_ticker") or "SPY"),
+    )
+    dashboard_default_ticker = _clean_ticker(
+        request.form.get("dashboard_default_ticker"),
+        str(profile.get("dashboard_default_ticker") or "SPY"),
+    )
 
     profile.update(
         {
@@ -225,6 +247,8 @@ def update_profile_details():
             "email": email,
             "avatar_initials": initials or _initials(display_name, username),
             "avatar_color": avatar_color if avatar_color in AVATAR_COLORS else profile["avatar_color"],
+            "market_pulse_default_ticker": market_pulse_default_ticker,
+            "dashboard_default_ticker": dashboard_default_ticker,
             "updated_at": now_iso(),
         }
     )
