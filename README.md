@@ -268,6 +268,14 @@ curl -sf http://YOUR_TAILSCALE_IP:5001/healthz
 The included sidecar config at `services/podman-compose.tailscale.yml` now mounts `../persistent-data`
 into the app container so the Tailscale-served container also uses the real chart/app data.
 
+### Native iPhone app
+
+An iOS 17+ SwiftUI companion app is available under `ios/McCainCapitalMobile/`. It keeps this Flask
+application and its local SQLite data authoritative while adding a native iPhone shell, private
+Tailscale Serve HTTPS access, recovery states, and an optional Face ID/device-passcode privacy lock.
+
+Setup and private Xcode installation: [`docs/IOS_APP_SETUP.md`](docs/IOS_APP_SETUP.md)
+
 ## 🚆 Railway Deployment
 
 Railway is configured to build directly from the repo `Dockerfile` and probe the app on `/healthz`.
