@@ -319,6 +319,24 @@ const marketSessionState = (now = new Date()) => {
   const tapeWindowLabel = tapeCard?.querySelector('[data-role="tape-window-label"]') || null;
   const tapeWindowMenu = tapeCard?.querySelector('[data-role="tape-window-menu"]') || null;
   const tapeWindowOptions = Array.from(tapeCard?.querySelectorAll("[data-tape-window]") || []);
+  const comparisonCards = Array.from(tapeCard?.querySelectorAll("[data-comparison-symbol]") || []);
+  const canvasRead = document.getElementById("dashboardMarketCanvasRead");
+  const canvasHeadline = document.getElementById("dashboardMarketCanvasHeadline");
+  const canvasDetail = document.getElementById("dashboardMarketCanvasDetail");
+  const spxSnapshot = document.getElementById("dashboardSpxSnapshot");
+  const spxSpot = document.getElementById("dashboardSpxSpot");
+  const spxChange = document.getElementById("dashboardSpxChange");
+  const spxCharacter = document.getElementById("dashboardSpxCharacter");
+  const spxLocation = document.getElementById("dashboardSpxLocation");
+  const spxRangePosition = document.getElementById("dashboardSpxRangePosition");
+  const spxMiniChart = document.getElementById("dashboardSpxMiniChart");
+  const spxMiniChartCanvas = document.getElementById("dashboardSpxMiniChartCanvas");
+  const spxLow = document.getElementById("dashboardSpxLow");
+  const spxHigh = document.getElementById("dashboardSpxHigh");
+  const spxRangeSpot = document.getElementById("dashboardSpxRangeSpot");
+  const spxRangeValue = document.getElementById("dashboardSpxRangeValue");
+  const spxRangeStat = document.getElementById("dashboardSpxRangeStat");
+  const spxFromOpen = document.getElementById("dashboardSpxFromOpen");
   const gammaStrip = document.getElementById("dashboardGammaStrip");
   const gammaMeta = document.getElementById("dashboardGammaMeta");
   const decisionCard = document.querySelector(".dashboardDecisionCard");
@@ -330,7 +348,7 @@ const marketSessionState = (now = new Date()) => {
   const decisionPlanValue = document.getElementById("dashboardDecisionPlanValue");
   const decisionTradeGateValue = document.getElementById("dashboardDecisionTradeGateValue");
   const briefCardShell = document.getElementById("dashboardBriefCardShell");
-  if (!rows.length || !statusNode || !updatedNode) return;
+  if (!tapeCard || !spxSnapshot || !statusNode || !updatedNode) return;
 
   const TAPE_WINDOWS = ["15M", "30M", "1H", "6H", "24H"];
   const TAPE_WINDOW_STORAGE_KEY = "mccain.dashboard.tapeWindow";
@@ -921,6 +939,24 @@ const marketSessionState = (now = new Date()) => {
     return parts.join("");
   };
 
+  const renderSpxMiniChart = (lastHour) => {
+    if (!spxMiniChart || !spxMiniChartCanvas) return;
+    const payload = lastHour && typeof lastHour === "object" ? lastHour : {};
+    const hasData = Array.isArray(payload.candles) && payload.candles.length >= 2;
+    spxMiniChart.dataset.available = hasData ? "true" : "false";
+    spxMiniChartCanvas.innerHTML = hasData
+      ? buildLastHourChart(payload, "SPX")
+      : '<div class="dashboardTapeHourEmpty">Recent candles unavailable</div>';
+  };
+
+  if (spxMiniChart) {
+    try {
+      renderSpxMiniChart(JSON.parse(spxMiniChart.dataset.initialPayload || "{}"));
+    } catch (_error) {
+      renderSpxMiniChart({});
+    }
+  }
+
   const updateLastHourNode = (row, lastHour) => {
     const module = row.querySelector('[data-role="last-hour"]');
     if (!module || !lastHour || typeof lastHour !== "object") return;
@@ -1289,16 +1325,144 @@ const marketSessionState = (now = new Date()) => {
     }));
   };
 
-  const tapeHasRenderableValues = () => rows.some((row) => {
-    const lastNode = row.querySelector('[data-role="last"]');
-    return hasMeaningfulText(lastNode) && String(lastNode.textContent || "").trim().toLowerCase() !== "loading...";
-  });
+  const tapeHasRenderableValues = () => {
+    const value = String(spxSpot?.textContent || "").trim().toLowerCase();
+    return Boolean(value && value !== "—" && value !== "loading..." && value !== "standby");
+  };
+
+  const setConfirmation = (key, value, detail, tone = "neutral") => {
+    const node = tapeCard?.querySelector(`[data-confirmation="${key}"]`);
+    if (!node) return;
+    dashboardUIFX.setText(node.querySelector("strong"), value);
+    dashboardUIFX.setText(node.querySelector("small"), detail);
+    node.dataset.tone = tone;
+  };
+
+  const updateMarketCanvasRead = (quotes = {}) => {
+    const spx = quotes.SPX || {};
+    const spxPrice = asNum(spx.price);
+    const spxPct = quotePctChange(spx);
+    const spxState = deriveState(spx);
+    const dayOpen = asNum(spx.day_open ?? spx.open);
+    const dayHigh = asNum(spx.day_high ?? spx.high);
+    const dayLow = asNum(spx.day_low ?? spx.low);
+    const range = dayHigh !== null && dayLow !== null && dayHigh > dayLow
+      ? dayHigh - dayLow
+      : null;
+    const available = spxPrice !== null && spxState !== "missing";
+    const hasRange = available && range !== null;
+    const rangePosition = hasRange
+      ? Math.max(0, Math.min(100, ((spxPrice - dayLow) / range) * 100))
+      : null;
+    const fromOpen = spxPrice !== null && dayOpen !== null ? spxPrice - dayOpen : null;
+    const fromHigh = spxPrice !== null && dayHigh !== null ? spxPrice - dayHigh : null;
+    const fromLow = spxPrice !== null && dayLow !== null ? spxPrice - dayLow : null;
+    const rangePct = spxPrice ? (range / spxPrice) * 100 : null;
+
+    let character = "Unavailable";
+    let headline = "Current SPX session location is unavailable";
+    let detail = "Waiting for current SPX spot, high, and low. No synthetic location is shown.";
+    let tone = "unavailable";
+    if (hasRange) {
+      const isVolatile = rangePct !== null && rangePct >= 1.15;
+      if (isVolatile) {
+        character = "Volatile";
+        tone = "caution";
+      } else if (rangePosition >= 70 && fromOpen !== null && fromOpen > 0) {
+        character = "Trending up";
+        tone = "positive";
+      } else if (rangePosition <= 30 && fromOpen !== null && fromOpen < 0) {
+        character = "Trending down";
+        tone = "negative";
+      } else {
+        character = "Balanced";
+        tone = "neutral";
+      }
+      if (rangePosition >= 80) {
+        headline = `SPX is holding near the session high at ${formatValue(spxPrice, 2)}`;
+      } else if (rangePosition <= 20) {
+        headline = `SPX is holding near the session low at ${formatValue(spxPrice, 2)}`;
+      } else if (fromOpen !== null && fromOpen > 0) {
+        headline = `SPX is above the open and ${Math.round(rangePosition)}% through today's range`;
+      } else if (fromOpen !== null && fromOpen < 0) {
+        headline = `SPX is below the open and ${Math.round(rangePosition)}% through today's range`;
+      } else {
+        headline = `SPX is centered within today's ${formatValue(range, 2)}-point range`;
+      }
+      detail = `From open ${formatSigned(fromOpen, 2)} points · from low ${formatSigned(fromLow, 2)} · from high ${formatSigned(fromHigh, 2)}.`;
+    } else if (available) {
+      character = "Range unavailable";
+      headline = `SPX is ${formatValue(spxPrice, 2)}, but today's complete range is unavailable`;
+      detail = "Spot is current; session location will appear after valid high and low values arrive.";
+      tone = "caution";
+    }
+
+    if (spxSnapshot) spxSnapshot.dataset.tone = tone;
+    if (spxLocation) spxLocation.dataset.available = hasRange ? "true" : "false";
+    if (spxCharacter) dashboardUIFX.setText(spxCharacter, character);
+    if (spxCharacter?.parentElement) spxCharacter.parentElement.dataset.tone = tone;
+    if (spxSpot) dashboardUIFX.setText(spxSpot, spxPrice === null ? "—" : formatValue(spxPrice, 2));
+    if (spxChange) {
+      dashboardUIFX.setText(
+        spxChange,
+        spxPct === null ? "Session change unavailable" : `${formatSigned(spxPct, 2)}% today`
+      );
+      spxChange.dataset.tone = spxPct === null ? "unavailable" : spxPct > 0 ? "positive" : spxPct < 0 ? "negative" : "neutral";
+    }
+    if (spxRangePosition) {
+      dashboardUIFX.setText(
+        spxRangePosition,
+        rangePosition === null ? "Session location unavailable" : `${Math.round(rangePosition)}% through today's range`
+      );
+    }
+    dashboardUIFX.setText(spxLow, dayLow === null ? "—" : formatValue(dayLow, 2));
+    dashboardUIFX.setText(spxHigh, dayHigh === null ? "—" : formatValue(dayHigh, 2));
+    dashboardUIFX.setText(spxRangeSpot, spxPrice === null ? "—" : formatValue(spxPrice, 2));
+    dashboardUIFX.setText(spxRangeValue, range === null ? "—" : `${formatValue(range, 2)} pts`);
+    dashboardUIFX.setText(spxRangeStat, rangePosition === null ? "—" : `${Math.round(rangePosition)}%`);
+    dashboardUIFX.setText(spxFromOpen, fromOpen === null ? "—" : `${formatSigned(fromOpen, 2)} pts`);
+
+    if (canvasRead) canvasRead.dataset.tone = tone;
+    if (canvasHeadline) dashboardUIFX.setText(canvasHeadline, headline);
+    if (canvasDetail) dashboardUIFX.setText(canvasDetail, detail);
+  };
 
   const applyTapeSnapshot = (quotes, updatedLabel, seriesPoints = {}, lastHour = {}, timeframes = {}) => {
     const payload = quotes && typeof quotes === "object" ? quotes : {};
     const series = seriesPoints && typeof seriesPoints === "object" ? seriesPoints : {};
     const hourPayload = lastHour && typeof lastHour === "object" ? lastHour : {};
     const timeframePayload = timeframes && typeof timeframes === "object" ? timeframes : {};
+    renderSpxMiniChart(timeframePayload.SPX?.["1H"] || hourPayload.SPX || {});
+    const spxSeries = Array.isArray(series.SPX) ? series.SPX : [];
+    const spxValues = spxSeries
+      .map((point) => (point && typeof point === "object" ? asNum(point.v ?? point.close) : asNum(point)))
+      .filter((value) => value !== null);
+    if (payload.SPX && spxValues.length) {
+      const sessionQuote = { ...payload.SPX };
+      const sessionSpot = asNum(sessionQuote.price);
+      if (asNum(sessionQuote.day_open ?? sessionQuote.open) === null) {
+        sessionQuote.day_open = asNum(spxSeries[0]?.open) ?? spxValues[0];
+      }
+      if (asNum(sessionQuote.day_high ?? sessionQuote.high) === null) {
+        const highs = spxSeries
+          .map((point) => asNum(point?.high))
+          .filter((value) => value !== null);
+        sessionQuote.day_high = Math.max(
+          ...(highs.length ? highs : spxValues),
+          ...(sessionSpot === null ? [] : [sessionSpot])
+        );
+      }
+      if (asNum(sessionQuote.day_low ?? sessionQuote.low) === null) {
+        const lows = spxSeries
+          .map((point) => asNum(point?.low))
+          .filter((value) => value !== null);
+        sessionQuote.day_low = Math.min(
+          ...(lows.length ? lows : spxValues),
+          ...(sessionSpot === null ? [] : [sessionSpot])
+        );
+      }
+      payload.SPX = sessionQuote;
+    }
     rows.forEach((row) => {
       const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
       if (timeframePayload[symbol] && typeof timeframePayload[symbol] === "object") {
@@ -1310,13 +1474,27 @@ const marketSessionState = (now = new Date()) => {
       }
       updateRow(row, payload[symbol] || {}, series[symbol] || [], timeframePayloadForRow(row, hourPayload[symbol] || null));
     });
+    comparisonCards.forEach((card) => {
+      const symbol = String(card.dataset.comparisonSymbol || "").toUpperCase();
+      const quote = payload[symbol] || {};
+      const price = asNum(quote.price);
+      const pct = quotePctChange(quote);
+      const priceNode = card.querySelector('[data-role="comparison-price"]');
+      const moveNode = card.querySelector('[data-role="comparison-move"]');
+      if (priceNode) dashboardUIFX.setText(priceNode, price === null ? "—" : formatValue(price, 2));
+      if (moveNode) dashboardUIFX.setText(moveNode, pct === null ? "—" : `${formatSigned(pct, 2)}%`);
+      card.classList.toggle("is-positive", pct !== null && pct > 0);
+      card.classList.toggle("is-negative", pct !== null && pct < 0);
+      card.classList.toggle("is-unavailable", price === null);
+    });
+    updateMarketCanvasRead(payload);
     if (updatedLabel && updatedNode) {
       updatedNode.textContent = updatedLabel;
     }
   };
 
   const selectedTapeSymbols = () => {
-    const symbols = [];
+    const symbols = ["SPX"];
     rows.forEach((row) => {
       const lane = String(row.dataset.tapeLane || "").toLowerCase();
       if (!lane) return;
@@ -1324,6 +1502,10 @@ const marketSessionState = (now = new Date()) => {
         row.dataset.watchSymbol,
         DEFAULT_TAPE_SYMBOLS[lane] || "SPX"
       );
+      if (symbol && !symbols.includes(symbol)) symbols.push(symbol);
+    });
+    comparisonCards.forEach((card) => {
+      const symbol = normalizeTapeSymbol(card.dataset.comparisonSymbol, "");
       if (symbol && !symbols.includes(symbol)) symbols.push(symbol);
     });
     return symbols;
@@ -3271,6 +3453,7 @@ const marketSessionState = (now = new Date()) => {
   const metaNode = syncPanel.querySelector("[data-dashboard-sync-meta]");
   const todayNode = syncPanel.querySelector("[data-dashboard-sync-today]");
   const noteNode = syncPanel.querySelector("[data-dashboard-sync-note]");
+  const importReadinessItem = document.querySelector('[data-readiness-key="post-session-import"]');
   const runEndpoint = String(syncPanel.dataset.runEndpoint || "").trim();
   const jobEndpointTemplate = String(syncPanel.dataset.jobEndpointTemplate || "").trim();
   const finalStates = new Set(["success", "failed", "debug_only", "cancelled"]);
@@ -3372,6 +3555,24 @@ const marketSessionState = (now = new Date()) => {
       runLabel.textContent = "Sync Today";
     }
   };
+  const syncImportReadiness = ({ completed = false, running = false, failed = false, detail = "" } = {}) => {
+    if (!importReadinessItem) return;
+    const status = importReadinessItem.querySelector("[data-readiness-item-status]");
+    const detailNode = importReadinessItem.querySelector("[data-readiness-item-detail]");
+    const action = importReadinessItem.querySelector("[data-readiness-item-action]");
+    importReadinessItem.classList.toggle("is-done", completed);
+    importReadinessItem.classList.toggle("is-missing", !completed);
+    if (status) status.textContent = completed ? "Loaded" : running ? "Running" : "Pending";
+    if (detailNode) {
+      detailNode.textContent = completed
+        ? "Today's broker import is complete."
+        : running
+          ? "Today's broker import is running."
+          : detail || "Today's broker import is pending.";
+    }
+    if (action) action.textContent = completed ? "Open" : running ? "Wait" : failed ? "Review" : "Sync";
+    document.dispatchEvent(new CustomEvent("dashboard:import-readiness"));
+  };
   const refreshAvailability = () => {
     if (!credentialsReady()) {
       syncPanel.dataset.canRun = "0";
@@ -3425,6 +3626,12 @@ const marketSessionState = (now = new Date()) => {
       note: sync.detail,
       running: sync.outcome === "running",
     });
+    syncImportReadiness({
+      completed: !!sync.import_completed_today,
+      running: sync.outcome === "running",
+      failed: ["failed", "needs_recovery", "cancelled"].includes(String(sync.outcome || "")),
+      detail: String(sync.detail || ""),
+    });
     setRunDisabled(!sync.can_run, sync.disabled_reason || preflight.disabled_reason || "");
     return true;
   };
@@ -3457,6 +3664,7 @@ const marketSessionState = (now = new Date()) => {
     const meta = formatAbsoluteTimestamp(updatedAtRaw);
     const todayRan = ranToday(updatedAtRaw);
     if (isRunning) {
+      syncImportReadiness({ running: true });
       syncPanel.dataset.canRun = "0";
       syncPanel.dataset.disabledReason = "A live sync is already running.";
       setRunDisabled(true, "A live sync is already running.");
@@ -3476,6 +3684,7 @@ const marketSessionState = (now = new Date()) => {
     syncPanel.dataset.activeJobId = "";
     refreshAvailability();
     if (status === "success" || status === "debug_only") {
+      syncImportReadiness({ completed: status === "success" && todayRan });
       updateStatusCard({
         tone: "success",
         state: todayRan ? "COMPLETED TODAY" : "NOT RUN TODAY",
@@ -3493,6 +3702,7 @@ const marketSessionState = (now = new Date()) => {
         },
       }));
     } else if (status === "failed" || status === "cancelled") {
+      syncImportReadiness({ failed: true, detail: "Today's broker import is still pending." });
       updateStatusCard({
         tone: "warning",
         state: todayRan ? "FAILED TODAY" : "NOT RUN TODAY",
@@ -3738,6 +3948,8 @@ const marketSessionState = (now = new Date()) => {
     if (mindsetAction) mindsetAction.textContent = done ? "Ready" : defaultAction;
     syncReadiness();
   };
+
+  document.addEventListener("dashboard:import-readiness", syncReadiness);
 
   const observedNodes = [decisionLead, decisionBiasValue, decisionPlanValue, gammaStrip, briefCardShell]
     .filter(Boolean);

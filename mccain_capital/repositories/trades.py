@@ -499,6 +499,28 @@ def list_accounts(include_archived: bool = False) -> List[Dict[str, Any]]:
     return accounts
 
 
+def dedupe_accounts_for_display(
+    accounts: List[Dict[str, Any]], *, selected_account_id: int | None = None
+) -> List[Dict[str, Any]]:
+    """Collapse legacy active duplicates without mutating or hiding their stored records globally."""
+    displayed: List[Dict[str, Any]] = []
+    broker_positions: Dict[str, int] = {}
+    selected_id = int(selected_account_id or 0)
+    for account in accounts:
+        broker_id = normalize_broker_account_id(account.get("broker_account_id"))
+        if not broker_id:
+            displayed.append(account)
+            continue
+        position = broker_positions.get(broker_id)
+        if position is None:
+            broker_positions[broker_id] = len(displayed)
+            displayed.append(account)
+            continue
+        if selected_id and int(account.get("id") or 0) == selected_id:
+            displayed[position] = account
+    return displayed
+
+
 def create_account(
     *,
     account_name: str,
@@ -514,7 +536,22 @@ def create_account(
         raise ValueError("account name required")
     starting = float(starting_balance)
     size_value = float(account_size if account_size is not None else starting)
+    normalized_broker_id = normalize_broker_account_id(broker_account_id)
     with db() as conn:
+        if normalized_broker_id:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM accounts
+                WHERE broker_account_id = ?
+                  AND archived = 0
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (normalized_broker_id,),
+            ).fetchone()
+            if existing:
+                return int(existing["id"])
         cur = conn.execute(
             """
             INSERT INTO accounts (
@@ -526,7 +563,7 @@ def create_account(
             (
                 str(prop_firm or "").strip() or DEFAULT_PROP_FIRM,
                 account_name,
-                normalize_broker_account_id(broker_account_id),
+                normalized_broker_id,
                 size_value,
                 starting,
                 starting,

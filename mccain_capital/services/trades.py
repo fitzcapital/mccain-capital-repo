@@ -2914,7 +2914,10 @@ def trades_upload_pdf():
         else "edit" if selected_account else "new"
     )
     account_form_account = None if account_form_mode == "new" else selected_account
-    accounts = repo.list_accounts()
+    accounts = repo.dedupe_accounts_for_display(
+        repo.list_accounts(),
+        selected_account_id=int(selected_account["id"]) if selected_account else None,
+    )
     archived_accounts = [
         row
         for row in repo.list_accounts(include_archived=True)

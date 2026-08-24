@@ -13,6 +13,38 @@
   let activeSurface = null;
   let activeInvoker = null;
 
+  const bindWorkflowPin = () => {
+    const nav = document.querySelector(".dashboardWorkflowNav");
+    const control = nav?.querySelector("[data-dashboard-workflow-pin]");
+    if (!nav || !control || control.dataset.pinBound === "1") return;
+    control.dataset.pinBound = "1";
+    const storageKey = "mc_dashboard_workflow_pinned";
+    let pinned = true;
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved === "0") pinned = false;
+    } catch (_error) {
+      // Keep the current-page toggle usable when storage is unavailable.
+    }
+    const render = () => {
+      nav.classList.toggle("is-pinned", pinned);
+      control.classList.toggle("is-active", pinned);
+      control.setAttribute("aria-pressed", pinned ? "true" : "false");
+      control.setAttribute("aria-label", pinned ? "Unpin section navigation" : "Pin section navigation");
+      control.setAttribute("title", pinned ? "Unpin section navigation" : "Pin section navigation");
+    };
+    control.addEventListener("click", () => {
+      pinned = !pinned;
+      render();
+      try {
+        window.localStorage.setItem(storageKey, pinned ? "1" : "0");
+      } catch (_error) {
+        // The visual state still updates for the current page.
+      }
+    });
+    render();
+  };
+
   const isNativeDialog = (surface) => (
     surface instanceof HTMLDialogElement && typeof surface.showModal === "function"
   );
@@ -463,6 +495,7 @@
   });
 
   bindTriggers(document);
+  bindWorkflowPin();
   bindOperations();
   bindBrokerForms();
   observer.observe(document.body, { childList: true, subtree: true });

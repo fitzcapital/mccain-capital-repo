@@ -285,7 +285,11 @@ def dashboard_planning_refresh_api():
 def dashboard_tape_refresh_api():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
-    from mccain_capital.services.market_pulse_tape import last_hour_payload, timeframe_payloads
+    from mccain_capital.services.market_pulse_tape import (
+        has_meaningful_ohlc,
+        last_hour_payload,
+        timeframe_payloads,
+    )
 
     if core_svc.auth_enabled() and not core_svc.is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
@@ -299,7 +303,7 @@ def dashboard_tape_refresh_api():
                 symbol = "VIX"
             if symbol and symbol not in requested_symbols:
                 requested_symbols.append(symbol)
-            if len(requested_symbols) >= 2:
+            if len(requested_symbols) >= 5:
                 break
     symbols = requested_symbols or ["SPX", "VIX"]
     try:
@@ -382,28 +386,22 @@ def dashboard_tape_refresh_api():
             prior_rows = []
         prior_hour_source = _dashboard_tape_ohlc_rows(prior_rows)
 
-        # A current-session-only source makes every interval look the same near
-        # the opening bell. Keep the prior session in the timeframe source so
-        # rolling 24H views have the history their label promises; the shorter
-        # windows still trim it away by timestamp.
-        hour_source = prior_hour_source + current_hour_source
+        # The compact Dashboard chart must represent real candles. Prefer the
+        # current session once it has enough bars; otherwise show the last
+        # completed session instead of manufacturing movement from quote points.
+        hour_source = (
+            prior_hour_source + current_hour_source
+            if has_meaningful_ohlc(current_hour_source)
+            else prior_hour_source
+        )
         if not hour_source:
             try:
                 cached_replay_points, _cached_day = core_svc._market_pulse_cached_replay_series(sym)
             except Exception:
                 cached_replay_points = []
             hour_source = _dashboard_tape_ohlc_rows(cached_replay_points)
-            if not hour_source:
-                cached_values = [
-                    value
-                    for row in cached_replay_points
-                    if isinstance(row, dict)
-                    and (value := _dashboard_tape_float(row, "close", "c", "v")) is not None
-                ]
-                if len(cached_values) >= 2:
-                    hour_source = _dashboard_tape_close_rows(cached_values[-120:])
-        if not hour_source and len(spark_values) >= 2:
-            hour_source = _dashboard_tape_close_rows(spark_values[-60:])
+        if not has_meaningful_ohlc(hour_source):
+            hour_source = []
         timeframes[sym] = timeframe_payloads(hour_source, symbol=sym)
         last_hour[sym] = timeframes[sym].get("1H") or last_hour_payload(hour_source, symbol=sym)
         if len(spark_values) >= 4:

@@ -1,6 +1,11 @@
-<div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
+<details id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard dashboardPlanContext">
+  <summary class="dashboardPlanContextSummary">
+    <span>Plan context</span>
+    <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
+  </summary>
+  <div class="toolbar">
   <div class="pillRow dashboardBriefSignalRow">
-    <div class="pill">Daily Brief</div>
+    <div class="pill">Structure &amp; Context</div>
     <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
     <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
   </div>
@@ -27,15 +32,10 @@
           <div class="dashboardBriefQuickText" title="{{ daily_brief.execution_triggers }}">{{ daily_brief.execution_triggers }}</div>
         </div>
         <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
-          <div class="dashboardBriefStructuredLabel">Do Not Do</div>
+          <div class="dashboardBriefStructuredLabel">Invalidation</div>
           <div class="dashboardBriefQuickText" title="{{ daily_brief.do_not_do }}">{{ daily_brief.do_not_do }}</div>
         </div>
       </div>
-    <div class="rightActions dashboardBriefPrimaryActions">
-        <a class="btn" href="{{ market_pulse_href }}">Market Pulse</a>
-        <a class="btn" href="/ops/trading-window">Trade Gate</a>
-        <a class="btn ctaLink" href="/calendar">Open Calendar</a>
-    </div>
     <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more">
       <summary>More Info</summary>
       <div class="dashboardBriefMeta dashboardBriefMetaStrong">
@@ -83,7 +83,7 @@
           <textarea name="brief_plan_b" placeholder="Secondary setup">{{ daily_brief.plan_b }}</textarea>
         </div>
         <div class="stack10">
-          <label>Do Not Do</label>
+          <label>Invalidation</label>
           <textarea name="brief_no_trade" placeholder="When should you stand down?">{{ daily_brief.no_trade }}</textarea>
         </div>
         <div class="rightActions">
@@ -136,7 +136,7 @@
             <div class="dashboardBriefCopy">{{ daily_brief.execution_triggers }}</div>
           </div>
           <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
-            <div class="tiny muted">Do Not Do</div>
+            <div class="tiny muted">Invalidation</div>
             <div class="dashboardBriefCopy">{{ daily_brief.do_not_do }}</div>
           </div>
           <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
@@ -158,11 +158,6 @@
           {% endfor %}
         </div>
       </details>
-      <div class="rightActions">
-        <a class="btn" href="{{ market_pulse_href }}">Market Pulse</a>
-        <a class="btn" href="/ops/trading-window">Trade Gate</a>
-        <a class="btn ctaLink" href="/calendar">Open Calendar</a>
-      </div>
       <details class="syncDetails stack10" data-dashboard-optional="brief-tune-mobile">
         <summary>Tune Brief</summary>
         <form method="post" action="/dashboard/brief" class="stack10">
@@ -184,7 +179,7 @@
             <textarea name="brief_plan_b" placeholder="Secondary setup">{{ daily_brief.plan_b }}</textarea>
           </div>
           <div class="stack10">
-            <label>Do Not Do</label>
+            <label>Invalidation</label>
             <textarea name="brief_no_trade" placeholder="When should you stand down?">{{ daily_brief.no_trade }}</textarea>
           </div>
           <div class="rightActions">
@@ -195,4 +190,4 @@
       </details>
     </div>
   </details>
-</div></div>
+</div></details>

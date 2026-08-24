@@ -26,9 +26,30 @@
   const settingsToggle = root.querySelector("[data-gamma-settings-toggle]");
   const settingsPopover = root.querySelector("[data-gamma-settings-popover]");
   const settingsLabel = root.querySelector("[data-gamma-settings-label]");
-  const decisionPanels = root.querySelector("[data-gamma-decision-panels]");
-  const structureSummary = root.querySelector("[data-gamma-structure-summary]");
-  const topLevelsHost = root.querySelector("[data-gamma-top-levels]");
+  const executionMap = root.querySelector("[data-gamma-execution-map]");
+  const executionMapNodes = {
+    session: root.querySelector("[data-gamma-map-session]"),
+    regime: root.querySelector("[data-gamma-map-regime]"),
+    decision: root.querySelector("[data-gamma-map-decision]"),
+    upside: root.querySelector("[data-gamma-map-upside]"),
+    downside: root.querySelector("[data-gamma-map-downside]"),
+    range: root.querySelector("[data-gamma-map-range]"),
+    evidence: root.querySelector("[data-gamma-map-evidence]"),
+    quote: root.querySelector("[data-gamma-map-quote]"),
+    chain: root.querySelector("[data-gamma-map-chain]"),
+    expiration: root.querySelector("[data-gamma-map-expiration]"),
+    flip: root.querySelector("[data-gamma-map-flip]"),
+    confidence: root.querySelector("[data-gamma-map-confidence]"),
+    generation: root.querySelector("[data-gamma-map-generation]"),
+    scope: root.querySelector("[data-gamma-scope]"),
+    lineage: root.querySelector("[data-gamma-lineage]"),
+    command: root.querySelector("[data-gamma-command-sequence]"),
+    commandNow: root.querySelector("[data-gamma-command-now]"),
+    commandConfirm: root.querySelector("[data-gamma-command-confirm]"),
+    commandTarget: root.querySelector("[data-gamma-command-target]"),
+    commandFail: root.querySelector("[data-gamma-command-fail]"),
+    priorities: root.querySelector("[data-gamma-priority-strip]"),
+  };
   const board = root.querySelector("[data-gamma-board]");
   const rowsHost = root.querySelector("[data-gamma-rows]");
   const loading = root.querySelector("[data-gamma-loading]");
@@ -40,6 +61,8 @@
   const headerExpiration = root.querySelector("[data-gamma-expiration]");
   const headerUpdated = root.querySelector("[data-gamma-updated]");
   const refreshButton = root.querySelector("[data-gamma-refresh]");
+  const depthToggle = root.querySelector("[data-gamma-depth-toggle]");
+  const hiddenCount = root.querySelector("[data-gamma-hidden-count]");
   const summaryNode = root.querySelector("[data-gamma-summary]");
   const legendItems = Array.from(root.querySelectorAll("[data-gamma-legend]"));
   const keyLevelNodes = {
@@ -63,7 +86,10 @@
     distance: root.querySelector("[data-gamma-selected-distance]"),
     net: root.querySelector("[data-gamma-selected-net]"),
     state: root.querySelector("[data-gamma-selected-state]"),
+    behavior: root.querySelector("[data-gamma-selected-behavior]"),
+    failure: root.querySelector("[data-gamma-selected-failure]"),
   };
+  const selectedChartButton = root.querySelector("[data-gamma-selected-chart]");
   const reducedMotionQuery = window.matchMedia
     ? window.matchMedia("(prefers-reduced-motion: reduce)")
     : { matches: false };
@@ -71,12 +97,14 @@
   let currentSymbol = defaultSymbol;
   let currentWindowPreset = defaultWindowPreset;
   let currentDtePreset = defaultDtePreset;
-  let refreshTimer = null;
   let switchTimer = null;
   let controller = null;
   let requestSequence = 0;
   let inFlightSymbol = "";
   let hasLoadedData = false;
+  let showFullRows = false;
+  let lastAcceptedPayload = null;
+  let forceAfterCanonicalRefresh = false;
   let lastSummaryText = "Loading focused window…";
   let symbolSearchControl = null;
   let activeTooltipAnchor = null;
@@ -84,6 +112,44 @@
   let activeSelectedStrike = "";
   let lastPresentationSnapshot = null;
   let lastAcceptedTimestamp = 0;
+  let currentCanonicalGenerationId = String(root.dataset.canonicalGeneration || "");
+  let currentCanonicalGammaGenerationId = String(root.dataset.canonicalGammaGeneration || "");
+  let currentCanonicalPermission = String(root.dataset.canonicalPermission || "locked").toLowerCase();
+  let currentCanonicalActionState = String(root.dataset.canonicalActionState || "LOCKED").toUpperCase();
+  let currentCanonicalExecutionLocked = root.dataset.canonicalExecutionLocked !== "false";
+  let alignmentRecoveryGammaId = "";
+  const acceptedPayloads = new Map();
+
+  const acceptedPayloadKey = (symbol, windowPreset, dtePreset) => [
+    String(symbol || "").toUpperCase(),
+    String(windowPreset || "").toLowerCase(),
+    String(dtePreset || "").toLowerCase(),
+  ].join("|");
+
+  const cacheAcceptedPayload = (payload) => {
+    if (!payload || !Array.isArray(payload.rows) || !payload.rows.length) return;
+    const payloadDte = String(payload.dte_preset || currentDtePreset).toLowerCase();
+    acceptedPayloads.set(acceptedPayloadKey(
+      payload.symbol || currentSymbol,
+      payload.window_preset || currentWindowPreset,
+      payloadDte === "next" && currentDtePreset === "0" ? "0" : payloadDte,
+    ), payload);
+  };
+
+  const restoreAcceptedPayload = (symbol) => {
+    const payload = acceptedPayloads.get(acceptedPayloadKey(
+      symbol,
+      currentWindowPreset,
+      currentDtePreset,
+    ));
+    if (!payload) return false;
+    const timestamp = Date.parse(String(payload.updated_at || ""));
+    lastAcceptedTimestamp = Number.isFinite(timestamp) ? timestamp : 0;
+    lastAcceptedPayload = payload;
+    renderGammaHeader(payload);
+    renderGammaLadderRows(payload);
+    return true;
+  };
 
   const symbolThemeClass = (symbol) => `gamma-theme-${String(symbol || "").toLowerCase()}`;
   const titleCase = (value) => {
@@ -148,10 +214,10 @@
   const distanceFromSpot = (strike, spot) => Number(strike || 0) - Number(spot || 0);
   const classifyGammaStrength = (netGex, maxAbsGex, thresholds = GAMMA_STRENGTH_THRESHOLDS) => {
     const ratio = maxAbsGex > 0 ? Math.abs(Number(netGex) || 0) / maxAbsGex : 0;
-    if (ratio >= thresholds.extreme) return { label: "Extreme", key: "extreme", ratio };
-    if (ratio >= thresholds.strong) return { label: "Strong", key: "strong", ratio };
+    if (ratio >= thresholds.extreme) return { label: "Dominant", key: "extreme", ratio };
+    if (ratio >= thresholds.strong) return { label: "Major", key: "strong", ratio };
     if (ratio >= thresholds.moderate) return { label: "Moderate", key: "moderate", ratio };
-    return { label: "Weak", key: "weak", ratio };
+    return { label: "Minor", key: "weak", ratio };
   };
   const classifyGammaLevel = ({ row, spot, regime, strength }) => {
     const distance = distanceFromSpot(row.strike, spot);
@@ -342,16 +408,24 @@
     if (row.level.type === "resistance") return "Resistance";
     if (row.level.type === "support") return "Support";
     if (row.level.type === "acceleration") return "Acceleration Zone";
-    return row.level.label || "Level";
+    return row.level.type === "current" ? "Spot Interaction" : row.level.label || "Level";
   };
   const roleLabel = (row) => {
     if (!row) return "Level";
     const rank = row.importance?.label || "";
+    if (row.isDecision) return `Decision ${roleBaseLabel(row)}`;
     if (row.level?.type === "magnet") return "Magnet";
     if (rank === "PRIMARY") return `Primary ${roleBaseLabel(row)}`;
     if (rank === "SECONDARY") return `Secondary ${roleBaseLabel(row)}`;
     if (rank === "MINOR") return `Minor ${roleBaseLabel(row)}`;
     return roleBaseLabel(row);
+  };
+  const contextualStatusLabel = (level, status) => {
+    if (status !== "Broken") return level?.type === "current" && status === "Testing" ? "At Spot" : status;
+    if (level?.type === "support") return "Accepted Below";
+    if (level?.type === "resistance") return "Accepted Above";
+    if (level?.type === "acceleration") return "Expansion Active";
+    return status;
   };
   const focusDistanceLabel = (distance, symbol) => {
     const points = Math.abs(Number(distance) || 0);
@@ -365,7 +439,10 @@
   };
   const dteDisplayLabel = (dtePreset) => {
     const value = String(dtePreset || "3").toLowerCase();
-    return value === "all" ? "All" : `${value}DTE`;
+    if (value === "all") return "All";
+    if (value === "next") return "Next expiry";
+    if (value === "prior") return "Prior session";
+    return `${value}DTE`;
   };
   const windowDisplayLabel = (windowPreset) => {
     const value = String(windowPreset || "standard").toLowerCase();
@@ -468,6 +545,9 @@
     setNodeText(selectedNodes.distance, "—");
     setNodeText(selectedNodes.net, "—");
     setNodeText(selectedNodes.state, "Inspection ready");
+    setNodeText(selectedNodes.behavior, "Select a strike to inspect expected behavior.");
+    setNodeText(selectedNodes.failure, "Failure context appears after selection.");
+    if (selectedChartButton) selectedChartButton.hidden = true;
     if (notifyChart) dispatchSelectionCleared();
   };
   const updateSelectedInspector = (row) => {
@@ -484,6 +564,9 @@
     setNodeText(selectedNodes.distance, row.dataset.gammaRowDistance || "—");
     setNodeText(selectedNodes.net, row.dataset.gammaRowNet || "—");
     setNodeText(selectedNodes.state, row.dataset.gammaRowState || "Monitoring");
+    setNodeText(selectedNodes.behavior, row.dataset.gammaRowBehavior || "Monitor dealer response at this level.");
+    setNodeText(selectedNodes.failure, row.dataset.gammaRowFailure || "Wait for price confirmation.");
+    if (selectedChartButton) selectedChartButton.hidden = false;
   };
   const resetPresentationState = ({ notifyChart = true } = {}) => {
     lastPresentationSnapshot = null;
@@ -600,7 +683,7 @@
     if (board) board.hidden = initial && !hasLoadedData;
     if (errorNode) errorNode.hidden = true;
     if (refreshButton) refreshButton.disabled = initial || refreshing;
-    if (initial && decisionPanels) decisionPanels.hidden = true;
+    if (initial && executionMap) executionMap.hidden = true;
   };
 
   const renderError = (message) => {
@@ -617,7 +700,7 @@
         ? "Refresh failed. Showing the last successful gamma ladder."
         : "Gamma ladder unavailable.";
     }
-    if (!hasLoadedData && decisionPanels) decisionPanels.hidden = true;
+    if (!hasLoadedData && executionMap) executionMap.hidden = true;
   };
 
   const submitSymbolSearch = (symbol) => {
@@ -627,13 +710,16 @@
     window.clearTimeout(switchTimer);
     switchTimer = window.setTimeout(() => {
       setActiveSymbol(nextSymbol);
-      fetchGammaLadder(nextSymbol);
+      if (!restoreAcceptedPayload(nextSymbol)) fetchGammaLadder(nextSymbol);
     }, 120);
   };
 
   const setActiveSymbol = (symbol) => {
     const nextSymbol = sanitizeSymbol(symbol) || defaultSymbol;
-    if (nextSymbol !== currentSymbol) resetPresentationState();
+    if (nextSymbol !== currentSymbol) {
+      resetPresentationState();
+      showFullRows = false;
+    }
     currentSymbol = nextSymbol;
     if (searchInput) searchInput.value = currentSymbol;
     if (symbolSearchControl && symbolSearchControl.selectedSymbol !== currentSymbol) {
@@ -649,7 +735,10 @@
 
   const setActiveWindowPreset = (windowPreset) => {
     const nextWindowPreset = String(windowPreset || defaultWindowPreset).toLowerCase();
-    if (nextWindowPreset !== currentWindowPreset) resetPresentationState();
+    if (nextWindowPreset !== currentWindowPreset) {
+      resetPresentationState();
+      showFullRows = false;
+    }
     currentWindowPreset = nextWindowPreset;
     windowPills.forEach((pill) => {
       const pillWindow = String(pill.dataset.gammaWindowPill || "").toLowerCase();
@@ -662,7 +751,10 @@
 
   const setActiveDtePreset = (dtePreset) => {
     const nextDtePreset = String(dtePreset || defaultDtePreset).toLowerCase();
-    if (nextDtePreset !== currentDtePreset) resetPresentationState();
+    if (nextDtePreset !== currentDtePreset) {
+      resetPresentationState();
+      showFullRows = false;
+    }
     currentDtePreset = nextDtePreset;
     dtePills.forEach((pill) => {
       const pillDte = String(pill.dataset.gammaDtePill || "").toLowerCase();
@@ -671,6 +763,16 @@
       pill.setAttribute("aria-selected", isActive ? "true" : "false");
     });
     updateSettingsLabel();
+  };
+
+  const setDisplayedDtePreset = (dtePreset) => {
+    const displayed = String(dtePreset || currentDtePreset).toLowerCase();
+    dtePills.forEach((pill) => {
+      const pillDte = String(pill.dataset.gammaDtePill || "").toLowerCase();
+      const isActive = pillDte === displayed || (displayed === "next" && pillDte === "1");
+      pill.classList.toggle("active", isActive);
+      pill.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
   };
 
   const applyAvailableDteOptions = (payload) => {
@@ -683,44 +785,289 @@
       const isAvailable = available.includes(pillDte);
       pill.disabled = !isAvailable;
       pill.setAttribute("aria-disabled", isAvailable ? "false" : "true");
-      pill.title = isAvailable ? "" : "Only 3DTE data available";
+      pill.title = isAvailable
+        ? ""
+        : pillDte === "prior"
+          ? "No prior Gamma snapshot is available."
+          : `No ${dteDisplayLabel(pillDte)} Gamma snapshot is available.`;
     });
     root.classList.toggle("has-limited-dte", available.length === 1 && available[0] === "3");
+  };
+
+  const compactTimestamp = (value) => {
+    const parsed = Date.parse(String(value || ""));
+    if (!Number.isFinite(parsed)) return "Unavailable";
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(new Date(parsed));
+  };
+
+  const levelLabel = (level, role) => {
+    const strike = Number(typeof level === "object" ? level?.strike : level);
+    if (!Number.isFinite(strike)) return "Unavailable";
+    return `${role} ${formatNumber(strike, strike >= 1000 ? 0 : 2)}`;
+  };
+
+  const sourceAgeLabel = (value) => {
+    const parsed = Date.parse(String(value || ""));
+    if (!Number.isFinite(parsed)) return "unavailable";
+    const seconds = Math.max(0, Math.round((Date.now() - parsed) / 1000));
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`;
+  };
+
+  const priorityRole = (row) => {
+    if (row?.is_spot_nearest) return "Nearest boundary";
+    if (row?.is_strongest) return "Strongest magnet";
+    if (row?.is_flip) return "Gamma transition";
+    return Number(row?.net_gex) < 0 ? "Acceleration boundary" : "Reaction boundary";
+  };
+
+  const rankedPriorityRows = (payload) => {
+    const spot = Number(payload.spot);
+    const rows = Array.isArray(payload.relevant_rows) && payload.relevant_rows.length
+      ? payload.relevant_rows
+      : Array.isArray(payload.rows) ? payload.rows : [];
+    return rows.slice().sort((a, b) => {
+      const distanceA = Math.abs(Number(a.strike) - spot);
+      const distanceB = Math.abs(Number(b.strike) - spot);
+      if (distanceA !== distanceB) return distanceA - distanceB;
+      const roleA = Number(Boolean(a.is_spot_nearest)) * 3
+        + Number(Boolean(a.is_strongest)) * 2
+        + Number(Boolean(a.is_flip));
+      const roleB = Number(Boolean(b.is_spot_nearest)) * 3
+        + Number(Boolean(b.is_strongest)) * 2
+        + Number(Boolean(b.is_flip));
+      if (roleA !== roleB) return roleB - roleA;
+      return Math.abs(Number(b.net_gex) || 0) - Math.abs(Number(a.net_gex) || 0);
+    }).slice(0, 3);
+  };
+
+  const renderLiveGuidance = (payload) => {
+    const symbol = String(payload.symbol || currentSymbol).toUpperCase();
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const spot = Number(payload.spot);
+    const explicitSourceOverall = String(payload.source_freshness?.overall || "").toLowerCase();
+    const canonicalId = String(payload.canonical_generation_id || "");
+    const gammaId = String(payload.gamma_generation_id || "");
+    const canonicalMatches = Boolean(
+      canonicalId && currentCanonicalGenerationId && canonicalId === currentCanonicalGenerationId
+    );
+    const gammaMatches = Boolean(
+      gammaId && currentCanonicalGammaGenerationId && gammaId === currentCanonicalGammaGenerationId
+    );
+    const aligned = canonicalMatches || gammaMatches;
+    const isCurrent = explicitSourceOverall
+      ? explicitSourceOverall === "current"
+      : String(payload.data_state || "").toLowerCase() === "live";
+    const isSpx = symbol === "SPX";
+    const canonicalAllowsGuidance = !currentCanonicalExecutionLocked
+      && currentCanonicalPermission !== "locked"
+      && currentCanonicalActionState !== "LOCKED";
+    const canGuide = isSpx
+      && aligned
+      && isCurrent
+      && canonicalAllowsGuidance
+      && rows.length > 0
+      && Number.isFinite(spot);
+
+    if (isSpx && isCurrent && !aligned && gammaId && alignmentRecoveryGammaId !== gammaId) {
+      alignmentRecoveryGammaId = gammaId;
+      window.setTimeout(() => {
+        document.querySelector("[data-market-pulse-context-refresh]")?.click();
+      }, 250);
+    }
+
+    if (executionMapNodes.scope) {
+      executionMapNodes.scope.textContent = isSpx ? "SPX execution" : "Reference only";
+      executionMapNodes.scope.classList.toggle("is-reference", !isSpx);
+    }
+    if (executionMapNodes.lineage) {
+      executionMapNodes.lineage.textContent = !isSpx
+        ? "Reference data"
+        : aligned
+          ? `Aligned · Q ${sourceAgeLabel(payload.quote_as_of)} · C ${sourceAgeLabel(payload.chain_as_of)}`
+          : "Revalidating lineage";
+      executionMapNodes.lineage.classList.toggle("is-aligned", aligned && isCurrent);
+      executionMapNodes.lineage.classList.toggle("is-blocked", !aligned || !isCurrent);
+    }
+    if (executionMapNodes.command) executionMapNodes.command.hidden = false;
+
+    if (!canGuide) {
+      setNodeText(
+        executionMapNodes.commandNow,
+        !isSpx
+          ? `${symbol} is reference data only`
+          : !canonicalAllowsGuidance
+            ? "Execution locked by canonical playbook"
+            : "Synchronizing Gamma guidance",
+      );
+      setNodeText(
+        executionMapNodes.commandConfirm,
+        canonicalAllowsGuidance ? "Wait for aligned current data" : "Resolve the named execution blocker",
+      );
+      setNodeText(executionMapNodes.commandTarget, "No live target while guidance is blocked");
+      setNodeText(executionMapNodes.commandFail, "Canonical permission remains authoritative");
+    } else {
+      const ordered = rows.slice().sort((a, b) => Number(a.strike) - Number(b.strike));
+      const nearest = ordered.slice().sort(
+        (a, b) => Math.abs(Number(a.strike) - spot) - Math.abs(Number(b.strike) - spot),
+      )[0];
+      const nearestStrike = Number(nearest.strike);
+      const movingUp = nearestStrike >= spot;
+      const targets = ordered.filter((row) => movingUp
+        ? Number(row.strike) > nearestStrike
+        : Number(row.strike) < nearestStrike);
+      const failures = ordered.filter((row) => movingUp
+        ? Number(row.strike) < nearestStrike
+        : Number(row.strike) > nearestStrike);
+      const target = (movingUp ? targets : targets.reverse())[0];
+      const fail = (movingUp ? failures.reverse() : failures)[0];
+      const digits = nearestStrike >= 1000 ? 0 : 2;
+      const nearestText = formatNumber(nearestStrike, digits);
+      setNodeText(executionMapNodes.commandNow, `Testing ${priorityRole(nearest)} ${nearestText}`);
+      setNodeText(
+        executionMapNodes.commandConfirm,
+        `5m close ${movingUp ? "above" : "below"} ${nearestText} + hold`,
+      );
+      setNodeText(
+        executionMapNodes.commandTarget,
+        target ? `${priorityRole(target)} ${formatNumber(target.strike, digits)}` : "No mapped level beyond",
+      );
+      setNodeText(
+        executionMapNodes.commandFail,
+        fail
+          ? `Reject ${nearestText} → ${formatNumber(fail.strike, digits)}`
+          : `Rejection back through ${nearestText}`,
+      );
+    }
+
+    if (executionMapNodes.priorities) {
+      const priorities = rankedPriorityRows(payload);
+      executionMapNodes.priorities.hidden = priorities.length === 0;
+      executionMapNodes.priorities.innerHTML = priorities.map((row, index) => {
+        const strike = Number(row.strike);
+        const distance = strike - spot;
+        return `<span><small>#${index + 1} ${escapeHtml(priorityRole(row))}</small><strong>${escapeHtml(formatNumber(strike, strike >= 1000 ? 0 : 2))}</strong><em>${escapeHtml(formatDistance(distance, symbol))} pts · ${escapeHtml(formatCompact(row.net_gex))}</em></span>`;
+      }).join("");
+    }
+  };
+
+  const renderExecutionMap = (payload) => {
+    if (!executionMap) return;
+    const model = payload.execution_map || {};
+    const session = payload.session_context || {};
+    const localFlip = payload.local_flip || {};
+    executionMap.hidden = false;
+    if (executionMapNodes.session) {
+      executionMapNodes.session.textContent = session.display_label || payload.data_state_label || "Session unavailable";
+    }
+    if (executionMapNodes.regime) {
+      executionMapNodes.regime.textContent = model.environment || payload.regime_label || "Gamma structure unavailable";
+    }
+    if (executionMapNodes.decision) executionMapNodes.decision.textContent = levelLabel(model.decision_level, "Hold");
+    if (executionMapNodes.upside) executionMapNodes.upside.textContent = levelLabel(model.upside_level, "Magnet");
+    if (executionMapNodes.downside) {
+      const decision = Number(model.decision_level?.strike ?? model.decision_level);
+      const downside = Number(
+        model.downside_failure_level?.strike ?? model.downside_failure_level,
+      );
+      executionMapNodes.downside.textContent = Number.isFinite(decision) && Number.isFinite(downside)
+        ? `Loss of ${formatNumber(decision, 0)} → ${formatNumber(downside, 0)}`
+        : levelLabel(model.downside_failure_level, "Exposes");
+    }
+    if (executionMapNodes.range) {
+      const low = Number(model.expected_range?.low);
+      const high = Number(model.expected_range?.high);
+      executionMapNodes.range.textContent = Number.isFinite(low) && Number.isFinite(high)
+        ? `${formatNumber(low, 0)}–${formatNumber(high, 0)}`
+        : "Expansion risk";
+    }
+    if (executionMapNodes.evidence) {
+      executionMapNodes.evidence.textContent = model.next_evidence || "Wait for price confirmation at a mapped level.";
+    }
+    const sourceStatus = (name) => titleCase(payload.source_freshness?.sources?.[name]?.status || "unknown");
+    if (executionMapNodes.quote) {
+      executionMapNodes.quote.textContent = `${compactTimestamp(payload.quote_as_of)} · ${sourceStatus("quote")}`;
+    }
+    if (executionMapNodes.chain) {
+      executionMapNodes.chain.textContent = `${compactTimestamp(payload.chain_as_of)} · ${sourceStatus("chain")}`;
+    }
+    if (executionMapNodes.expiration) {
+      executionMapNodes.expiration.textContent = payload.expiration_label || payload.expiration || "Unavailable";
+    }
+    if (executionMapNodes.flip) {
+      const strike = Number(localFlip.value ?? payload.flip_strike);
+      executionMapNodes.flip.textContent = Number.isFinite(strike)
+        ? formatNumber(strike, strike >= 1000 ? 0 : 2)
+        : "Not qualified";
+    }
+    if (executionMapNodes.confidence) {
+      executionMapNodes.confidence.textContent = localFlip.found
+        ? titleCase(localFlip.confidence || "qualified")
+        : "No local transition";
+    }
+    if (executionMapNodes.generation) {
+      executionMapNodes.generation.textContent = String(payload.gamma_generation_id || "Unavailable").slice(0, 10);
+    }
+    renderLiveGuidance(payload);
   };
 
   const renderGammaHeader = (payload) => {
     const symbol = String(payload.symbol || currentSymbol).toUpperCase();
     const regime = String(payload.regime || "mixed_gamma");
     const regimeLabel = payload.regime_label || "Mixed Gamma Regime";
+    const positioningLabel = regime === "mixed_gamma"
+      ? "Ladder mix · Mixed"
+      : `Ladder positioning · ${regime.includes("positive") ? "Positive" : "Negative"}`;
     if (headerSymbol) headerSymbol.textContent = symbol;
     if (headerSpot) headerSpot.textContent = `· ${formatNumber(payload.spot, symbol === "SPX" ? 2 : 2)}`;
     if (headerRegime) {
-      headerRegime.textContent = regimeLabel;
+      headerRegime.textContent = positioningLabel;
+      headerRegime.title = `${regimeLabel}. The page header shows the canonical execution regime.`;
       headerRegime.className = `gamma-ladder-regime gamma-ladder-regime--${regime}`;
     }
-    if (headerExpiration) headerExpiration.textContent = `Data: ${dteDisplayLabel(currentDtePreset)}`;
+    if (headerExpiration) {
+      const effectiveDte = String(payload.dte_preset || currentDtePreset).toLowerCase();
+      const substituted = effectiveDte !== currentDtePreset;
+      headerExpiration.textContent = substituted
+        ? `Requested ${dteDisplayLabel(currentDtePreset)} → Using ${dteDisplayLabel(effectiveDte)} · ${payload.expiration_label || "Expiration unavailable"}`
+        : payload.expiration_label
+          ? `Expiration ${payload.expiration_label}`
+          : `Data: ${dteDisplayLabel(currentDtePreset)}`;
+    }
     if (headerUpdated) {
       headerUpdated.textContent = payload.updated_label ? `· Updated ${payload.updated_label}` : "· Updated —";
     }
     if (summaryNode) {
-      const visible = Number(payload.rows_visible) || 0;
+      const focusedRows = Array.isArray(payload.relevant_rows) ? payload.relevant_rows.length : 0;
+      const visible = focusedRows || Number(payload.rows_visible) || 0;
       const total = Number(payload.rows_total) || visible;
       const windowPreset = titleCase(payload.window_preset || currentWindowPreset);
-      const dteLabel = dteDisplayLabel(currentDtePreset);
-      const updatedAt = Date.parse(String(payload.updated_at || ""));
-      const isStale = Number.isFinite(updatedAt) && Date.now() - updatedAt > 5 * 60 * 1000;
-      lastSummaryText =
-        total > visible
-          ? `Showing ${visible} of ${total} strikes near spot · ${windowPreset} window · ${dteLabel}.`
-          : `Showing ${visible} focused strike${visible === 1 ? "" : "s"} · ${windowPreset} window · ${dteLabel}.`;
-      summaryNode.textContent = isStale ? `${lastSummaryText} Stale data.` : lastSummaryText;
-      root.classList.toggle("is-stale", isStale);
+      const dteLabel = dteDisplayLabel(payload.dte_preset || currentDtePreset);
+      const nearbyTotal = Array.isArray(payload.rows) ? payload.rows.length : visible;
+      const nearbyHidden = Math.max(0, nearbyTotal - visible);
+      lastSummaryText = `${visible} priority level${visible === 1 ? "" : "s"}`
+        + ` · ${nearbyHidden} nearby hidden · ${total} total available`
+        + ` · ${windowPreset} · ${dteLabel}.`;
+      summaryNode.textContent = `${lastSummaryText} ${payload.data_state_label || "Data state unavailable"}.`;
+      root.classList.toggle("is-stale", payload.data_state === "expired_stale");
     }
     applyAvailableDteOptions(payload);
     setActiveWindowPreset(payload.window_preset || currentWindowPreset);
-    setActiveDtePreset(currentDtePreset);
+    const effectiveDte = String(payload.dte_preset || currentDtePreset).toLowerCase();
+    setDisplayedDtePreset(effectiveDte);
+    if (settingsLabel) {
+      settingsLabel.textContent = effectiveDte === currentDtePreset
+        ? `${windowDisplayLabel(currentWindowPreset)} · ${dteDisplayLabel(effectiveDte)}`
+        : `${windowDisplayLabel(currentWindowPreset)} · ${dteDisplayLabel(currentDtePreset)} → ${dteDisplayLabel(effectiveDte)}`;
+    }
     setActiveSymbol(symbol);
     applyTheme(symbol, regime);
+    renderExecutionMap(payload);
   };
 
   const MarketStructureSummary = (payload, decisionModel) => {
@@ -835,7 +1182,13 @@
     const isAboveSpot = distance > 0;
     const flipClass = row.is_flip ? " is-flip" : "";
     const strongestClass = row.is_strongest ? " is-strongest" : "";
-    const spotClass = row.is_spot_nearest ? " is-spot" : "";
+    const spotClass = isAtSpot ? " is-spot" : row.is_spot_nearest ? " is-nearest-spot" : "";
+    const decisionClass = meta.isDecision ? " is-decision" : "";
+    const proximityClass = meta.isNearestUpside
+      ? " is-nearest-upside"
+      : meta.isNearestDownside
+        ? " is-nearest-downside"
+        : "";
     const sideClass = isAtSpot ? " is-at-spot" : isAboveSpot ? " is-above-spot" : " is-below-spot";
     const zoneClass = zoneMeta
       ? ` is-${zoneMeta.type}-zone is-zone-${zoneMeta.position}${zoneMeta.isFocal ? " is-zone-focal" : ""}`
@@ -852,8 +1205,8 @@
     const netStart = rgba(baseRed, baseGreen, baseBlue, 0.58 + strengthRatio * 0.18);
     const netEnd = rgba(accentRed, accentGreen, accentBlue, 0.98 - strengthRatio * 0.02);
     const overlayFill = row.is_strongest ? ' fill="rgba(255, 209, 102, 0.30)"' : "";
-    const levelLabel = roleLabel({ level, importance: meta.importance });
-    const statusLabel = meta.status || "Approaching";
+    const levelLabel = roleLabel({ level, importance: meta.importance, isDecision: meta.isDecision });
+    const statusLabel = contextualStatusLabel(level, meta.status || "Approaching");
     const importance = meta.importance || { label: "MINOR", key: "minor" };
     const detailId = `gamma-ladder-detail-${symbol}-${index}`;
     const rowKey = String(strike);
@@ -863,18 +1216,13 @@
       motion.crossed?.includes(rowKey) ? "is-spot-crossed" : "",
       motion.strongestChanged && row.is_strongest ? "is-new-strongest" : "",
     ].filter(Boolean).map((value) => ` ${value}`).join("");
-    const structuralBadge = row.is_strongest
-      ? { key: "magnet", label: "Magnet" }
+    const structuralKey = row.is_strongest
+      ? "magnet"
       : row.is_spot_nearest
-        ? { key: "current", label: "Current" }
+        ? "current"
         : row.is_flip
-          ? { key: "flip", label: "Flip" }
-          : importance.key === "primary"
-            ? { key: "primary", label: "Primary" }
-            : null;
-    const structuralBadgeMarkup = structuralBadge
-      ? `<span class="gamma-ladder-row__structuralBadge is-${structuralBadge.key}" data-gamma-structural-badge="${structuralBadge.key}">${structuralBadge.label}</span>`
-      : "";
+          ? "flip"
+          : importance.key === "primary" ? "primary" : "";
     const tooltipPayload = escapeHtml(
       JSON.stringify({
         strike: formatNumber(strike, strikeDigits),
@@ -896,10 +1244,19 @@
       status: statusLabel,
       behavior: generateExpectedBehavior(level),
     };
+    const failureContext = level.type === "support"
+      ? "Fails if price accepts below this support."
+      : level.type === "resistance"
+        ? "Fails if price accepts above this resistance."
+        : level.type === "magnet"
+          ? "Magnet thesis weakens if price rejects and expands away."
+          : level.type === "acceleration"
+            ? "Acceleration thesis fails if price reclaims and holds the level."
+            : "Wait for price to choose the next structural level.";
     return `
       <div class="gamma-ladder-rowWrap${motionClass}" data-gamma-row-wrap data-gamma-strike="${strike}">
         <button
-          class="gamma-ladder-row${flipClass}${strongestClass}${spotClass}${sideClass}${intensityClass}${stateClass}${zoneClass}${levelClass}"
+          class="gamma-ladder-row${flipClass}${strongestClass}${spotClass}${decisionClass}${proximityClass}${sideClass}${intensityClass}${stateClass}${zoneClass}${levelClass}"
           type="button"
           data-gamma-row
           data-gamma-row-strike="${strike}"
@@ -908,6 +1265,9 @@
           data-gamma-row-distance="${escapeHtml(`${distanceLabel} pts from spot`)}"
           data-gamma-row-net="${escapeHtml(formatCompact(netGex))}"
           data-gamma-row-state="${escapeHtml(statusLabel)}"
+          data-gamma-row-decision="${meta.isDecision ? "true" : "false"}"
+          data-gamma-row-behavior="${escapeHtml(detailPayload.behavior)}"
+          data-gamma-row-failure="${escapeHtml(failureContext)}"
           data-gamma-level-key="strike-${strike}"
           data-gamma-level-price="${strike}"
           data-gamma-level-classification="${gammaState}"
@@ -920,16 +1280,12 @@
         >
           <span class="gamma-ladder-row__strikeWrap">
             <span class="gamma-ladder-row__strike">${formatNumber(strike, strikeDigits)}</span>
-            <span class="gamma-ladder-row__tone">${isAtSpot ? "At spot" : isAboveSpot ? "Above spot" : "Below spot"}</span>
-            <span class="gamma-ladder-row__distance">${distanceLabel} ${isAtSpot ? "at spot" : isAboveSpot ? "above spot" : "below spot"}</span>
+            <span class="gamma-ladder-row__distance">${distanceLabel} pts</span>
             <span class="gamma-ladder-row__signalLine">
-              ${structuralBadgeMarkup}
-              <span class="gamma-ladder-row__roleText" data-gamma-role-text>${escapeHtml(levelLabel)}</span>
+              <span class="gamma-ladder-row__roleText" data-gamma-role-text data-gamma-structural-badge="${structuralKey}">${escapeHtml(levelLabel)}</span>
             </span>
           </span>
           <span class="gamma-ladder-row__viz" style="--gamma-net-x:${netX}%">
-            <span class="gamma-ladder-row__laneLabel gamma-ladder-row__laneLabel--negative">NEG</span>
-            <span class="gamma-ladder-row__laneLabel gamma-ladder-row__laneLabel--positive">POS</span>
             <svg viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
               <defs>
                 <linearGradient id="gamma-put-${symbol}-${index}" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -953,11 +1309,12 @@
               <circle cx="${netX}" cy="12" r="${row.is_strongest ? 4.2 : row.is_spot_nearest ? 3.6 : 2.8}" class="gamma-ladder-row__netDot"></circle>
             </svg>
             ${row.is_flip ? '<span class="gamma-ladder-row__flipLine" aria-hidden="true"></span>' : ""}
-            ${row.is_spot_nearest ? '<span class="gamma-ladder-row__spotMarker" aria-hidden="true"></span>' : ""}
-            ${row.is_spot_nearest ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--spot"><b>SPOT</b></span>' : ""}
+            ${isAtSpot ? '<span class="gamma-ladder-row__spotMarker" aria-hidden="true"></span>' : ""}
+            ${isAtSpot ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--spot"><b>SPOT</b></span>' : ""}
+            ${meta.isDecision ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--decision"><b>DECISION</b></span>' : ""}
             ${row.is_flip ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--flip"><b>FLIP</b></span>' : ""}
             ${row.is_strongest ? '<span class="gamma-ladder-nodeMarker gamma-ladder-nodeMarker--dominant"><b>NODE</b></span>' : ""}
-            ${motion.crossed?.includes(rowKey) ? '<span class="gamma-ladder-row__crossing">Spot crossed</span>' : ""}
+            ${motion.crossed?.includes(rowKey) ? `<span class="gamma-ladder-row__crossing">Crossed ${Number(payload.spot) >= Number(payload.previous_spot) ? "up" : "down"} · awaiting 5m</span>` : ""}
           </span>
           <span class="gamma-ladder-row__netWrap">
             <span class="gamma-ladder-row__net">${formatCompact(netGex)}</span>
@@ -1120,16 +1477,25 @@
 
   const renderGammaLadderRows = (payload, { context = presentationContext(payload) } = {}) => {
     if (!rowsHost) return;
-    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const allRows = Array.isArray(payload.rows) ? payload.rows : [];
+    const relevantRows = Array.isArray(payload.relevant_rows) && payload.relevant_rows.length
+      ? payload.relevant_rows
+      : allRows.filter((row) => row.is_decision_relevant).slice(0, 9);
+    const rows = showFullRows ? allRows : relevantRows;
+    const omittedCount = Math.max(0, allRows.length - rows.length);
+    if (depthToggle) {
+      depthToggle.textContent = showFullRows ? "Show focused ladder" : "Show full ladder";
+      depthToggle.setAttribute("aria-pressed", showFullRows ? "true" : "false");
+      depthToggle.hidden = allRows.length <= relevantRows.length;
+    }
+    if (hiddenCount) {
+      const totalAvailable = Number(payload.rows_total) || allRows.length;
+      hiddenCount.textContent = omittedCount
+        ? `${rows.length} priority · ${omittedCount} nearby hidden · ${totalAvailable} total`
+        : `${rows.length} nearby · ${totalAvailable} total`;
+    }
     if (!rows.length) {
       rowsHost.innerHTML = '<div class="gamma-ladder-emptyState">No ladder rows available.</div>';
-      if (structureSummary) {
-        structureSummary.innerHTML = '<div class="gamma-structure-card__empty">No strikes returned for this symbol and DTE selection.</div>';
-      }
-      if (topLevelsHost) {
-        topLevelsHost.innerHTML = '<div class="gamma-top-levels__empty">No ranked levels.</div>';
-      }
-      if (decisionPanels) decisionPanels.hidden = false;
       root.style.setProperty("--gamma-ladder-visible-rows", "1");
       hasLoadedData = true;
       setVisualState("");
@@ -1142,12 +1508,13 @@
       }
       return;
     }
-    const maxSide = rows.reduce((max, row) => {
-      const callAbs = Math.abs(Number(row.call_gex) || 0);
-      const putAbs = Math.abs(Number(row.put_gex) || 0);
-      const netAbs = Math.abs(Number(row.net_gex) || 0);
-      return Math.max(max, callAbs, putAbs, netAbs);
-    }, 0) || 1;
+    const sideValues = rows.flatMap((row) => [
+      Math.abs(Number(row.call_gex) || 0),
+      Math.abs(Number(row.put_gex) || 0),
+      Math.abs(Number(row.net_gex) || 0),
+    ]).filter((value) => value > 0).sort((a, b) => a - b);
+    const robustIndex = Math.max(0, Math.ceil(sideValues.length * 0.9) - 1);
+    const maxSide = sideValues[robustIndex] || 1;
     const rowStateMeta = rows.map((row) => {
       const netGex = Number(row.net_gex) || 0;
       const strengthRatio = clamp(Math.abs(netGex) / maxSide, 0, 1);
@@ -1203,9 +1570,13 @@
       cursor = end + 1;
     }
 
+    const maxNet = rows.reduce(
+      (max, row) => Math.max(max, Math.abs(Number(row.net_gex) || 0)),
+      0,
+    ) || 1;
     const rowMeta = rows.map((row, index) => {
       const base = rowStateMeta[index] || {};
-      const strength = classifyGammaStrength(row.net_gex, maxSide);
+      const strength = classifyGammaStrength(row.net_gex, maxNet);
       const zoneMeta = zoneMetaByIndex.get(index);
       const level = classifyGammaLevel({
         row,
@@ -1215,7 +1586,7 @@
       });
       return { ...base, strength, zoneMeta, level };
     });
-    const decisionModel = buildGammaDecisionModel(payload, rowMeta);
+    const decisionModel = buildGammaDecisionModel({ ...payload, rows }, rowMeta);
     const metaByStrike = new Map(
       (decisionModel.rows || []).map((row) => [String(Number(row.strike)), row])
     );
@@ -1227,6 +1598,20 @@
         meta.level = decorated.level;
         meta.strength = decorated.strength;
       }
+    });
+    const decisionLevel = payload.execution_map?.decision_level;
+    const decisionStrike = Number(
+      typeof decisionLevel === "object" ? decisionLevel?.strike : decisionLevel,
+    );
+    const aboveRows = rows.filter((row) => Number(row.strike) > Number(payload.spot));
+    const belowRows = rows.filter((row) => Number(row.strike) < Number(payload.spot));
+    const nearestUpside = aboveRows.slice().sort((a, b) => Number(a.strike) - Number(b.strike))[0];
+    const nearestDownside = belowRows.slice().sort((a, b) => Number(b.strike) - Number(a.strike))[0];
+    rowMeta.forEach((meta, index) => {
+      const strike = Number(rows[index]?.strike);
+      meta.isDecision = Number.isFinite(decisionStrike) && Math.abs(strike - decisionStrike) < 0.001;
+      meta.isNearestUpside = rows[index] === nearestUpside;
+      meta.isNearestDownside = rows[index] === nearestDownside;
     });
     const presentationPayload = {
       ...payload,
@@ -1258,17 +1643,13 @@
       : false;
     const motion = animate ? diff : {};
     const oldMeasurements = animate ? measureRenderedRows() : new Map();
-    if (decisionPanels) decisionPanels.hidden = false;
-    MarketStructureSummary(payload, decisionModel);
-    TopLevelsPanel(decisionModel);
-    updateKeyLevelSummary(payload, decisionModel);
     activeDetailRow = null;
     let previousLocation = "";
     rowsHost.innerHTML = rows
       .map((row, index) => {
         const strike = Number(row.strike);
         const spot = Number(payload.spot) || 0;
-        const location = row.is_spot_nearest
+        const location = Math.abs(strike - spot) < 0.01
           ? "at"
           : strike > spot
             ? "above"
@@ -1279,6 +1660,9 @@
           below: ["Below spot", "Downside support and expansion structure"],
         };
         const [title, description] = sectionLabels[location];
+        const spotRail = previousLocation === "above" && location === "below"
+          ? `<div class="gamma-ladder-spotRail" data-gamma-spot-rail aria-label="Current spot ${formatNumber(spot, spot >= 1000 ? 2 : 2)}"><span>SPOT</span><strong>${formatNumber(spot, spot >= 1000 ? 2 : 2)}</strong><small>Current market location</small></div>`
+          : "";
         const section = location !== previousLocation
           ? `
             <div class="gamma-ladder-locationSection gamma-ladder-locationSection--${location}" data-gamma-location-section="${location}">
@@ -1288,7 +1672,7 @@
           `
           : "";
         previousLocation = location;
-        return section + GammaRow({
+        return spotRail + section + GammaRow({
           row,
           payload,
           index,
@@ -1314,6 +1698,12 @@
       );
       if (selectedRow) updateSelectedInspector(selectedRow);
       else clearSelectedInspector({ notifyChart: true });
+    } else {
+      const nearestPriority = rankedPriorityRows(payload)[0];
+      const nearestRow = nearestPriority && rowsHost.querySelector(
+        `[data-gamma-row][data-gamma-row-strike="${Number(nearestPriority.strike)}"]`,
+      );
+      if (nearestRow) updateSelectedInspector(nearestRow);
     }
     lastPresentationSnapshot = nextSnapshot;
     root.style.setProperty(
@@ -1461,19 +1851,11 @@
           timestamp: Date.now(),
         },
       }));
-      openRowDetail(row);
       return;
     }
     if (tooltip && !tooltip.hidden && !event.target.closest("[data-tooltip], [data-gamma-legend]")) {
       hideTooltip();
     }
-  };
-
-  const refreshLoop = () => {
-    if (refreshTimer) window.clearInterval(refreshTimer);
-    refreshTimer = window.setInterval(() => {
-      fetchGammaLadder(currentSymbol, { force: true });
-    }, 60000);
   };
 
   const fetchGammaLadder = async (symbol, { force = false } = {}) => {
@@ -1493,7 +1875,7 @@
       url.searchParams.set("window", currentWindowPreset);
       url.searchParams.set("dte", currentDtePreset);
       console.log("Fetching ladder with DTE:", currentDtePreset);
-      if (force) url.searchParams.set("_", String(Date.now()));
+      if (force) url.searchParams.set("refresh", "1");
       const response = await fetch(url.toString(), {
         signal: controller.signal,
         cache: "no-store",
@@ -1536,6 +1918,8 @@
         lastAcceptedTimestamp = Math.max(lastAcceptedTimestamp, payloadTimestamp);
       }
       renderGammaHeader(payload);
+      lastAcceptedPayload = payload;
+      cacheAcceptedPayload(payload);
       renderGammaLadderRows(payload, { context });
       document.dispatchEvent(new CustomEvent("market-pulse:gamma-updated", {
         detail: {
@@ -1551,7 +1935,6 @@
           })) : [],
         },
       }));
-      refreshLoop();
     } catch (err) {
       if (err && err.name === "AbortError") return;
       renderError((err && err.message) || "Gamma ladder unavailable.");
@@ -1646,9 +2029,90 @@
 
   if (refreshButton) {
     refreshButton.addEventListener("click", () => {
-      fetchGammaLadder(currentSymbol, { force: true });
+      const canonicalRefresh = document.querySelector("[data-market-pulse-context-refresh]");
+      if (canonicalRefresh) {
+        forceAfterCanonicalRefresh = true;
+        canonicalRefresh.click();
+      }
+      else fetchGammaLadder(currentSymbol, { force: true });
     });
   }
+
+  if (depthToggle) {
+    depthToggle.addEventListener("click", () => {
+      if (!lastAcceptedPayload) return;
+      showFullRows = !showFullRows;
+      renderGammaLadderRows(lastAcceptedPayload);
+    });
+  }
+
+  if (selectedChartButton) {
+    selectedChartButton.addEventListener("click", () => {
+      const selectedRow = rowsHost?.querySelector("[data-gamma-row].is-selected");
+      if (!selectedRow) return;
+      document.getElementById("spxExecutionHeroChart")?.scrollIntoView({
+        behavior: reducedMotionQuery.matches ? "auto" : "smooth",
+        block: "center",
+      });
+    });
+  }
+
+  window.addEventListener("market-pulse-canonical-update", (event) => {
+    const force = forceAfterCanonicalRefresh;
+    forceAfterCanonicalRefresh = false;
+    const canonicalLadder = event.detail?.payload?.gamma_ladder;
+    currentCanonicalGenerationId = String(
+      event.detail?.payload?.canonical_freshness?.generation_id || currentCanonicalGenerationId,
+    );
+    currentCanonicalGammaGenerationId = String(
+      canonicalLadder?.gamma_generation_id || currentCanonicalGammaGenerationId,
+    );
+    const canonicalFreshness = event.detail?.payload?.canonical_freshness || {};
+    const canonicalAction = canonicalFreshness.authoritative_action_state || {};
+    const canonicalVerdict = event.detail?.payload?.verdict || {};
+    currentCanonicalPermission = String(
+      canonicalAction.permission || canonicalVerdict.permission || "locked",
+    ).toLowerCase();
+    currentCanonicalActionState = String(
+      canonicalAction.action_state || event.detail?.payload?.live_execution_guide?.action_state || "LOCKED",
+    ).toUpperCase();
+    currentCanonicalExecutionLocked = Boolean(canonicalFreshness.execution_locked);
+    root.dataset.canonicalGeneration = currentCanonicalGenerationId;
+    root.dataset.canonicalGammaGeneration = currentCanonicalGammaGenerationId;
+    root.dataset.canonicalPermission = currentCanonicalPermission;
+    root.dataset.canonicalActionState = currentCanonicalActionState;
+    root.dataset.canonicalExecutionLocked = currentCanonicalExecutionLocked ? "true" : "false";
+    if (canonicalLadder?.gamma_generation_id === alignmentRecoveryGammaId) {
+      alignmentRecoveryGammaId = "";
+    }
+    if (canonicalLadder?.coherence_blocked) {
+      root.classList.add("is-stale");
+      if (summaryNode) {
+        summaryNode.textContent = canonicalLadder.coherence_reason
+          || "Gamma Ladder retained while canonical data is incoherent.";
+      }
+      return;
+    }
+    const canonicalDte = String(canonicalLadder?.dte_preset || "").toLowerCase();
+    const contextMatches = String(canonicalLadder?.symbol || "").toUpperCase() === currentSymbol
+      && String(canonicalLadder?.window_preset || "").toLowerCase() === currentWindowPreset
+      && (canonicalDte === currentDtePreset || (currentDtePreset === "0" && canonicalDte === "next"));
+    if (contextMatches && canonicalLadder?.ok !== false && Array.isArray(canonicalLadder?.rows)) {
+      const timestamp = Date.parse(String(canonicalLadder.updated_at || ""));
+      if (!Number.isFinite(timestamp) || timestamp >= lastAcceptedTimestamp) {
+        if (Number.isFinite(timestamp)) lastAcceptedTimestamp = timestamp;
+        lastAcceptedPayload = canonicalLadder;
+        cacheAcceptedPayload(canonicalLadder);
+        renderGammaHeader(canonicalLadder);
+        renderGammaLadderRows(canonicalLadder);
+        return;
+      }
+    }
+    fetchGammaLadder(currentSymbol, { force });
+  });
+  window.addEventListener("market-pulse-canonical-refresh-failed", () => {
+    forceAfterCanonicalRefresh = false;
+  });
 
   root.addEventListener("click", handleGammaClick);
   root.addEventListener("mouseover", (event) => {
@@ -1694,5 +2158,29 @@
   setActiveSymbol(defaultSymbol);
   setActiveWindowPreset(defaultWindowPreset);
   setActiveDtePreset(defaultDtePreset);
-  fetchGammaLadder(defaultSymbol);
+  let bootstrapLadder = null;
+  try {
+    const bootstrapNode = document.getElementById("spxPriorityBasePayload");
+    const bootstrapPayload = JSON.parse(bootstrapNode?.textContent || "{}");
+    bootstrapLadder = bootstrapPayload?.gamma_ladder || null;
+  } catch (_err) {
+    bootstrapLadder = null;
+  }
+  const bootstrapDte = String(bootstrapLadder?.dte_preset || "").toLowerCase();
+  const bootstrapMatches = String(bootstrapLadder?.symbol || "").toUpperCase() === defaultSymbol
+    && String(bootstrapLadder?.window_preset || "").toLowerCase() === defaultWindowPreset
+    && (bootstrapDte === defaultDtePreset || (defaultDtePreset === "0" && bootstrapDte === "next"))
+    && bootstrapLadder?.ok !== false
+    && Array.isArray(bootstrapLadder?.rows)
+    && bootstrapLadder.rows.length > 0;
+  if (bootstrapMatches) {
+    const timestamp = Date.parse(String(bootstrapLadder.updated_at || ""));
+    if (Number.isFinite(timestamp)) lastAcceptedTimestamp = timestamp;
+    lastAcceptedPayload = bootstrapLadder;
+    cacheAcceptedPayload(bootstrapLadder);
+    renderGammaHeader(bootstrapLadder);
+    renderGammaLadderRows(bootstrapLadder);
+  } else {
+    fetchGammaLadder(defaultSymbol);
+  }
 })();

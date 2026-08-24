@@ -209,23 +209,11 @@ def test_execution_model_ladder_rows_are_sorted_by_value():
     assert "Local Flip" in labels
 
 
-def test_market_pulse_series_vwap_uses_available_rows_without_chart_threshold():
-    vwap = core._market_pulse_series_vwap(
-        [
-            {"close": 100.0, "volume": 10},
-            {"close": 103.0, "volume": 20},
-            {"close": 101.0, "volume": 30},
-        ]
-    )
-    assert vwap == 101.5
-
-
 def test_execution_chart_uses_gamma_snapshot_local_flip():
     chart = core._market_pulse_execution_chart_viewmodel(
         spx_quote={
             "symbol": "SPX",
             "price": 6582.0,
-            "vwap": None,
             "prior_session_day": "2026-04-02",
             "prior_session_series": [
                 {"ts": "2026-04-02T14:30:00-04:00", "close": 6570.0, "volume": 100},
@@ -250,3 +238,33 @@ def test_execution_chart_uses_gamma_snapshot_local_flip():
     )
     local_flip = next(row["value"] for row in chart["levels"] if row["key"] == "local_flip")
     assert round(local_flip, 2) == 6578.5
+
+
+def test_execution_chart_prefers_completed_five_minute_bars_for_setup_replay():
+    display_series = [
+        {"ts": "2026-04-06T09:35:00-04:00", "v": 100.0},
+    ]
+    completed_bars = [
+        {
+            "ts": "2026-04-06T09:35:00-04:00",
+            "open": 101.0,
+            "high": 102.0,
+            "low": 99.0,
+            "close": 100.0,
+        },
+    ]
+
+    chart = core._market_pulse_execution_chart_viewmodel(
+        spx_quote={
+            "symbol": "SPX",
+            "price": 100.0,
+            "series": display_series,
+            "strategy_bars_5m": completed_bars,
+        },
+        gamma_snapshot={"regime": "Negative Gamma"},
+        macro_events=[],
+        now_et=datetime.fromisoformat("2026-04-06T10:00:00-04:00"),
+    )
+
+    assert chart["points"][0]["price"] == 100.0
+    assert chart["strategy_bars_5m"] == completed_bars

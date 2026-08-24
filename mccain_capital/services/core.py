@@ -7,20 +7,20 @@ keeps that dependency localized behind explicit delegator functions.
 from __future__ import annotations
 
 from calendar import Calendar, monthrange
-from concurrent.futures import as_completed
-from concurrent.futures import ThreadPoolExecutor
 import copy
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
 from email.utils import parsedate_to_datetime
 import html
+import hashlib
 import json
 import logging
 import math
 import os
 import re
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -48,6 +48,7 @@ from flask import (
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
 from mccain_capital.services.ui import (
+    _static_version,
     get_trading_window_state,
     get_forex_factory_feed,
     get_forex_factory_month_feed,
@@ -66,6 +67,7 @@ from mccain_capital.services.market_pulse_health import build_market_source_heal
 from mccain_capital.services.market_pulse_tape import (
     apply_range_payload as _market_pulse_apply_range_payload,
     dashboard_sparkline_svg as _dashboard_tape_sparkline_svg,
+    has_meaningful_ohlc as _dashboard_tape_has_meaningful_ohlc,
     last_hour_payload as _dashboard_tape_last_hour_payload,
     timeframe_payloads as _dashboard_tape_timeframe_payloads,
     range_payload as _market_pulse_range_payload,
@@ -79,6 +81,34 @@ from mccain_capital.services.gamma_context_service import (
     build_spx_priority_context,
 )
 from mccain_capital.services.twitter_feed_service import build_twitter_feed_snapshot
+from mccain_capital.services.spx_liquidity_sweep import evaluate_failed_liquidity_sweep
+from mccain_capital.services.market_pulse_scenarios import (
+    rank_market_scenarios,
+)
+from mccain_capital.services.spx_candle_evidence import derive_completed_candle_evidence
+from mccain_capital.services.market_pulse_freshness import build_canonical_freshness
+from mccain_capital.services.market_pulse_reliability import (
+    choose_newest_context,
+    load_shared_context,
+    promote_shared_context,
+    validate_context_payload,
+)
+from mccain_capital.services.market_pulse_operational_health import (
+    build_operational_health,
+    record_reliability_event,
+)
+from mccain_capital.services.market_session_calendar import (
+    holiday_name as shared_market_holiday_name,
+    is_session_day as shared_is_market_session,
+    market_holidays as shared_market_holidays,
+    market_phase as shared_market_phase,
+    next_session_open as shared_next_session_open,
+)
+from mccain_capital.services.market_pulse_setup_replay import build_intraday_setup_replay
+from mccain_capital.services.market_pulse_live_setup import (
+    acknowledge_setup,
+    evaluate_live_setup_monitor,
+)
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -251,6 +281,12 @@ _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_pulse_x_user_cache: Dict[str, Any] = {"fetched_at": None, "payload": {}}
 _market_pulse_playbook_cache: Dict[str, Any] = {"generated_at": None, "payload": None}
 _market_pulse_replay_cache_mem: Dict[str, Any] = {"path": "", "mtime": None, "payload": None}
+_market_pulse_context_refresh_lock = threading.Lock()
+_market_pulse_context_response_cache: Dict[str, Any] = {}
+_market_pulse_context_recovery_attempts: Dict[str, datetime] = {}
+MARKET_PULSE_AUTOMATIC_RECOVERY_COOLDOWN_SECONDS = 45
+_market_pulse_tape_refresh_lock = threading.Lock()
+_market_pulse_tape_response_cache: Dict[str, Any] = {}
 
 LOGGER = logging.getLogger(__name__)
 USD_CALENDAR_FALLBACK_EVENTS: Tuple[Tuple[str, str, str], ...] = (
@@ -308,6 +344,45 @@ def _market_pulse_replay_cache_file() -> str:
 
 def _market_pulse_playbook_cache_file() -> str:
     return app_runtime.upload_path(".market_pulse_playbook_cache.json")
+
+
+def _market_pulse_context_cache_file(ticker: str) -> str:
+    safe_ticker = re.sub(r"[^A-Z0-9_-]", "", str(ticker or "SPX").upper()) or "SPX"
+    return app_runtime.upload_path(f".market_pulse_context_{safe_ticker.lower()}.json")
+
+
+def _market_pulse_live_setup_ledger_file(ticker: str) -> str:
+    safe_ticker = re.sub(r"[^A-Z0-9_-]", "", str(ticker or "SPX").upper()) or "SPX"
+    return app_runtime.upload_path(f".market_pulse_live_setups_{safe_ticker.lower()}.json")
+
+
+def _market_pulse_live_setup_monitor(
+    *,
+    ticker: str,
+    playbook_view: Dict[str, Any],
+    canonical_freshness: Dict[str, Any],
+    execution_chart: Dict[str, Any],
+    now_et: datetime,
+) -> Dict[str, Any]:
+    if not current_app.config.get("MARKET_PULSE_LIVE_SETUP_ALERTS_ENABLED", True):
+        return {
+            "enabled": False,
+            "ticker": ticker,
+            "primary": None,
+            "secondary": [],
+            "recent": [],
+            "alert_event": None,
+        }
+    return evaluate_live_setup_monitor(
+        ticker=ticker,
+        scenario_rankings=dict(playbook_view.get("scenario_rankings") or {}),
+        canonical_freshness=canonical_freshness,
+        authoritative_action=dict(canonical_freshness.get("authoritative_action_state") or {}),
+        bars=list(execution_chart.get("strategy_bars_5m") or []),
+        now=now_et,
+        ledger_path=_market_pulse_live_setup_ledger_file(ticker),
+        cutoff=current_app.config.get("MARKET_PULSE_LIVE_SETUP_CUTOFF_ET", "15:15"),
+    )
 
 
 def _market_news_cache_file() -> str:
@@ -654,32 +729,6 @@ def _market_pulse_rows_to_points(rows: List[Dict[str, Any]]) -> List[Dict[str, A
     return points
 
 
-def _market_pulse_series_vwap(rows: List[Dict[str, Any]]) -> Optional[float]:
-    vwap_num = 0.0
-    vwap_den = 0.0
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        price = row.get("close")
-        if not isinstance(price, (int, float)):
-            price = row.get("price")
-        if not isinstance(price, (int, float)):
-            price = row.get("v")
-        volume = row.get("volume")
-        if not isinstance(volume, (int, float)):
-            volume = row.get("vol")
-        if (
-            isinstance(price, (int, float))
-            and isinstance(volume, (int, float))
-            and float(volume) > 0
-        ):
-            vwap_num += float(price) * float(volume)
-            vwap_den += float(volume)
-    if vwap_den <= 0:
-        return None
-    return vwap_num / vwap_den
-
-
 def _market_pulse_iter_market_sessions_backward(
     start_day: Optional[date],
     *,
@@ -885,7 +934,6 @@ def _market_pulse_compact_quote_payload(quote: Dict[str, Any]) -> Dict[str, Any]
         "previous_close",
         "prior_day_low",
         "prior_day_high",
-        "vwap",
         "source_badge_label",
         "source_badge_tone",
     }
@@ -1081,30 +1129,76 @@ def _market_pulse_cached_playbook_snapshot(
             return None
         return copy.deepcopy(payload)
 
-    generated_at = _market_pulse_playbook_cache.get("generated_at")
-    payload = _market_pulse_playbook_cache.get("payload")
-    if isinstance(generated_at, datetime) and isinstance(payload, dict):
-        age = max(0.0, (now_et - generated_at).total_seconds())
-        if age <= MARKET_PULSE_LAST_GOOD_SNAPSHOT_MAX_AGE_SECONDS:
-            cached = _valid_payload(payload)
-            if cached is not None:
-                return cached
-
     disk_payload = _load_market_pulse_playbook_disk_cache()
     generated_raw = str((disk_payload or {}).get("generated_at") or "").strip()
     disk_generated_at = _parse_iso_et(generated_raw) if generated_raw else None
     disk_snapshot = dict((disk_payload or {}).get("payload") or {})
-    if disk_generated_at is None or not disk_snapshot:
-        return None
-    age = max(0.0, (now_et - disk_generated_at).total_seconds())
-    if age > MARKET_PULSE_LAST_GOOD_SNAPSHOT_MAX_AGE_SECONDS:
-        return None
-    cached = _valid_payload(disk_snapshot)
-    if cached is None:
-        return None
-    _market_pulse_playbook_cache["generated_at"] = disk_generated_at
-    _market_pulse_playbook_cache["payload"] = copy.deepcopy(disk_snapshot)
-    return cached
+    memory_generated_at = _market_pulse_playbook_cache.get("generated_at")
+    memory_snapshot = _market_pulse_playbook_cache.get("payload")
+    candidates = [
+        (memory_generated_at, memory_snapshot, "memory"),
+        (disk_generated_at, disk_snapshot, "disk"),
+    ]
+    candidates.sort(
+        key=lambda row: row[0].timestamp() if isinstance(row[0], datetime) else float("-inf"),
+        reverse=True,
+    )
+    for generated_at, payload, source in candidates:
+        if not isinstance(generated_at, datetime) or not isinstance(payload, dict) or not payload:
+            continue
+        age = max(0.0, (now_et - generated_at).total_seconds())
+        if age > MARKET_PULSE_LAST_GOOD_SNAPSHOT_MAX_AGE_SECONDS:
+            continue
+        cached = _valid_payload(payload)
+        if cached is None:
+            continue
+        if source == "disk":
+            _market_pulse_playbook_cache["generated_at"] = generated_at
+            _market_pulse_playbook_cache["payload"] = copy.deepcopy(payload)
+        return cached
+    return None
+
+
+def _market_pulse_setup_replay_source_snapshot(
+    now_et: datetime, *, ticker: str
+) -> Dict[str, Any]:
+    """Return the newest canonical replay source that actually contains bars.
+
+    The playbook disk snapshot and the canonical context envelope are promoted
+    independently.  Replay must not go empty merely because the former was
+    written without its completed-bar series while the page is already using a
+    newer canonical context generation.
+    """
+
+    selected_ticker = get_supported_playbook_ticker(ticker)
+    playbook_snapshot = _market_pulse_cached_playbook_snapshot(
+        now_et, ticker=selected_ticker
+    ) or {}
+    memory_context = copy.deepcopy(
+        _market_pulse_context_response_cache.get(selected_ticker)
+    )
+    shared_context = (
+        None
+        if current_app.config.get("TESTING")
+        else load_shared_context(
+            _market_pulse_context_cache_file(selected_ticker),
+            ticker=selected_ticker,
+        )
+    )
+    canonical_context = choose_newest_context(
+        memory_context,
+        shared_context,
+        ticker=selected_ticker,
+    )
+
+    candidates = [canonical_context, playbook_snapshot]
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        bars = list((candidate.get("execution_chart") or {}).get("strategy_bars_5m") or [])
+        if bars:
+            return copy.deepcopy(candidate)
+    return copy.deepcopy(canonical_context or playbook_snapshot or {})
 
 
 def _market_pulse_cached_playbook_matches_quotes(
@@ -3001,7 +3095,6 @@ def _market_pulse_snapshot(
                 "day_open": None,
                 "day_high": None,
                 "day_low": None,
-                "vwap": None,
                 "prior_day_high": None,  # TODO(api): wire prior-day high from upstream provider payload.
                 "prior_day_low": None,  # TODO(api): wire prior-day low from upstream provider payload.
                 "overnight_high": None,  # TODO(api): wire overnight high from upstream provider payload.
@@ -3064,14 +3157,7 @@ def _market_pulse_snapshot(
             source="cached_replay",
         )
         _market_pulse_apply_range_payload(q, current_range or prior_range or cached_range)
-        current_vwap = _market_pulse_series_vwap(rows)
-        if current_vwap is not None:
-            q["vwap"] = current_vwap
         if not rows:
-            fallback_vwap_rows = prior_rows or list(q.get("prior_session_series") or [])
-            fallback_vwap = _market_pulse_series_vwap(fallback_vwap_rows)
-            if fallback_vwap is not None:
-                q["vwap"] = fallback_vwap
             continue
         points = _market_pulse_rows_to_points(rows)
         curve = [float(p["v"]) for p in points]
@@ -3681,23 +3767,35 @@ def _market_pulse_guardrail(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _market_pulse_market_hours(now_et: datetime) -> bool:
-    if int(now_et.weekday()) >= 5:
-        return False
-    minute_of_day = (int(now_et.hour) * 60) + int(now_et.minute)
-    return (9 * 60 + 30) <= minute_of_day < (16 * 60)
+    return shared_market_phase(now_et) == "open"
+
+
+def _market_pulse_next_session_open(now_et: datetime) -> datetime:
+    """Return the next exchange-session open in Eastern time."""
+
+    return shared_next_session_open(now_et)
+
+
+def _market_pulse_refresh_contract(
+    now_et: datetime, freshness: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    freshness = dict(freshness or {})
+    market_open = _market_pulse_market_hours(now_et)
+    sync_interval_seconds = max(5, int(freshness.get("sync_interval_seconds") or 15))
+    return {
+        "mode": "coordinated_polling" if market_open else "session_paused",
+        "market_phase": "open" if market_open else "closed",
+        "automatic_refresh_enabled": market_open,
+        "canonical_interval_seconds": sync_interval_seconds,
+        "next_check_seconds": sync_interval_seconds if market_open else 0,
+        "next_session_open_at": (
+            "" if market_open else _market_pulse_next_session_open(now_et).isoformat()
+        ),
+    }
 
 
 def _market_pulse_session_phase(now_et: datetime) -> str:
-    if int(now_et.weekday()) >= 5:
-        return "closed"
-    minute_of_day = (int(now_et.hour) * 60) + int(now_et.minute)
-    if (9 * 60 + 30) <= minute_of_day < (16 * 60):
-        return "open"
-    if (4 * 60) <= minute_of_day < (9 * 60 + 30):
-        return "premarket"
-    if (16 * 60) <= minute_of_day < (20 * 60):
-        return "afterhours"
-    return "closed"
+    return shared_market_phase(now_et)
 
 
 def _market_pulse_points_session_day(points: List[Dict[str, Any]]) -> Optional[date]:
@@ -3850,6 +3948,7 @@ def _market_pulse_execution_chart_viewmodel(
     resolved_levels: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     raw_points = list(spx_quote.get("series") or [])
+    strategy_bars_5m = list(spx_quote.get("strategy_bars_5m") or raw_points)
     raw_replay_points = list(spx_quote.get("prior_session_series") or [])
 
     def _normalize_chart_points(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -4117,6 +4216,11 @@ def _market_pulse_execution_chart_viewmodel(
         "price_label": price_label,
         "context_label": context_label,
         "points": points,
+        # Replay eligibility must use completed five-minute OHLC bars when the
+        # provider supplies them. The generic display series can be sampled or
+        # replaced during quote refreshes, which made historical setups vanish.
+        "strategy_bars_5m": strategy_bars_5m,
+        "strategy_bars_15m": list(spx_quote.get("strategy_bars_15m") or []),
         "levels": level_rows,
         "events": event_rows,
         "latest_price": latest_price,
@@ -5295,6 +5399,247 @@ def _market_pulse_compact_level_label(prefix: str, value: Any, fallback: str) ->
     return f"{prefix} {numeric:.0f}"
 
 
+def _market_pulse_structured_level_from_label(
+    label: Any, levels: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """Resolve display copy to one validated canonical structure level.
+
+    This stays at the backend boundary so browser code never extracts a tradable
+    price from prose. Both a recognized level name and its canonical numeric
+    value must be present in the label.
+    """
+
+    text = str(label or "").strip()
+    if not text:
+        return None
+    candidates = (
+        ("next_call_wall", "Next Call Wall", ("next call wall", "ncw")),
+        ("next_put_wall", "Next Put Wall", ("next put wall", "npw")),
+        ("local_flip", "Local Flip", ("local flip", "lf")),
+        ("call_wall", "Call Wall", ("call wall", "cw")),
+        ("put_wall", "Put Wall", ("put wall", "pw")),
+        ("main_flip", "Main Flip", ("main flip", "mf")),
+    )
+    lowered = text.lower()
+    for key, display, aliases in candidates:
+        value = _market_pulse_positive_float(levels.get(key))
+        if value is None:
+            continue
+        has_alias = any(re.search(rf"\b{re.escape(alias)}\b", lowered) for alias in aliases)
+        rounded_value = f"{value:.0f}"
+        has_value = bool(re.search(rf"(?<!\d){re.escape(rounded_value)}(?!\d)", text))
+        if has_alias and has_value:
+            return {"key": key, "label": display, "value": value}
+    return None
+
+
+def _market_pulse_canonical_strategy_targets(strategy: Dict[str, Any]) -> Dict[str, Any]:
+    """Withhold legacy or cached target maps until a strategy path is confirmed."""
+
+    normalized = copy.deepcopy(dict(strategy or {}))
+    state = str(normalized.get("state") or "").strip().upper()
+    path = str(normalized.get("path") or "").strip().lower()
+    target_is_valid = (state, path) in {
+        ("REVERSAL_READY", "reversal"),
+        ("CONTINUATION_ACTIVE", "continuation"),
+    }
+    if not target_is_valid:
+        normalized["primary_target"] = None
+        normalized["expansion_targets"] = []
+    return normalized
+
+
+def _market_pulse_sanitize_cached_snapshot_targets(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply current target and score contracts to snapshots created by older workers."""
+
+    normalized = copy.deepcopy(dict(snapshot or {}))
+    structure = dict(normalized.get("market_structure_snapshot") or {})
+    original_strategy = dict(structure.get("strategy") or {})
+    strategy = _market_pulse_canonical_strategy_targets(original_strategy)
+    target_removed = bool(original_strategy.get("primary_target")) and not strategy.get(
+        "primary_target"
+    )
+    structure["strategy"] = strategy
+
+    execution_chart = dict(normalized.get("execution_chart") or {})
+    playbook_view = dict(normalized.get("playbook_view") or {})
+    playbook_quote = dict(normalized.get("playbook_quote") or {})
+    spx_quote = dict(normalized.get("spx_quote") or {})
+    for payload in (
+        normalized,
+        structure,
+        execution_chart,
+        playbook_view,
+        playbook_quote,
+        spx_quote,
+    ):
+        payload.pop("vwap", None)
+
+    spot = _market_pulse_positive_float(playbook_quote.get("price"))
+    if spot is None:
+        spot = _market_pulse_positive_float(spx_quote.get("price"))
+    if spot is None:
+        spot = _market_pulse_positive_float(structure.get("spot"))
+    scenario_levels = [
+        {"key": "gamma_flip", "value": structure.get("main_flip")},
+        {"key": "local_flip", "value": structure.get("local_flip")},
+        {"key": "call_wall", "value": structure.get("call_wall")},
+        {"key": "put_wall", "value": structure.get("put_wall")},
+        {"key": "new_call_wall", "value": structure.get("next_call_wall")},
+        {"key": "new_put_wall", "value": structure.get("next_put_wall")},
+        {"key": "prior_day_high", "value": playbook_quote.get("prior_day_high")},
+        {"key": "prior_day_low", "value": playbook_quote.get("prior_day_low")},
+        {"key": "current_day_high", "value": playbook_quote.get("day_high")},
+        {"key": "current_day_low", "value": playbook_quote.get("day_low")},
+    ]
+    freshness = dict(normalized.get("canonical_freshness") or {})
+    rankings = rank_market_scenarios(
+        spot=spot,
+        levels=scenario_levels,
+        bars=execution_chart.get("strategy_bars_5m") or [],
+        strategy=strategy,
+        gamma_regime=str(structure.get("gamma_regime") or ""),
+        locked=bool(freshness.get("execution_locked")),
+    )
+    generation_id = str(freshness.get("generation_id") or "")
+    rankings["generation_id"] = generation_id
+    structure["scenario_rankings"] = rankings
+    structure["primary_scenario"] = rankings.get("primary")
+    playbook_view["scenario_rankings"] = rankings
+    playbook_view["primary_scenario"] = rankings.get("primary")
+    normalized["execution_chart"] = execution_chart
+    normalized["playbook_quote"] = playbook_quote
+    normalized["spx_quote"] = spx_quote
+
+    verdict = dict(normalized.get("verdict") or {})
+    if not strategy.get("primary_target"):
+        verdict["primary_target"] = None
+    playbook_verdict = dict(playbook_view.get("verdict") or verdict)
+    if not strategy.get("primary_target"):
+        playbook_verdict["primary_target"] = None
+    playbook_view["verdict"] = playbook_verdict
+    structure_verdict = dict(structure.get("verdict") or verdict)
+    if not strategy.get("primary_target"):
+        structure_verdict["primary_target"] = None
+    structure["verdict"] = structure_verdict
+
+    primary_scenario = dict(rankings.get("primary") or {})
+    primary_plan = dict(primary_scenario.get("plan") or {})
+    authoritative_state = _market_pulse_authoritative_execution_state(
+        strategy=strategy,
+        primary_scenario=primary_scenario,
+        canonical_freshness=freshness,
+    )
+    confirmed = bool(authoritative_state["confirmed"])
+    permission = str(authoritative_state["permission"])
+    freshness["authoritative_action_state"] = authoritative_state
+    normalized["canonical_freshness"] = freshness
+    playbook_view["canonical_freshness"] = freshness
+    structure["canonical_freshness"] = freshness
+    authoritative_label = (
+        "Data locked"
+        if authoritative_state["action_state"] == "LOCKED"
+        else "Actionable now" if confirmed else "Not actionable yet"
+    )
+    verdict["label"] = authoritative_label
+    verdict["detail"] = authoritative_state["reason"]
+    playbook_verdict["label"] = authoritative_label
+    playbook_verdict["detail"] = authoritative_state["reason"]
+    structure_verdict["label"] = authoritative_label
+    structure_verdict["detail"] = authoritative_state["reason"]
+    verdict["permission"] = permission
+    playbook_verdict["permission"] = permission
+    structure_verdict["permission"] = permission
+    live_execution_guide = {
+        "generation_id": generation_id,
+        "permission": permission,
+        "location": primary_plan.get("wait") or "Waiting for a valid location",
+        "evidence": (
+            "Hard confirmation complete"
+            if confirmed
+            else strategy.get("missing_evidence") or "Waiting for completed-candle evidence"
+        ),
+        "trigger": primary_plan.get("trigger") or "Confirmation unavailable",
+        "confirmation": "Confirmed" if confirmed else "Required before entry",
+        "action": (
+            primary_plan.get("action") if confirmed else "No entry until the trigger confirms"
+        ),
+        "invalidation": primary_plan.get("cancel") or "Stand down if confirmation fails",
+        "target": primary_plan.get("target") if confirmed else "Set after direction confirms",
+        "as_of": freshness.get("generated_at"),
+        "blocking_components": list(freshness.get("stale_required_components") or []),
+        "action_state": authoritative_state["action_state"],
+        "state_reason": authoritative_state["reason"],
+    }
+    playbook_view["live_execution_guide"] = live_execution_guide
+    normalized["live_execution_guide"] = live_execution_guide
+
+    if target_removed:
+        freshness = dict(normalized.get("canonical_freshness") or {})
+        old_generation = str(freshness.get("generation_id") or "")
+        generation_id = hashlib.sha256(
+            f"{old_generation}|confirmed-path-targets-v1".encode("utf-8")
+        ).hexdigest()[:20]
+        freshness["generation_id"] = generation_id
+        verdict["generation_id"] = generation_id
+        playbook_verdict["generation_id"] = generation_id
+        structure_verdict["generation_id"] = generation_id
+        rankings["generation_id"] = generation_id
+        live_execution_guide["generation_id"] = generation_id
+        normalized["canonical_freshness"] = freshness
+        playbook_view["canonical_freshness"] = freshness
+        structure["canonical_freshness"] = freshness
+
+    normalized["market_structure_snapshot"] = structure
+    normalized["playbook_view"] = playbook_view
+    normalized["verdict"] = verdict
+    return normalized
+
+
+def _market_pulse_authoritative_execution_state(
+    *,
+    strategy: Dict[str, Any],
+    primary_scenario: Dict[str, Any],
+    canonical_freshness: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Resolve one execution state from freshness, strategy, and ranked scenario evidence."""
+
+    blockers = list(canonical_freshness.get("stale_required_components") or [])
+    if canonical_freshness.get("execution_locked") or blockers:
+        blocker_text = ", ".join(str(name) for name in blockers) or "required data"
+        return {
+            "action_state": "LOCKED",
+            "permission": "locked",
+            "confirmed": False,
+            "reason": f"Required data is stale or unavailable: {blocker_text}.",
+            "blocking_components": blockers,
+        }
+
+    strategy_state = str(strategy.get("state") or "").strip().upper()
+    strategy_ready = strategy_state in {"REVERSAL_READY", "CONTINUATION_ACTIVE"}
+    scenario_confirmed = str(primary_scenario.get("state") or "").strip().lower() in {
+        "triggered",
+        "confirmed",
+    }
+    if strategy_ready and scenario_confirmed:
+        return {
+            "action_state": "ACTIVE",
+            "permission": "ready",
+            "confirmed": True,
+            "reason": "Canonical strategy and ranked scenario confirmation agree.",
+            "blocking_components": [],
+        }
+
+    reason = str(strategy.get("missing_evidence") or "Hard confirmation is required before entry.")
+    return {
+        "action_state": "WAIT",
+        "permission": "planning",
+        "confirmed": False,
+        "reason": reason,
+        "blocking_components": [],
+    }
+
+
 def _market_pulse_display_context_viewmodel(
     *,
     session_mode: str,
@@ -5532,11 +5877,11 @@ def _market_pulse_trigger_validation_viewmodel(
     elif local_state == "above_local" or planning_state == "bullish_above_local_flip":
         sweep_line = "Need sweep into support or Local Flip before the long exists."
         reclaim_line = "Need reclaim back above the working level after the sweep."
-        reversal_line = "Need 5m 2-2 up / 3-1-2 continuation before the long is valid."
+        reversal_line = "Need a completed 5m 2-1-2 up or bullish 2-2 Reversal at the level."
     elif local_state == "below_local" or planning_state == "bearish_below_local_flip":
         sweep_line = "Need pop into resistance or Local Flip before the short exists."
         reclaim_line = "Need failed reclaim back under the working level after the pop."
-        reversal_line = "Need 5m 2-2 down / 3-1-2 continuation before the short is valid."
+        reversal_line = "Need a completed 5m 2-1-2 down or bearish 2-2 Reversal at the level."
     else:
         sweep_line = "Need interaction into the working level before entry is considered."
         reclaim_line = "Wait for the level to prove itself after the interaction."
@@ -6004,6 +6349,94 @@ def _market_pulse_structure_snapshot(
         playbook=playbook,
         display_context=display_context,
     )
+    strategy_levels = [
+        {"kind": "gamma_flip", "value": levels.get("main_flip")},
+        {"kind": "call_wall", "value": levels.get("call_wall")},
+        {"kind": "put_wall", "value": levels.get("put_wall")},
+        {"kind": "new_call_wall", "value": next_call_wall},
+        {"kind": "new_put_wall", "value": next_put_wall},
+        {"kind": "prior_day_high", "value": spx_quote.get("prior_day_high")},
+        {"kind": "prior_day_low", "value": spx_quote.get("prior_day_low")},
+        {"kind": "current_day_high", "value": spx_quote.get("day_high")},
+        {"kind": "current_day_low", "value": spx_quote.get("day_low")},
+    ]
+    valid_strategy_levels = [
+        row for row in strategy_levels if _market_pulse_positive_float(row.get("value")) is not None
+    ]
+    strategy_spot = _market_pulse_positive_float(levels.get("spot"))
+    active_strategy_level = None
+    if strategy_spot is not None and valid_strategy_levels:
+        active_strategy_level = min(
+            valid_strategy_levels,
+            key=lambda row: abs(float(row["value"]) - strategy_spot),
+        )
+    interaction = None
+    location_confirmed = False
+    if active_strategy_level is not None and strategy_spot is not None:
+        active_value = float(active_strategy_level["value"])
+        interaction = "from_below" if strategy_spot <= active_value else "from_above"
+        strategy_wall_span = (
+            abs(float(levels["call_wall"]) - float(levels["put_wall"]))
+            if isinstance(levels.get("call_wall"), (int, float))
+            and isinstance(levels.get("put_wall"), (int, float))
+            else 100.0
+        )
+        interaction_band = _market_pulse_clamp(max(2.5, strategy_wall_span * 0.025), 2.5, 8.0)
+        location_confirmed = abs(strategy_spot - active_value) <= interaction_band
+    explicit_strategy_evidence = dict(
+        execution_chart.get("strategy_evidence")
+        if isinstance(execution_chart.get("strategy_evidence"), dict)
+        else (
+            gamma_snapshot.get("strategy_evidence")
+            if isinstance(gamma_snapshot.get("strategy_evidence"), dict)
+            else {}
+        )
+    )
+    derived_strategy = derive_completed_candle_evidence(
+        rows_5m=execution_chart.get("strategy_bars_5m") or [],
+        rows_15m=execution_chart.get("strategy_bars_15m") or [],
+        now=now_et,
+        ticker=str(execution_chart.get("symbol") or "SPX"),
+        session_date=str(execution_chart.get("session_date") or now_et.date().isoformat()),
+        level_key=str((active_strategy_level or {}).get("kind") or ""),
+        level_value=(active_strategy_level or {}).get("value"),
+        interaction=str(explicit_strategy_evidence.get("interaction") or interaction or ""),
+    )
+    derived_evidence = dict(derived_strategy.get("evidence") or {})
+    strategy_input = {
+        "spot": strategy_spot,
+        "active_level": active_strategy_level,
+        "interaction": explicit_strategy_evidence.get("interaction") or interaction,
+        "gamma_regime": (
+            "transition"
+            if regime["gamma_regime"] in {"neutral", "unconfirmed"}
+            else regime["gamma_regime"]
+        ),
+        "levels": valid_strategy_levels,
+        "location": explicit_strategy_evidence.get(
+            "location", derived_evidence.get("location", {"confirmed": location_confirmed})
+        ),
+        "sweep": explicit_strategy_evidence.get("sweep", derived_evidence.get("sweep")),
+        "close_back_inside_5m": explicit_strategy_evidence.get(
+            "close_back_inside_5m", derived_evidence.get("close_back_inside_5m")
+        ),
+        "reversal_2_2_5m": explicit_strategy_evidence.get(
+            "reversal_2_2_5m", derived_evidence.get("reversal_2_2_5m")
+        ),
+        "trigger_break": explicit_strategy_evidence.get(
+            "trigger_break", derived_evidence.get("trigger_break")
+        ),
+        "acceptance": explicit_strategy_evidence.get(
+            "acceptance", derived_evidence.get("acceptance")
+        ),
+        "continuation_retest": explicit_strategy_evidence.get(
+            "continuation_retest", derived_evidence.get("continuation_retest")
+        ),
+        "runner_2_2_15m": explicit_strategy_evidence.get(
+            "runner_2_2_15m", derived_evidence.get("runner_2_2_15m")
+        ),
+    }
+    strategy = evaluate_failed_liquidity_sweep(strategy_input)
 
     return {
         "spot": levels.get("spot"),
@@ -6074,6 +6507,9 @@ def _market_pulse_structure_snapshot(
         "required_trigger": display_context["required_trigger"],
         "invalidation": display_context["invalidation"],
         "trigger_validation": trigger_validation,
+        "strategy": strategy,
+        "strategy_evidence_identity": derived_strategy.get("identity") or {},
+        "strategy_bars_as_of": derived_strategy.get("bars_as_of") or "",
         "snapshot_timestamp": snapshot_timestamp,
         "snapshot_timestamp_label": _format_iso_et_label(snapshot_timestamp) or "—",
         "last_valid_snapshot_time": last_valid_snapshot_time,
@@ -6097,6 +6533,7 @@ def _build_playbook_view_model(
     """
 
     structure = dict(market_structure_snapshot or {})
+    strategy = dict(structure.get("strategy") or {})
     model = dict(execution_model or {})
     location = dict(model.get("location") or {})
     legacy_playbook = dict(model.get("playbook") or {})
@@ -6322,6 +6759,24 @@ def _build_playbook_view_model(
     else:
         decision_label = "Not actionable yet"
         decision_detail = "Wait for confirmation at a key level"
+
+    strategy_state = str(strategy.get("state") or "").strip().upper()
+    if strategy_state:
+        if strategy_state in {"REVERSAL_READY", "CONTINUATION_ACTIVE"}:
+            decision_label = "Actionable"
+            decision_detail = (
+                "Ordered reversal trigger confirmed"
+                if strategy_state == "REVERSAL_READY"
+                else "Acceptance and continuation confirmed"
+            )
+        elif levels_source == "unavailable" or gamma_data_status == "invalid":
+            decision_label = "Data unavailable"
+            decision_detail = "Wait for validated market data"
+        else:
+            decision_label = "Not actionable yet"
+            decision_detail = str(
+                strategy.get("missing_evidence") or "Wait for the next required strategy evidence"
+            )
 
     if bias_state in {"bullish_above_local_flip", "conditional_bullish"}:
         bias_summary_label = (
@@ -6603,6 +7058,7 @@ def _build_playbook_view_model(
         },
         "distance_rows": distance_rows,
         "ui_flags": ui_flags,
+        "strategy": strategy,
     }
 
 
@@ -6964,6 +7420,10 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["chart_state"] = chart_meta.get("chart_state")
     market_structure_snapshot["bars_source"] = chart_meta.get("bars_source")
     market_structure_snapshot["bars_as_of"] = chart_meta.get("bars_as_of")
+    market_structure_snapshot["last_completed_candle_time"] = chart_meta.get("bars_as_of") or ""
+    market_structure_snapshot["last_completed_candle_time_label"] = (
+        _format_iso_et_label(market_structure_snapshot.get("last_completed_candle_time")) or "—"
+    )
     market_structure_snapshot["last_valid_snapshot_time"] = dict(
         active_gamma_regime_meta or {}
     ).get("as_of") or market_structure_snapshot.get("last_valid_snapshot_time")
@@ -7000,10 +7460,166 @@ def get_or_build_market_pulse_snapshot(
             market_structure_snapshot["trade_state"] = "UNAVAILABLE"
             market_structure_snapshot["trade_state_label"] = "UNAVAILABLE"
 
+    canonical_strategy = _market_pulse_canonical_strategy_targets(
+        dict(market_structure_snapshot.get("strategy") or {})
+    )
+    market_structure_snapshot["strategy"] = canonical_strategy
+    scenario_level_rows = [
+        {"key": "gamma_flip", "value": market_structure_snapshot.get("main_flip")},
+        {"key": "local_flip", "value": market_structure_snapshot.get("local_flip")},
+        {"key": "call_wall", "value": market_structure_snapshot.get("call_wall")},
+        {"key": "put_wall", "value": market_structure_snapshot.get("put_wall")},
+        {"key": "new_call_wall", "value": market_structure_snapshot.get("next_call_wall")},
+        {"key": "new_put_wall", "value": market_structure_snapshot.get("next_put_wall")},
+        {"key": "prior_day_high", "value": active_quote.get("prior_day_high")},
+        {"key": "prior_day_low", "value": active_quote.get("prior_day_low")},
+        {"key": "current_day_high", "value": active_quote.get("day_high")},
+        {"key": "current_day_low", "value": active_quote.get("day_low")},
+    ]
+    scenario_rankings = rank_market_scenarios(
+        spot=active_spot_meta.get("value"),
+        levels=scenario_level_rows,
+        bars=execution_chart.get("strategy_bars_5m") or [],
+        strategy=canonical_strategy,
+        gamma_regime=str(market_structure_snapshot.get("gamma_regime") or ""),
+    )
+    market_structure_snapshot["scenario_rankings"] = scenario_rankings
+    market_structure_snapshot["primary_scenario"] = scenario_rankings.get("primary")
     playbook_view = _build_playbook_view_model(
         market_structure_snapshot=market_structure_snapshot,
         execution_model=execution_model,
     )
+    strategy = dict(canonical_strategy)
+    evidence_timestamps = list(dict(strategy.get("evidence_timestamps") or {}).values())
+    strategy_as_of = max((str(value) for value in evidence_timestamps if value), default="")
+    gamma_as_of = (
+        active_gamma_snapshot.get("last_successful_compute")
+        or active_gamma_snapshot.get("computed_at")
+        or active_gamma_snapshot.get("asof")
+        or ""
+    )
+    bars_as_of = (
+        market_structure_snapshot.get("bars_as_of")
+        or market_structure_snapshot.get("strategy_bars_as_of")
+        or ""
+    )
+    bars_started_at = _parse_iso_et(bars_as_of)
+    if bars_started_at is not None and execution_chart.get("strategy_bars_5m"):
+        # Provider bars are stamped at bucket open. Freshness is measured from
+        # the completed-candle boundary, not five minutes before it closed.
+        bars_as_of = (bars_started_at + timedelta(minutes=5)).isoformat()
+        market_structure_snapshot["completed_bars_as_of"] = bars_as_of
+    canonical_freshness = build_canonical_freshness(
+        now=now_et,
+        market_open=_market_pulse_market_hours(now_et),
+        symbol=selected_ticker,
+        session_id=now_et.date().isoformat(),
+        timestamps={
+            "spot": active_spot_meta.get("as_of"),
+            "bars": bars_as_of,
+            "gamma": gamma_as_of,
+            "options": active_gamma_snapshot.get("options_asof") or gamma_as_of,
+            "strategy": strategy_as_of or market_structure_snapshot.get("strategy_bars_as_of"),
+        },
+        fingerprint={
+            "ticker": selected_ticker,
+            "spot": active_spot_meta.get("value"),
+            "levels": active_levels,
+            "strategy": strategy,
+            "guardrail": market_structure_snapshot.get("gamma_data_status"),
+        },
+    )
+    if canonical_freshness.get("execution_locked"):
+        stale_names = ", ".join(canonical_freshness.get("stale_required_components") or [])
+        playbook_view["decision_label"] = "Data locked"
+        playbook_view["decision_detail"] = f"Required data is stale or unavailable: {stale_names}."
+        playbook_view.setdefault("ui_flags", {})["is_actionable_now"] = False
+        scenario_rankings = rank_market_scenarios(
+            spot=active_spot_meta.get("value"),
+            levels=scenario_level_rows,
+            bars=execution_chart.get("strategy_bars_5m") or [],
+            strategy=canonical_strategy,
+            gamma_regime=str(market_structure_snapshot.get("gamma_regime") or ""),
+            locked=True,
+        )
+        market_structure_snapshot["scenario_rankings"] = scenario_rankings
+        market_structure_snapshot["primary_scenario"] = scenario_rankings.get("primary")
+    scenario_rankings["generation_id"] = canonical_freshness.get("generation_id")
+    market_structure_snapshot["scenario_rankings"] = scenario_rankings
+    market_structure_snapshot["primary_scenario"] = scenario_rankings.get("primary")
+    playbook_view["scenario_rankings"] = scenario_rankings
+    playbook_view["primary_scenario"] = scenario_rankings.get("primary")
+    primary_scenario = dict(scenario_rankings.get("primary") or {})
+    primary_plan = dict(primary_scenario.get("plan") or {})
+    authoritative_state = _market_pulse_authoritative_execution_state(
+        strategy=strategy,
+        primary_scenario=primary_scenario,
+        canonical_freshness=canonical_freshness,
+    )
+    scenario_confirmed = bool(authoritative_state["confirmed"])
+    canonical_freshness["authoritative_action_state"] = authoritative_state
+    authoritative_label = (
+        "Data locked"
+        if authoritative_state["action_state"] == "LOCKED"
+        else "Actionable now" if scenario_confirmed else "Not actionable yet"
+    )
+    active_level = dict(strategy.get("active_level") or {})
+    primary_target = dict(strategy.get("primary_target") or {})
+    invalidation_level = _market_pulse_structured_level_from_label(
+        market_structure_snapshot.get("invalidation"), active_levels
+    )
+    verdict = {
+        "permission": authoritative_state["permission"],
+        "label": authoritative_label,
+        "detail": authoritative_state["reason"],
+        "spot": active_spot_meta.get("value"),
+        "active_level": active_level,
+        "distance": (
+            float(active_spot_meta["value"]) - float(active_level["value"])
+            if isinstance(active_spot_meta.get("value"), (int, float))
+            and isinstance(active_level.get("value"), (int, float))
+            else None
+        ),
+        "path": strategy.get("path"),
+        "state": strategy.get("state"),
+        "direction": primary_scenario.get("direction"),
+        "next_evidence": strategy.get("missing_evidence"),
+        "invalidation": market_structure_snapshot.get("invalidation"),
+        "invalidation_level": invalidation_level,
+        "management": strategy.get("gamma_interpretation"),
+        "primary_target": primary_target or None,
+        "generation_id": canonical_freshness.get("generation_id"),
+    }
+    live_execution_guide = {
+        "generation_id": canonical_freshness.get("generation_id"),
+        "permission": verdict["permission"],
+        "location": primary_plan.get("wait") or "Waiting for a valid location",
+        "evidence": (
+            "Hard confirmation complete"
+            if scenario_confirmed
+            else strategy.get("missing_evidence") or "Waiting for completed-candle evidence"
+        ),
+        "trigger": primary_plan.get("trigger") or "Confirmation unavailable",
+        "confirmation": ("Confirmed" if scenario_confirmed else "Required before entry"),
+        "action": (
+            primary_plan.get("action")
+            if scenario_confirmed
+            else "No entry until the trigger confirms"
+        ),
+        "invalidation": primary_plan.get("cancel") or "Stand down if confirmation fails",
+        "target": (
+            primary_plan.get("target") if scenario_confirmed else "Set after direction confirms"
+        ),
+        "as_of": canonical_freshness.get("generated_at"),
+        "blocking_components": list(canonical_freshness.get("stale_required_components") or []),
+        "action_state": authoritative_state["action_state"],
+        "state_reason": authoritative_state["reason"],
+    }
+    playbook_view["verdict"] = verdict
+    playbook_view["live_execution_guide"] = live_execution_guide
+    playbook_view["canonical_freshness"] = canonical_freshness
+    market_structure_snapshot["canonical_freshness"] = canonical_freshness
+    market_structure_snapshot["verdict"] = verdict
     market_structure_snapshot["bias_state"] = playbook_view.get("bias_state")
     market_structure_snapshot["bias_context"] = playbook_view.get("location_label")
     market_structure_snapshot["bias_label"] = playbook_view.get("bias_short_label")
@@ -7061,6 +7677,9 @@ def get_or_build_market_pulse_snapshot(
         "execution_model": execution_model,
         "market_structure_snapshot": market_structure_snapshot,
         "playbook_view": playbook_view,
+        "canonical_freshness": canonical_freshness,
+        "verdict": verdict,
+        "live_execution_guide": live_execution_guide,
     }
     if _market_pulse_playbook_snapshot_valid(payload):
         _market_pulse_store_playbook_snapshot(now_et, payload)
@@ -7567,7 +8186,7 @@ def get_dashboard_ticker_context(value: Any) -> Dict[str, Any]:
 
 
 def _dashboard_tape_symbols(selected_ticker: str) -> List[str]:
-    return ["SPY", "QQQ", "VIX", "SPX"]
+    return ["SPY", "QQQ", "IWM", "VIX", "SPX"]
 
 
 def _market_pulse_quote_for_ticker(
@@ -7590,7 +8209,7 @@ def _market_pulse_overlay_live_worker_quotes(
     quotes: List[Dict[str, Any]],
     ticker: str,
 ) -> List[Dict[str, Any]]:
-    """Prefer the fast market worker price for active live-session display."""
+    """Prefer fresh worker/Tradier prices for the complete Playbook watchlist."""
 
     try:
         from mccain_capital.services import market_worker
@@ -7601,20 +8220,50 @@ def _market_pulse_overlay_live_worker_quotes(
 
     prices = dict((worker_snapshot or {}).get("prices") or {})
     selected_ticker = get_supported_playbook_ticker(ticker)
-    symbols = {"SPX", selected_ticker}
+    symbols = {
+        str(row.get("symbol") or row.get("label") or "").strip().upper()
+        for row in list(quotes or [])
+        if isinstance(row, dict)
+    }
+    symbols.update({"SPX", selected_ticker})
+    symbols.discard("")
+    if _market_pulse_market_hours(app_runtime.now_et()):
+        try:
+            direct_quotes = market_data_service.get_watchlist_tradier(sorted(symbols))
+        except Exception:
+            direct_quotes = {}
+        for symbol, quote in dict(direct_quotes or {}).items():
+            if not isinstance(quote, dict):
+                continue
+            if quote.get("reason") != "tradier_live":
+                continue
+            if _market_pulse_positive_float(quote.get("price")) is None:
+                continue
+            prices[symbol] = dict(quote)
     live_quotes: Dict[str, Dict[str, Any]] = {}
     for symbol in symbols:
         live_quote = dict(prices.get(symbol) or {})
         live_price = _market_pulse_positive_float(live_quote.get("price"))
         if live_price is None:
             continue
+        canonical_symbol = "SPX" if symbol == "^GSPC" else "VIX" if symbol == "^VIX" else symbol
         live_quote["price"] = live_price
-        live_quote["symbol"] = symbol
-        live_quote["label"] = symbol
+        live_quote["symbol"] = canonical_symbol
+        live_quote["label"] = canonical_symbol
         live_quote.setdefault("provider", "market_worker")
         live_quote.setdefault("reason", "market_worker_live")
         if worker_snapshot.get("updated_at") and not live_quote.get("as_of"):
             live_quote["as_of"] = worker_snapshot.get("updated_at")
+        live_asof = _parse_iso_et(live_quote.get("as_of") or live_quote.get("asof"))
+        if live_asof is not None:
+            # Price and provenance are one observation. A stale source row can
+            # carry the legacy `asof` key while the live overlay supplies
+            # `as_of`; canonical spot resolution reads `asof` first, so both
+            # keys must advance together.
+            live_quote["as_of"] = live_asof.isoformat()
+            live_quote["asof"] = live_asof.isoformat()
+            live_quote["asof_epoch"] = int(live_asof.timestamp())
+        live_quote["data_state"] = "live"
         live_quotes[symbol] = live_quote
 
     if not live_quotes:
@@ -10996,6 +11645,10 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
             },
             "remaining_drawdown_tone": "neutral",
             "ledger_equity": ledger_equity,
+            "account_balance": None,
+            "account_balance_source_label": "",
+            "display_remaining_drawdown": None,
+            "display_remaining_drawdown_source_label": "",
         }
     account_id = account.get("id")
     metrics_source = str(
@@ -11031,6 +11684,24 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
     }
     diagnostics = _load_broker_metrics_diagnostics(account_id)
     drawdown_peak_gap = _drawdown_peak_gap_viewmodel(account, remaining)
+    account_balance = (
+        ledger_equity.get("ledger_equity") if ledger_equity.get("available") else broker_equity
+    )
+    account_balance_source_label = (
+        "Recorded trades"
+        if ledger_equity.get("available")
+        else source_labels.get(broker_equity_source, "Broker value")
+    )
+    display_remaining_drawdown = remaining
+    display_remaining_drawdown_source_label = source_labels.get(remaining_source, "Broker value")
+    if not isinstance(display_remaining_drawdown, (int, float)):
+        configured_drawdown = account.get("max_drawdown")
+        if isinstance(configured_drawdown, (int, float)) and float(configured_drawdown) > 0:
+            display_remaining_drawdown = float(configured_drawdown)
+            display_remaining_drawdown_source_label = "Plan limit"
+        elif str(account.get("broker_account_id") or "").strip().upper() == "DEMO-AUG-10K-35":
+            display_remaining_drawdown = 2500.0
+            display_remaining_drawdown_source_label = "Demo plan limit"
     return {
         "has_metrics": has_metrics,
         "has_broker_metrics": has_metrics,
@@ -11051,7 +11722,11 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
         "broker_metrics_diagnostics": diagnostics,
         "broker_metrics_diagnostics_summary": _broker_metrics_diagnostics_summary(diagnostics),
         "ledger_equity": ledger_equity,
-        "remaining_drawdown_tone": _remaining_drawdown_tone(remaining),
+        "account_balance": account_balance,
+        "account_balance_source_label": account_balance_source_label,
+        "display_remaining_drawdown": display_remaining_drawdown,
+        "display_remaining_drawdown_source_label": display_remaining_drawdown_source_label,
+        "remaining_drawdown_tone": _remaining_drawdown_tone(display_remaining_drawdown),
     }
 
 
@@ -11210,6 +11885,10 @@ def dashboard_milestone_update():
         params["scope"] = scope
     params["ticker"] = ticker
     params["pace_tf"] = pace_tf
+    for key in ("range_start", "range_end"):
+        value = str(request.form.get(key) or "").strip()
+        if value:
+            params[key] = value
     return redirect(url_for("dashboard", **params))
 
 
@@ -11244,6 +11923,10 @@ def dashboard_brief_update():
         params["scope"] = scope
     params["ticker"] = ticker
     params["pace_tf"] = pace_tf
+    for key in ("range_start", "range_end"):
+        value = str(request.form.get(key) or "").strip()
+        if value:
+            params[key] = value
     return redirect(url_for("dashboard", **params))
 
 
@@ -11336,6 +12019,10 @@ def dashboard_pace_update():
         params["scope"] = scope
     params["ticker"] = ticker
     params["pace_tf"] = pace_tf
+    for key in ("range_start", "range_end"):
+        value = str(request.form.get(key) or "").strip()
+        if value:
+            params[key] = value
     return redirect(url_for("dashboard", **params))
 
 
@@ -11459,7 +12146,10 @@ def _dashboard_tape_viewmodel(
         cached = intraday_rows_cache.get(key)
         if cached is not None:
             return cached
-        if testing_mode or key in {"VIX", "^VIX"}:
+        # The two dashboard canvas lanes must share the same real OHLC contract.
+        # Worker snapshots can contain close-only points for SPX, so resolve its
+        # intraday bars just as we already do for VIX.
+        if testing_mode or key in {"SPX", "VIX", "^VIX"}:
             try:
                 rows = market_data_service.get_intraday(key)
             except Exception:
@@ -11644,20 +12334,6 @@ def _dashboard_tape_viewmodel(
                     if abs(day_high - day_low) < 0.01
                     else f"{day_low:.2f}-{day_high:.2f}"
                 )
-            vwap_num = 0.0
-            vwap_den = 0.0
-            for r in full_intraday_rows:
-                close_v = r.get("close") if isinstance(r, dict) else None
-                vol_v = r.get("volume") if isinstance(r, dict) else None
-                if (
-                    isinstance(close_v, (int, float))
-                    and isinstance(vol_v, (int, float))
-                    and float(vol_v) > 0
-                ):
-                    vwap_num += float(close_v) * float(vol_v)
-                    vwap_den += float(vol_v)
-            if vwap_den > 0:
-                enriched["vwap"] = vwap_num / vwap_den
         elif intraday_series:
             day_low = min(intraday_series)
             day_high = max(intraday_series)
@@ -11694,10 +12370,6 @@ def _dashboard_tape_viewmodel(
                 )
                 if not intraday_series:
                     intraday_series = replay_values[-40:]
-            if not isinstance(enriched.get("vwap"), (int, float)):
-                replay_vwap = _market_pulse_series_vwap(replay_points)
-                if replay_vwap is not None:
-                    enriched["vwap"] = replay_vwap
         reason = str(enriched.get("reason") or "").lower()
         provider = str(enriched.get("provider") or "").lower()
         state = (
@@ -11740,15 +12412,48 @@ def _dashboard_tape_viewmodel(
         if len(chart_series) < 2 and price is not None:
             chart_series = [float(price), float(price)]
         last_hour_rows = full_intraday_rows
-        if not last_hour_rows and len(chart_series) >= 2:
-            last_hour_rows = [{"v": value, "close": value} for value in chart_series[-60:]]
+        usable_ohlc = [
+            row
+            for row in last_hour_rows
+            if all(
+                _float_or_none(row.get(field)) is not None
+                for field in ("open", "high", "low", "close")
+            )
+        ]
+        if not _dashboard_tape_has_meaningful_ohlc(usable_ohlc):
+            try:
+                prior_rows = market_data_service.get_prior_session_intraday(symbol)
+            except Exception:
+                prior_rows = []
+            usable_ohlc = [
+                dict(row)
+                for row in prior_rows
+                if isinstance(row, dict)
+                and all(
+                    _float_or_none(row.get(field)) is not None
+                    for field in ("open", "high", "low", "close")
+                )
+            ]
+        if not _dashboard_tape_has_meaningful_ohlc(usable_ohlc):
+            replay_rows, _replay_day = _market_pulse_cached_replay_series(symbol)
+            usable_ohlc = [
+                dict(row)
+                for row in replay_rows
+                if isinstance(row, dict)
+                and all(
+                    _float_or_none(row.get(field)) is not None
+                    for field in ("open", "high", "low", "close")
+                )
+            ]
+        if not _dashboard_tape_has_meaningful_ohlc(usable_ohlc):
+            usable_ohlc = []
         timeframe_map = _dashboard_tape_timeframe_payloads(
-            last_hour_rows,
+            usable_ohlc,
             symbol=str(enriched.get("label") or enriched.get("symbol") or symbol),
         )
         enriched["timeframes"] = timeframe_map
         enriched["last_hour"] = timeframe_map.get("1H") or _dashboard_tape_last_hour_payload(
-            last_hour_rows,
+            usable_ohlc,
             symbol=str(enriched.get("label") or enriched.get("symbol") or symbol),
         )
         tone = "flat"
@@ -11917,6 +12622,7 @@ def _dashboard_tape_viewmodel(
     dashboard_tape_rows = [
         _dashboard_tape_row("SPY", dashboard_tape_quotes.get("SPY") or {}, "market proxy"),
         _dashboard_tape_row("QQQ", dashboard_tape_quotes.get("QQQ") or {}, "tech proxy"),
+        _dashboard_tape_row("IWM", dashboard_tape_quotes.get("IWM") or {}, "breadth proxy"),
         _dashboard_tape_row("VIX", dashboard_tape_quotes.get("VIX") or {}, "volatility"),
         _dashboard_tape_row("SPX", dashboard_tape_quotes.get("SPX") or {}, "cash proxy"),
     ]
@@ -11949,6 +12655,110 @@ def _parse_dashboard_date(value: Any) -> Optional[date]:
 
 def _dashboard_short_date_label(day: date) -> str:
     return day.strftime("%b %d").replace(" 0", " ")
+
+
+MARKET_RADAR_INDEX_SYMBOLS = ("SPX", "SPY", "QQQ", "IWM", "VIX")
+
+
+def _market_radar_viewmodel(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build a deterministic, deduplicated Market Pulse tape hierarchy."""
+    unique: Dict[str, Dict[str, Any]] = {}
+    for raw in quotes or []:
+        if not isinstance(raw, dict):
+            continue
+        symbol = str(raw.get("label") or raw.get("symbol") or "").strip().upper()
+        if not symbol or symbol in unique:
+            continue
+        item = dict(raw)
+        item["radar_symbol"] = symbol
+        pct = item.get("change_pct")
+        try:
+            pct_value = float(pct) if pct is not None else None
+        except (TypeError, ValueError):
+            pct_value = None
+        state = str(item.get("watch_state") or "Mixed").strip().lower()
+        freshness = str(item.get("freshness_label") or "").strip().lower()
+        stale = any(
+            marker in freshness
+            for marker in ("stale", "critical", "missing", "unavailable", "no live data")
+        )
+        if stale or item.get("price") is None:
+            tone = "unavailable"
+            conviction = 0
+        elif state in {"strong", "risk-on"}:
+            tone = "positive"
+            conviction = 3
+        elif state in {"weak", "risk-off"}:
+            tone = "negative"
+            conviction = 3
+        elif state in {"caution", "warning"}:
+            tone = "caution"
+            conviction = 2
+        else:
+            tone = "neutral"
+            conviction = 1
+        low = item.get("day_low")
+        high = item.get("day_high")
+        price = item.get("price")
+        try:
+            low_value = float(low)
+            high_value = float(high)
+            price_value = float(price)
+            range_position = max(
+                0.0,
+                min(100.0, 100.0 * (price_value - low_value) / (high_value - low_value)),
+            )
+        except (TypeError, ValueError, ZeroDivisionError):
+            range_position = None
+        item.update(
+            {
+                "radar_pct": pct_value,
+                "radar_tone": tone,
+                "radar_conviction": conviction,
+                "range_position": range_position,
+                "range_position_label": (
+                    f"{range_position:.0f}%" if range_position is not None else "Unavailable"
+                ),
+            }
+        )
+        unique[symbol] = item
+
+    index_pulse = [unique[symbol] for symbol in MARKET_RADAR_INDEX_SYMBOLS if symbol in unique]
+    watchlist = [
+        item for symbol, item in unique.items() if symbol not in MARKET_RADAR_INDEX_SYMBOLS
+    ]
+    watchlist.sort(
+        key=lambda item: (
+            -int(item["radar_conviction"]),
+            -abs(float(item["radar_pct"] or 0.0)),
+            str(item["radar_symbol"]),
+        )
+    )
+    for rank, item in enumerate(watchlist, start=1):
+        item["radar_rank"] = rank
+    leaders = sorted(
+        [item for item in watchlist if (item["radar_pct"] or 0.0) > 0],
+        key=lambda item: (
+            -int(item["radar_conviction"]),
+            -float(item["radar_pct"] or 0.0),
+            str(item["radar_symbol"]),
+        ),
+    )[:3]
+    laggards = sorted(
+        [item for item in watchlist if (item["radar_pct"] or 0.0) < 0],
+        key=lambda item: (
+            -int(item["radar_conviction"]),
+            float(item["radar_pct"] or 0.0),
+            str(item["radar_symbol"]),
+        ),
+    )[:3]
+    return {
+        "index_pulse": index_pulse,
+        "watchlist": watchlist,
+        "leaders": leaders,
+        "laggards": laggards,
+        "symbols": list(unique),
+    }
 
 
 def _dashboard_performance_range_context(
@@ -12067,6 +12877,145 @@ def _dashboard_performance_days(
     return out
 
 
+def _dashboard_import_readiness_viewmodel(live_sync: dict | None) -> Dict[str, Any]:
+    """Return one presentation contract for every dashboard import reference."""
+    sync = live_sync if isinstance(live_sync, dict) else {}
+    if not sync:
+        return {
+            "state": "unavailable",
+            "status": "Unavailable",
+            "detail": "Import readiness is unavailable. Open sync details before relying on it.",
+            "done": False,
+            "href": "/trades/upload/statement",
+            "action": "Review",
+            "tone": "warning",
+        }
+
+    outcome = str(sync.get("outcome") or "ready").strip().lower()
+    completed = bool(sync.get("import_completed_today"))
+    if completed:
+        return {
+            "state": "complete",
+            "status": "Loaded",
+            "detail": "Today's broker import is complete.",
+            "done": True,
+            "href": "/trades",
+            "action": "Open",
+            "tone": "positive",
+        }
+    if outcome == "running":
+        return {
+            "state": "running",
+            "status": "Running",
+            "detail": "Today's broker import is running.",
+            "done": False,
+            "href": "/trades/upload/statement",
+            "action": "Wait",
+            "tone": "info",
+        }
+
+    detail = str(sync.get("detail") or "Today's broker import is pending.").strip()
+    return {
+        "state": "pending",
+        "status": "Pending",
+        "detail": detail,
+        "done": False,
+        "href": "/trades/upload/statement",
+        "action": "Review" if outcome in {"failed", "needs_recovery"} else "Sync",
+        "tone": "warning" if outcome in {"failed", "needs_recovery", "cancelled"} else "info",
+    }
+
+
+def _dashboard_performance_hub_viewmodel(
+    trades: List[Dict[str, Any]],
+    *,
+    year: int,
+    month: int,
+    anchor: date,
+    month_name: str,
+    mtd_net: float,
+    milestone: Dict[str, Any],
+    selected_pace: float,
+    scope_label: str,
+    range_start: date | None = None,
+    range_end: date | None = None,
+) -> Dict[str, Any]:
+    """Build the Dashboard's read-only monthly trading-business scorecard."""
+    nets = [
+        float(row.get("net_pl")) for row in trades if isinstance(row.get("net_pl"), (int, float))
+    ]
+    winners = [value for value in nets if value > 0]
+    losers = [value for value in nets if value < 0]
+    closed_count = len(winners) + len(losers)
+    gross_profit = sum(winners)
+    gross_loss = abs(sum(losers))
+    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
+    period_start = range_start or date(year, month, 1)
+    period_end = range_end or date(year, month, monthrange(year, month)[1])
+    if period_start > anchor:
+        remaining_start = period_start
+    elif period_end >= anchor:
+        remaining_start = anchor + timedelta(days=1)
+    else:
+        remaining_start = period_end + timedelta(days=1)
+    remaining_days = 0
+    cursor = remaining_start
+    while cursor <= period_end:
+        if cursor.weekday() < 5:
+            remaining_days += 1
+        cursor += timedelta(days=1)
+
+    goal = float(milestone.get("profit_goal") or 0.0)
+    has_goal = bool(milestone.get("has_profit_goal")) and goal > 0
+    period_net = sum(nets)
+    remaining = max(0.0, goal - period_net) if has_goal else None
+    progress = max(0.0, min(100.0, (period_net / goal) * 100.0)) if has_goal else None
+    required_pace = (
+        (remaining / remaining_days) if remaining is not None and remaining_days else None
+    )
+    # A historical pace is useful context, but it is not a defensible current-month
+    # projection until the selected month contains at least one closed trade.
+    projection = (
+        period_net + (float(selected_pace) * remaining_days)
+        if selected_pace and remaining_days >= 0 and closed_count > 0
+        else None
+    )
+    return {
+        "period_label": month_name,
+        "source_label": scope_label,
+        "net": float(period_net),
+        "goal": goal if has_goal else None,
+        "progress_pct": progress,
+        "remaining": remaining,
+        "remaining_days": remaining_days,
+        "required_pace": required_pace,
+        "projection": projection,
+        "projection_basis": (
+            f"{app_runtime.money(selected_pace)}/recorded-day pace across "
+            f"{remaining_days} remaining weekdays"
+            if projection is not None
+            else "Projection activates after the first closed trade in this period"
+        ),
+        "trade_count": closed_count,
+        "win_rate": (len(winners) / closed_count * 100.0) if closed_count else None,
+        "profit_factor": profit_factor,
+        "expectancy": (sum(nets) / closed_count) if closed_count else None,
+        "avg_win": (gross_profit / len(winners)) if winners else None,
+        "avg_loss": (sum(losers) / len(losers)) if losers else None,
+        "best_trade": max(nets) if nets else None,
+        "worst_trade": min(nets) if nets else None,
+        "status": (
+            "Goal reached"
+            if has_goal and period_net >= goal
+            else (
+                "Ahead of pace"
+                if required_pace is not None and selected_pace >= required_pace
+                else "Pace required" if has_goal else "Set monthly goal"
+            )
+        ),
+    }
+
+
 def dashboard():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
@@ -12098,6 +13047,10 @@ def dashboard():
     except Exception:
         scope_account_id = None
     selected_account = trades_repo.get_account(scope_account_id) if scope_account_id else None
+    accounts = trades_repo.dedupe_accounts_for_display(
+        accounts,
+        selected_account_id=scope_account_id,
+    )
     scoped_ledger_account_ids = (
         trades_repo.account_continuity_ids(scope_account_id)
         if scope_active and scope_account_id
@@ -12158,6 +13111,7 @@ def dashboard():
     selected_account_broker_metrics = _account_broker_metrics_viewmodel(selected_account)
     sync_status = get_system_status()
     dashboard_live_sync = trades_sync.dashboard_live_sync_state()
+    dashboard_import_readiness = _dashboard_import_readiness_viewmodel(dashboard_live_sync)
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
     balance_badges = balance_state_badges(balance_integrity)
     sync_badges = sync_state_badges(
@@ -12338,6 +13292,19 @@ def dashboard():
             else 0.0
         ),
         avg_daily_profit=selected_pace,
+    )
+    performance_hub = _dashboard_performance_hub_viewmodel(
+        performance_trades_list,
+        year=year,
+        month=month,
+        anchor=anchor,
+        month_name=month_name,
+        mtd_net=float(mtd_net),
+        milestone=milestone,
+        selected_pace=selected_pace,
+        scope_label=calendar_scope_label,
+        range_start=performance_range["start"],
+        range_end=performance_range["end"],
     )
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
@@ -12639,22 +13606,6 @@ def dashboard():
                     if abs(day_high - day_low) < 0.01
                     else f"{day_low:.2f}-{day_high:.2f}"
                 )
-            vwap_num = 0.0
-            vwap_den = 0.0
-            for r in full_intraday_rows:
-                if not isinstance(r, dict):
-                    continue
-                close_v = r.get("close")
-                vol_v = r.get("volume")
-                if (
-                    isinstance(close_v, (int, float))
-                    and isinstance(vol_v, (int, float))
-                    and float(vol_v) > 0
-                ):
-                    vwap_num += float(close_v) * float(vol_v)
-                    vwap_den += float(vol_v)
-            if vwap_den > 0:
-                enriched["vwap"] = vwap_num / vwap_den
         elif intraday_series:
             day_low = min(intraday_series)
             day_high = max(intraday_series)
@@ -12690,10 +13641,6 @@ def dashboard():
                 )
                 if not intraday_series:
                     intraday_series = replay_values[-40:]
-            if not isinstance(enriched.get("vwap"), (int, float)):
-                replay_vwap = _market_pulse_series_vwap(replay_points)
-                if replay_vwap is not None:
-                    enriched["vwap"] = replay_vwap
         reason = str(enriched.get("reason") or "").lower()
         provider = str(enriched.get("provider") or "").lower()
         if enriched.get("price") is None:
@@ -12913,15 +13860,12 @@ def dashboard():
         },
         {
             "label": "Post-session import",
-            "status": "Loaded" if today_count else "Pending",
-            "detail": (
-                f"{today_count} trade{'s' if today_count != 1 else ''} loaded for today."
-                if today_count
-                else "No trades loaded yet. Import after the session if needed."
-            ),
-            "done": today_count > 0,
-            "href": "/trades" if today_count else "/trades/upload/statement",
-            "action": "Open" if today_count else "Import",
+            "status": dashboard_import_readiness["status"],
+            "detail": dashboard_import_readiness["detail"],
+            "done": dashboard_import_readiness["done"],
+            "href": dashboard_import_readiness["href"],
+            "action": dashboard_import_readiness["action"],
+            "readiness_key": "post-session-import",
         },
         {
             "label": "Debrief before re-risk",
@@ -13098,6 +14042,7 @@ def dashboard():
         balance_badges=balance_badges,
         sync_status=sync_status,
         dashboard_live_sync=dashboard_live_sync,
+        dashboard_import_readiness=dashboard_import_readiness,
         sync_badges=sync_badges,
         data_trust=data_trust,
         admin_recompute_allowed=admin_recompute_allowed,
@@ -13148,6 +14093,7 @@ def dashboard():
         snapshot_bar=snapshot_bar,
         readiness=readiness,
         decision_panel=decision_panel,
+        performance_hub=performance_hub,
         pace_card=pace_card,
         calendar_state=calendar_state,
         proj=proj,
@@ -13272,10 +14218,11 @@ def stream_market():
     from mccain_capital.services import options_panel_service
 
     is_testing = bool(current_app.config.get("TESTING"))
+    market_open = _market_pulse_market_hours(app_runtime.now_et())
     ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
     gamma_snapshot = gamma_map_service.get_gamma_snapshot()
-    if not is_testing:
+    if not is_testing and market_open:
         market_pulse_runtime.ensure_market_pulse_runtime_started()
         if not gamma_snapshot.get("asof"):
             gamma_snapshot = dict(
@@ -13288,7 +14235,14 @@ def stream_market():
     @stream_with_context
     def generate():
         started_at = time.time()
-        yield f"data: {json.dumps({'server_ts': app_runtime.now_iso(), 'stream_ready': True})}\n\n"
+        ready_payload = {
+            "server_ts": app_runtime.now_iso(),
+            "stream_ready": market_open,
+            "market_phase": "open" if market_open else "closed",
+        }
+        yield f"data: {json.dumps(ready_payload)}\n\n"
+        if not market_open:
+            return
         while True:
             payload = market_worker.get_market_snapshot()
             prices = dict(payload.get("prices") or {})
@@ -13498,10 +14452,18 @@ def market_pulse_page():
     is_testing = bool(current_app.config.get("TESTING"))
     force_refresh = requested_refresh if is_testing else False
     now_et = app_runtime.now_et()
-    if not is_testing and requested_refresh:
+    market_open = _market_pulse_market_hours(now_et)
+    if not is_testing:
         market_pulse_runtime.ensure_market_pulse_runtime_started()
     cached_playbook_snapshot = dict(
         _market_pulse_cached_playbook_snapshot(now_et, ticker=selected_ticker) or {}
+    )
+    cached_freshness = dict(cached_playbook_snapshot.get("canonical_freshness") or {})
+    bootstrap_refresh_required = bool(
+        not is_testing
+        and cached_playbook_snapshot
+        and _market_pulse_market_hours(now_et)
+        and not _market_pulse_cached_context_is_current(cached_freshness, now_et)
     )
     if is_testing:
         snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
@@ -13679,6 +14641,7 @@ def market_pulse_page():
             preloaded_macro_events=list(macro_events or []),
         )
     )
+    playbook_snapshot = _market_pulse_sanitize_cached_snapshot_targets(playbook_snapshot)
     gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot)
     playbook_quote = dict(
         playbook_snapshot.get("playbook_quote") or playbook_snapshot.get("spx_quote") or spx_quote
@@ -13693,6 +14656,39 @@ def market_pulse_page():
     execution_model = dict(playbook_snapshot.get("execution_model") or {})
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
+    canonical_freshness = dict(playbook_snapshot.get("canonical_freshness") or {})
+    source_generation_id = str(canonical_freshness.get("generation_id") or "")
+    canonical_freshness["source_generation_id"] = source_generation_id
+    verdict = dict(playbook_snapshot.get("verdict") or playbook_view.get("verdict") or {})
+    live_execution_guide = dict(
+        playbook_snapshot.get("live_execution_guide")
+        or playbook_view.get("live_execution_guide")
+        or {}
+    )
+    gamma_ladder, live_execution_guide = _market_pulse_build_aligned_gamma_ladder(
+        selected_ticker,
+        playbook_quote=playbook_quote,
+        spx_quote=spx_quote,
+        canonical_freshness=canonical_freshness,
+        verdict=verdict,
+        playbook_view=playbook_view,
+        market_structure_snapshot=market_structure_snapshot,
+        live_execution_guide=live_execution_guide,
+    )
+    live_setup_monitor = _market_pulse_live_setup_monitor(
+        ticker=selected_ticker,
+        playbook_view=playbook_view,
+        canonical_freshness=canonical_freshness,
+        execution_chart=execution_chart,
+        now_et=now_et,
+    )
+    refresh_contract = _market_pulse_refresh_contract(now_et, canonical_freshness)
+    operational_health = build_operational_health(
+        freshness=canonical_freshness,
+        refresh_contract=refresh_contract,
+        live_setup_monitor=live_setup_monitor,
+        now=now_et,
+    )
     try:
         news_snapshot = _market_news_snapshot(
             now_et=now_et,
@@ -13739,8 +14735,8 @@ def market_pulse_page():
     source_health = build_market_source_health(snapshot, news_snapshot, gamma_snapshot, now_et)
     integrity = dict(snapshot.get("integrity") or {})
     stats = _market_pulse_stats(quotes)
-    core_quotes = [q for q in quotes if str(q.get("label") or "") != "SPX"]
-    core_quotes.extend([q for q in quotes if str(q.get("label") or "") == "SPX"])
+    market_radar = _market_radar_viewmodel(quotes)
+    core_quotes = market_radar["index_pulse"] + market_radar["watchlist"]
     leader_quotes = [q for q in quotes if str(q.get("group") or "") == "leaders"]
     gamma_csv_path = str(((gamma_snapshot.get("paths") or {}).get("csv")) or "")
     gamma_png_path = str(((gamma_snapshot.get("paths") or {}).get("png")) or "")
@@ -13757,6 +14753,7 @@ def market_pulse_page():
 
     content = render_template(
         "core/market_pulse.html",
+        static_v=_static_version(current_app.static_folder or "static"),
         available=bool(snapshot.get("available")),
         fetched_at=str(snapshot.get("fetched_at") or ""),
         source_label=str(snapshot.get("source_label") or "Yahoo Finance chart feed"),
@@ -13773,14 +14770,18 @@ def market_pulse_page():
         base_gamma_snapshot=_market_pulse_compact_gamma_payload(gamma_snapshot),
         quotes_map=quotes_map,
         core_quotes=core_quotes,
+        market_radar=market_radar,
         leader_quotes=leader_quotes,
         context=context,
         integrity=integrity,
         alert=alert,
         guardrail=guardrail,
-        market_hours=bool(_market_pulse_market_hours(now_et)),
+        market_hours=bool(market_open),
+        market_pulse_refresh_contract=refresh_contract,
+        operational_health=operational_health,
         stats=stats,
         gamma_snapshot=gamma_snapshot,
+        gamma_ladder=gamma_ladder,
         spx_priority_context=spx_priority_context,
         gamma_quality=gamma_quality,
         source_health=source_health,
@@ -13792,6 +14793,11 @@ def market_pulse_page():
         execution_model=execution_model,
         playbook_view=playbook_view,
         market_structure_snapshot=market_structure_snapshot,
+        canonical_freshness=canonical_freshness,
+        bootstrap_refresh_required=bootstrap_refresh_required,
+        verdict=verdict,
+        live_execution_guide=live_execution_guide,
+        live_setup_monitor=live_setup_monitor,
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,
@@ -13807,6 +14813,9 @@ def market_pulse_page():
         market_feed_snapshot=dict(news_snapshot.get("market_feed_snapshot") or {}),
         market_pulse_context_api_url=url_for("market_pulse_context_api", ticker=selected_ticker),
         market_pulse_tape_api_url=url_for("market_pulse_tape_api", ticker=selected_ticker),
+        market_pulse_setup_replay_api_url=url_for(
+            "market_pulse_setup_replay_api", ticker=selected_ticker
+        ),
         gamma_ladder_api_url=url_for("gamma_ladder_api"),
         gamma_ladder_supported_symbols=["SPX", "SPY", "QQQ"],
         gamma_ladder_window_presets=["tight", "standard", "wide"],
@@ -13825,15 +14834,189 @@ def market_pulse_page():
     return resp
 
 
-def market_pulse_context_api():
+def _market_pulse_align_generation_id(
+    generation_id: str,
+    *,
+    canonical_freshness: Dict[str, Any],
+    verdict: Dict[str, Any],
+    playbook_view: Dict[str, Any],
+    market_structure_snapshot: Dict[str, Any],
+    gamma_ladder: Dict[str, Any],
+) -> None:
+    """Keep every canonical consumer on the same refresh generation."""
+
+    canonical_freshness["generation_id"] = generation_id
+    verdict["generation_id"] = generation_id
+    for payload in (playbook_view, market_structure_snapshot):
+        rankings = dict(payload.get("scenario_rankings") or {})
+        if rankings:
+            rankings["generation_id"] = generation_id
+            payload["scenario_rankings"] = rankings
+    playbook_view["canonical_freshness"] = canonical_freshness
+    playbook_view["verdict"] = verdict
+    live_guide = dict(playbook_view.get("live_execution_guide") or {})
+    if live_guide:
+        live_guide["generation_id"] = generation_id
+        playbook_view["live_execution_guide"] = live_guide
+    market_structure_snapshot["canonical_freshness"] = canonical_freshness
+    market_structure_snapshot["verdict"] = verdict
+    gamma_ladder["canonical_generation_id"] = generation_id
+
+
+def _market_pulse_build_aligned_gamma_ladder(
+    selected_ticker: str,
+    *,
+    playbook_quote: Dict[str, Any],
+    spx_quote: Dict[str, Any],
+    canonical_freshness: Dict[str, Any],
+    verdict: Dict[str, Any],
+    playbook_view: Dict[str, Any],
+    market_structure_snapshot: Dict[str, Any],
+    live_execution_guide: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Build the ladder and bind it to the same validated Market Pulse generation."""
+
+    from mccain_capital.services import gamma_map_service
+
+    gamma_ladder: Dict[str, Any] = {}
+    if current_app.config.get("TESTING"):
+        return gamma_ladder, live_execution_guide
+    try:
+        gamma_ladder = gamma_map_service.build_gamma_ladder(
+            selected_ticker,
+            window="standard",
+            dte="0",
+            force_refresh=False,
+        )
+    except Exception as exc:
+        current_app.logger.warning("Canonical Gamma ladder refresh unavailable: %s", exc)
+        return gamma_ladder, live_execution_guide
+
+    ladder_generation_id = str(gamma_ladder.get("gamma_generation_id") or "")
+    if not ladder_generation_id:
+        return gamma_ladder, live_execution_guide
+
+    canonical_spot = _market_pulse_positive_float(
+        playbook_quote.get("price") or spx_quote.get("price")
+    )
+    quote_as_of = _parse_iso_et(playbook_quote.get("as_of") or playbook_quote.get("asof"))
+
+    def ladder_divergence(payload: Dict[str, Any]) -> tuple[bool, bool]:
+        ladder_spot = _market_pulse_positive_float(payload.get("spot"))
+        ladder_as_of = _parse_iso_et(payload.get("updated_at"))
+        spot_mismatch = (
+            canonical_spot is not None
+            and ladder_spot is not None
+            and abs(canonical_spot - ladder_spot) > GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD
+        )
+        time_mismatch = (
+            quote_as_of is not None
+            and ladder_as_of is not None
+            and abs(int((quote_as_of - ladder_as_of).total_seconds()))
+            > GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS
+        )
+        return spot_mismatch, time_mismatch
+
+    spot_diverged, time_diverged = ladder_divergence(gamma_ladder)
+    if (spot_diverged or time_diverged) and _market_pulse_market_hours(app_runtime.now_et()):
+        # A cached ladder can lag a newer canonical quote. Rebuild it once
+        # before converting that temporary cache skew into an execution lock.
+        try:
+            refreshed_ladder = gamma_map_service.build_gamma_ladder(
+                selected_ticker,
+                window="standard",
+                dte="0",
+                force_refresh=True,
+            )
+        except Exception as exc:
+            current_app.logger.warning("Gamma ladder coherence retry unavailable: %s", exc)
+        else:
+            if refreshed_ladder.get("gamma_generation_id"):
+                gamma_ladder = refreshed_ladder
+                ladder_generation_id = str(gamma_ladder.get("gamma_generation_id") or "")
+                spot_diverged, time_diverged = ladder_divergence(gamma_ladder)
+    if spot_diverged or time_diverged:
+        blockers = list(canonical_freshness.get("stale_required_components") or [])
+        if "gamma" not in blockers:
+            blockers.append("gamma")
+        canonical_freshness["stale_required_components"] = blockers
+        canonical_freshness["execution_locked"] = True
+        gamma_component = dict((canonical_freshness.get("components") or {}).get("gamma") or {})
+        gamma_component["status"] = "stale"
+        canonical_freshness.setdefault("components", {})["gamma"] = gamma_component
+        gamma_ladder["coherence_blocked"] = True
+        gamma_ladder["coherence_reason"] = (
+            "Gamma Ladder spot diverged from the canonical quote."
+            if spot_diverged
+            else "Gamma Ladder timestamp diverged from the canonical quote."
+        )
+        strategy = dict(playbook_view.get("strategy") or {})
+        primary_scenario = dict(playbook_view.get("primary_scenario") or {})
+        authoritative_state = _market_pulse_authoritative_execution_state(
+            strategy=strategy,
+            primary_scenario=primary_scenario,
+            canonical_freshness=canonical_freshness,
+        )
+        canonical_freshness["authoritative_action_state"] = authoritative_state
+        verdict.update(
+            {
+                "permission": "locked",
+                "label": "Data locked",
+                "detail": authoritative_state["reason"],
+            }
+        )
+        live_execution_guide.update(
+            {
+                "permission": "locked",
+                "action_state": "LOCKED",
+                "state_reason": authoritative_state["reason"],
+                "action": "No entry while required data is incoherent",
+                "target": "Unavailable while execution is locked",
+                "blocking_components": blockers,
+            }
+        )
+        playbook_view["canonical_freshness"] = canonical_freshness
+        playbook_view["verdict"] = verdict
+        playbook_view["live_execution_guide"] = live_execution_guide
+
+    combined_generation_id = hashlib.sha256(
+        json.dumps(
+            {
+                "market_pulse": canonical_freshness.get("generation_id"),
+                "gamma_ladder": ladder_generation_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    canonical_freshness["gamma_generation_id"] = ladder_generation_id
+    _market_pulse_align_generation_id(
+        combined_generation_id,
+        canonical_freshness=canonical_freshness,
+        verdict=verdict,
+        playbook_view=playbook_view,
+        market_structure_snapshot=market_structure_snapshot,
+        gamma_ladder=gamma_ladder,
+    )
+    return gamma_ladder, dict(
+        playbook_view.get("live_execution_guide") or live_execution_guide
+    )
+
+
+def _market_pulse_context_api_impl(*, recover_stale: bool = False):
     from mccain_capital.services import gamma_map_service
     from mccain_capital.services import market_pulse_runtime
+    from mccain_capital.services import tradier_hero_chart_service
 
+    refresh_started = time.monotonic()
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
     ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    refresh_market = force_refresh or recover_stale or (
+        (request.args.get("refresh_market") or "").strip().lower() in {"1", "true", "yes"}
+    )
     now_et = app_runtime.now_et()
     if not current_app.config.get("TESTING"):
         market_pulse_runtime.ensure_market_pulse_runtime_started()
@@ -13842,19 +15025,31 @@ def market_pulse_context_api():
     )
     snapshot = (
         _market_pulse_snapshot(force_refresh=True)
-        if force_refresh
+        if refresh_market
         else _market_pulse_fast_page_snapshot(now_et, cached_playbook_snapshot)
     )
     if not snapshot:
         snapshot = _market_pulse_snapshot(force_refresh=False)
     gamma_snapshot = _market_pulse_resolve_page_gamma_snapshot(
         cached_playbook_snapshot,
-        requested_refresh=force_refresh,
+        requested_refresh=force_refresh or recover_stale,
         load_current=gamma_map_service.get_gamma_snapshot,
     )
-    if force_refresh and not current_app.config.get("TESTING"):
-        runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
-        gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
+    if (force_refresh or recover_stale) and not current_app.config.get("TESTING"):
+        # Read the worker-owned snapshot before deciding whether to force the
+        # provider. The page cache can legitimately lag the worker cache; using
+        # it here would launch another provider fanout on every button click.
+        runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=False)
+        runtime_gamma = dict(runtime_payload.get("gamma_snapshot") or {})
+        gamma_asof = _parse_iso_et(runtime_gamma.get("asof") or runtime_gamma.get("computed_at"))
+        gamma_threshold = 360 if _market_pulse_market_hours(now_et) else 1800
+        force_gamma_refresh = (
+            gamma_asof is None or max(0, (now_et - gamma_asof).total_seconds()) > gamma_threshold
+        )
+        if force_gamma_refresh:
+            runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
+            runtime_gamma = dict(runtime_payload.get("gamma_snapshot") or runtime_gamma)
+        gamma_snapshot = runtime_gamma or gamma_snapshot
 
     raw_quotes = list(snapshot.get("quotes") or [])
     quotes = _market_pulse_enrich_quotes(raw_quotes, now_et)
@@ -13863,6 +15058,68 @@ def market_pulse_context_api():
             _market_pulse_overlay_live_worker_quotes(quotes, selected_ticker),
             now_et,
         )
+        try:
+            bars_payload = tradier_hero_chart_service.get_intraday_bars(
+                symbol=selected_ticker,
+                interval="5m",
+            )
+            all_bars = list(bars_payload.get("bars") or [])
+            previous_count = max(
+                0,
+                int(bars_payload.get("previous_session_bar_count") or 0),
+            )
+            current_count = max(
+                0,
+                int(bars_payload.get("current_session_bar_count") or 0),
+            )
+
+            def canonical_rows(rows):
+                completed = []
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    stamp = None
+                    if isinstance(row.get("time"), (int, float)):
+                        stamp = datetime.fromtimestamp(int(row["time"]), tz=app_runtime.TZ)
+                    else:
+                        stamp = _parse_iso_et(row.get("time"))
+                    if stamp is None or stamp + timedelta(minutes=5) > now_et:
+                        continue
+                    close = _market_pulse_positive_float(row.get("close"))
+                    if close is None:
+                        continue
+                    completed.append(
+                        {
+                            "ts": stamp.isoformat(),
+                            "open": row.get("open"),
+                            "high": row.get("high"),
+                            "low": row.get("low"),
+                            "close": close,
+                            "v": close,
+                            "volume": row.get("volume") or 0,
+                        }
+                    )
+                return completed
+
+            prior_rows = canonical_rows(all_bars[:previous_count])
+            current_rows = canonical_rows(all_bars[previous_count : previous_count + current_count])
+            if current_rows:
+                for quote_row in quotes:
+                    quote_symbol = str(
+                        quote_row.get("label") or quote_row.get("symbol") or ""
+                    ).upper()
+                    if quote_symbol != selected_ticker:
+                        continue
+                    quote_row["series"] = current_rows
+                    quote_row["strategy_bars_5m"] = current_rows
+                    quote_row["prior_session_series"] = prior_rows
+                    quote_row["prior_session_day"] = str(
+                        bars_payload.get("previous_session_day") or ""
+                    )
+                    quote_row["freshness_label"] = "Live completed bars"
+                    break
+        except Exception as exc:
+            current_app.logger.warning("Canonical completed-bar refresh unavailable: %s", exc)
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
     if cached_playbook_snapshot and not _market_pulse_cached_playbook_matches_quotes(
@@ -13887,10 +15144,15 @@ def market_pulse_context_api():
     macro_events = _market_news_macro_events(now_et) if include_macro else []
     playbook_snapshot = (
         cached_playbook_snapshot
-        if cached_playbook_snapshot and not force_refresh
+        if (
+            cached_playbook_snapshot
+            and not force_refresh
+            and not recover_stale
+            and not refresh_market
+        )
         else get_or_build_market_pulse_snapshot(
             ticker=selected_ticker,
-            force_refresh=force_refresh,
+            force_refresh=force_refresh or recover_stale,
             now_et=now_et,
             preloaded_snapshot=snapshot,
             preloaded_gamma_snapshot=gamma_snapshot,
@@ -13898,6 +15160,7 @@ def market_pulse_context_api():
             preloaded_macro_events=list(macro_events or []),
         )
     )
+    playbook_snapshot = _market_pulse_sanitize_cached_snapshot_targets(playbook_snapshot)
     gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot)
     playbook_quote = dict(
         playbook_snapshot.get("playbook_quote") or playbook_snapshot.get("spx_quote") or spx_quote
@@ -13907,23 +15170,111 @@ def market_pulse_context_api():
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
     execution_chart = dict(playbook_snapshot.get("execution_chart") or {})
+    canonical_freshness = dict(playbook_snapshot.get("canonical_freshness") or {})
+    source_generation_id = str(canonical_freshness.get("generation_id") or "")
+    canonical_freshness["source_generation_id"] = source_generation_id
+    verdict = dict(playbook_snapshot.get("verdict") or playbook_view.get("verdict") or {})
+    live_execution_guide = dict(
+        playbook_snapshot.get("live_execution_guide")
+        or playbook_view.get("live_execution_guide")
+        or {}
+    )
     spx_priority_context = dict(
         playbook_snapshot.get("playbook_priority_context")
         or playbook_snapshot.get("spx_priority_context")
         or {}
     )
-    return jsonify(
+    gamma_ladder, live_execution_guide = _market_pulse_build_aligned_gamma_ladder(
+        selected_ticker,
+        playbook_quote=playbook_quote,
+        spx_quote=spx_quote,
+        canonical_freshness=canonical_freshness,
+        verdict=verdict,
+        playbook_view=playbook_view,
+        market_structure_snapshot=market_structure_snapshot,
+        live_execution_guide=live_execution_guide,
+    )
+    live_setup_monitor = _market_pulse_live_setup_monitor(
+        ticker=selected_ticker,
+        playbook_view=playbook_view,
+        canonical_freshness=canonical_freshness,
+        execution_chart=execution_chart,
+        now_et=now_et,
+    )
+    refresh_status = "partial" if canonical_freshness.get("execution_locked") else "promoted"
+    component_versions = {
+        name: {
+            "status": str(component.get("status") or "unavailable"),
+            "as_of": str(component.get("as_of") or ""),
+            "age_seconds": component.get("age_seconds"),
+        }
+        for name, component in dict(canonical_freshness.get("components") or {}).items()
+        if isinstance(component, dict)
+    }
+    refresh_contract = {
+        **_market_pulse_refresh_contract(now_et, canonical_freshness),
+        "generation_etag": str(canonical_freshness.get("generation_id") or ""),
+        "source_generation_id": source_generation_id,
+        "component_versions": component_versions,
+        "observation_only_quote": True,
+        "promotion_reason": "required_components_current"
+        if refresh_status == "promoted"
+        else "required_component_blocked",
+        "retry_classification": "scheduled" if refresh_status == "promoted" else "component_stale",
+    }
+    refresh_duration_ms = max(0, int((time.monotonic() - refresh_started) * 1000))
+    operational_health = build_operational_health(
+        freshness=canonical_freshness,
+        refresh_contract=refresh_contract,
+        live_setup_monitor=live_setup_monitor,
+        now=now_et,
+        last_attempt=now_et.isoformat(),
+        consecutive_failures=1 if refresh_status != "promoted" else 0,
+    )
+    record_reliability_event(
+        at=now_et.isoformat(),
+        event="canonical_refresh",
+        ticker=selected_ticker,
+        generation_id=canonical_freshness.get("generation_id"),
+        component=",".join(operational_health["blocking_components"]),
+        outcome=operational_health["status"],
+        reason=refresh_contract["promotion_reason"],
+    )
+    response = jsonify(
         {
             "ok": True,
+            "refresh_outcome": {
+                "status": refresh_status,
+                "attempted_at": now_et.isoformat(),
+                "last_valid_at": str(
+                    market_structure_snapshot.get("last_valid_snapshot_time")
+                    or market_structure_snapshot.get("snapshot_timestamp")
+                    or canonical_freshness.get("generated_at")
+                    or ""
+                ),
+                "next_retry_seconds": int(canonical_freshness.get("sync_interval_seconds") or 15),
+                "blocking_components": list(
+                    canonical_freshness.get("stale_required_components") or []
+                ),
+                "market_phase": refresh_contract["market_phase"],
+                "promotion_reason": refresh_contract["promotion_reason"],
+                "retry_classification": refresh_contract["retry_classification"],
+                "refresh_duration_ms": refresh_duration_ms,
+            },
             "payload": {
                 "ticker": selected_ticker,
                 "playbook_quote": _market_pulse_compact_quote_payload(playbook_quote),
                 "spx_quote": _market_pulse_compact_quote_payload(spx_quote),
                 "vix_quote": _market_pulse_compact_quote_payload(vix_quote),
                 "gamma_snapshot": _market_pulse_compact_gamma_payload(gamma_snapshot),
+                "gamma_ladder": gamma_ladder,
                 "execution_model": execution_model,
                 "market_structure_snapshot": market_structure_snapshot,
                 "playbook_view": playbook_view,
+                "canonical_freshness": canonical_freshness,
+                "verdict": verdict,
+                "live_execution_guide": live_execution_guide,
+                "live_setup_monitor": live_setup_monitor,
                 "execution_chart": execution_chart,
                 "playbook_priority_context": spx_priority_context,
                 "spx_priority_context": spx_priority_context,
@@ -13932,9 +15283,360 @@ def market_pulse_context_api():
                 "series_points": series_points,
                 "quotes_map": quotes_map,
                 "vix_direction": context.get("vix_direction") if context else "",
+                "refresh_contract": refresh_contract,
+                "operational_health": operational_health,
             },
         }
     )
+    generation_id = str(canonical_freshness.get("generation_id") or "")
+    if generation_id:
+        response.set_etag(generation_id)
+    response.headers["X-Market-Pulse-Next-Check"] = str(
+        refresh_contract["next_check_seconds"]
+    )
+    response.headers["X-Market-Pulse-Phase"] = refresh_contract["market_phase"]
+    _market_pulse_log(
+        "candidate_built",
+        ticker=selected_ticker,
+        generation_id=generation_id,
+        status=refresh_status,
+        duration_ms=refresh_duration_ms,
+        blockers=list(canonical_freshness.get("stale_required_components") or []),
+        component_ages={
+            name: row.get("age_seconds") for name, row in component_versions.items()
+        },
+        live_setup={
+            "setup_id": (live_setup_monitor.get("primary") or {}).get("setup_id"),
+            "state": (live_setup_monitor.get("primary") or {}).get("state"),
+            "revision": (live_setup_monitor.get("primary") or {}).get("revision"),
+            "state_age_seconds": (live_setup_monitor.get("primary") or {}).get(
+                "state_age_seconds"
+            ),
+            "next_evaluation_at": live_setup_monitor.get("next_evaluation_at"),
+            "persistence_healthy": (live_setup_monitor.get("persistence") or {}).get(
+                "healthy"
+            ),
+            "alert_status": (live_setup_monitor.get("primary") or {}).get("alert_status"),
+        },
+    )
+    return response
+
+
+def market_pulse_live_setup_ack_api():
+    """Acknowledge a live setup without changing its lifecycle state."""
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    payload = request.get_json(silent=True) or {}
+    setup_id = str(payload.get("setup_id") or "").strip()
+    ticker = str(payload.get("ticker") or "SPX").strip().upper()
+    if not setup_id or ticker != "SPX":
+        return jsonify({"ok": False, "error": "invalid_setup"}), 400
+    try:
+        acknowledged = acknowledge_setup(
+            ledger_path=_market_pulse_live_setup_ledger_file(ticker),
+            setup_id=setup_id,
+            now=app_runtime.now_et(),
+        )
+    except OSError as exc:
+        current_app.logger.warning("Live setup acknowledgement unavailable: %s", exc)
+        return jsonify({"ok": False, "error": "persistence_unavailable"}), 503
+    if not acknowledged:
+        return jsonify({"ok": False, "error": "setup_not_found"}), 404
+    return jsonify({"ok": True, "setup_id": setup_id})
+
+
+def _market_pulse_cached_context_is_current(
+    freshness: Dict[str, Any], now_et: datetime
+) -> bool:
+    """Return whether a cached generation is still eligible for a 304 response."""
+
+    if not isinstance(freshness, dict) or not freshness:
+        return False
+    if freshness.get("execution_locked"):
+        return False
+    if list(freshness.get("stale_required_components") or []):
+        return False
+    generated_at = _parse_iso_et(freshness.get("generated_at"))
+    if generated_at is None:
+        return False
+    if not _market_pulse_market_hours(now_et):
+        return True
+    interval = max(5, int(freshness.get("sync_interval_seconds") or 15))
+    maximum_age = max(45, interval * 3)
+    return max(0.0, (now_et - generated_at).total_seconds()) <= maximum_age
+
+
+def market_pulse_context_api():
+    """Single-flight canonical context refresh with a last-response fallback."""
+
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
+    force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    refresh_market = (request.args.get("refresh_market") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    now_et = app_runtime.now_et()
+    memory_cached = copy.deepcopy(_market_pulse_context_response_cache.get(selected_ticker))
+    shared_cached = (
+        None
+        if current_app.config.get("TESTING")
+        else load_shared_context(
+            _market_pulse_context_cache_file(selected_ticker), ticker=selected_ticker
+        )
+    )
+    cached = choose_newest_context(memory_cached, shared_cached, ticker=selected_ticker)
+    if cached is None and isinstance(memory_cached, dict):
+        # A locked/partial candidate is still the same worker's safest visible
+        # fallback. It is never promoted to the cross-worker verified cache.
+        cached = memory_cached
+    if cached is not None:
+        _market_pulse_context_response_cache[selected_ticker] = copy.deepcopy(cached)
+        if shared_cached is not None and cached == shared_cached and cached != memory_cached:
+            _market_pulse_log(
+                "worker_adopted_shared_generation",
+                ticker=selected_ticker,
+                generation_id=str(
+                    (cached.get("canonical_freshness") or {}).get("generation_id") or ""
+                ),
+            )
+    automatic_check = (request.args.get("automatic") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if automatic_check and not _market_pulse_market_hours(now_et):
+        retained = copy.deepcopy(cached) if cached else {"ticker": selected_ticker}
+        retained_freshness = dict(retained.get("canonical_freshness") or {})
+        refresh_contract = _market_pulse_refresh_contract(now_et, retained_freshness)
+        retained["refresh_contract"] = refresh_contract
+        retained["operational_health"] = build_operational_health(
+            freshness=retained_freshness,
+            refresh_contract=refresh_contract,
+            live_setup_monitor=dict(retained.get("live_setup_monitor") or {}),
+            now=now_et,
+        )
+        response = jsonify(
+            {
+                "ok": True,
+                "refresh_outcome": {
+                    "status": "unchanged",
+                    "attempted_at": now_et.isoformat(),
+                    "last_valid_at": str(retained_freshness.get("generated_at") or ""),
+                    "next_retry_seconds": 0,
+                    "blocking_components": list(
+                        retained_freshness.get("stale_required_components") or []
+                    ),
+                    "market_phase": "closed",
+                    "retry_classification": "session_paused",
+                    "message": "Market closed; last verified generation retained.",
+                },
+                "payload": retained,
+            }
+        )
+        generation_id = str(retained_freshness.get("generation_id") or "")
+        if generation_id:
+            response.set_etag(generation_id)
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["X-Market-Pulse-Next-Check"] = "0"
+        response.headers["X-Market-Pulse-Phase"] = "closed"
+        response.headers["X-Market-Pulse-Outcome"] = "session_paused"
+        return response
+    recover_stale = False
+    client_generation = str(request.args.get("generation") or "").strip()
+    if not client_generation and request.if_none_match:
+        client_generation = str(next(iter(request.if_none_match), ""))
+    client_generation = client_generation.strip('"')
+    if cached and not force_refresh and not refresh_market:
+        cached_freshness = dict(cached.get("canonical_freshness") or {})
+        cached_generation = str(cached_freshness.get("generation_id") or "")
+        cached_source_generation = str(
+            cached_freshness.get("source_generation_id") or cached_generation
+        )
+        cached_is_current = (
+            _market_pulse_cached_context_is_current(cached_freshness, now_et)
+            if automatic_check
+            else True
+        )
+        current_snapshot = dict(
+            _market_pulse_cached_playbook_snapshot(
+                now_et,
+                ticker=selected_ticker,
+            )
+            or {}
+        )
+        current_freshness = dict(current_snapshot.get("canonical_freshness") or {})
+        current_source_generation = str(current_freshness.get("generation_id") or "")
+        source_is_current = (
+            not current_source_generation
+            or current_source_generation == cached_source_generation
+        )
+        if (
+            cached_is_current
+            and client_generation
+            and client_generation == cached_generation
+            and source_is_current
+        ):
+            response = make_response("", 304)
+            response.set_etag(cached_generation)
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["X-Market-Pulse-Next-Check"] = str(
+                int(cached_freshness.get("sync_interval_seconds") or 15)
+            )
+            response.headers["X-Market-Pulse-Phase"] = (
+                "open" if _market_pulse_market_hours(now_et) else "closed"
+            )
+            response.headers["X-Market-Pulse-Outcome"] = "unchanged"
+            return response
+        if cached_is_current and source_is_current:
+            cached_status = (
+                "promoted"
+                if client_generation and client_generation != cached_generation
+                else "unchanged"
+            )
+            response = jsonify(
+                {
+                    "ok": True,
+                    "refresh_outcome": {
+                        "status": cached_status,
+                        "attempted_at": now_et.isoformat(),
+                        "last_valid_at": str(cached_freshness.get("generated_at") or ""),
+                        "next_retry_seconds": int(
+                            cached_freshness.get("sync_interval_seconds") or 15
+                        ),
+                        "blocking_components": list(
+                            cached_freshness.get("stale_required_components") or []
+                        ),
+                        "message": (
+                            "Newer cached canonical generation returned."
+                            if cached_status == "promoted"
+                            else "Cached canonical generation returned."
+                        ),
+                    },
+                    "payload": cached,
+                }
+            )
+            if cached_generation:
+                response.set_etag(cached_generation)
+            response.headers["X-Market-Pulse-Outcome"] = "cached"
+            return response
+        if automatic_check and source_is_current:
+            # Keep normal browser polls cheap, but do not depend on a separate
+            # worker to exist. Once per cooldown, this request performs the
+            # bounded recovery itself; intervening polls retain the last valid
+            # generation and its 15-second retry contract.
+            previous_attempt = _market_pulse_context_recovery_attempts.get(selected_ticker)
+            recovery_due = previous_attempt is None or (
+                now_et - previous_attempt
+            ).total_seconds() >= MARKET_PULSE_AUTOMATIC_RECOVERY_COOLDOWN_SECONDS
+            if recovery_due:
+                _market_pulse_context_recovery_attempts[selected_ticker] = now_et
+                recover_stale = True
+                _market_pulse_log(
+                    "automatic_recovery_started",
+                    ticker=selected_ticker,
+                    generation_id=cached_generation,
+                    blockers=list(cached_freshness.get("stale_required_components") or []),
+                )
+            else:
+                response = jsonify(
+                    {
+                        "ok": True,
+                        "refresh_outcome": {
+                            "status": "partial",
+                            "attempted_at": now_et.isoformat(),
+                            "last_valid_at": str(cached_freshness.get("generated_at") or ""),
+                            "next_retry_seconds": 15,
+                            "blocking_components": list(
+                                cached_freshness.get("stale_required_components") or []
+                            ),
+                            "retry_classification": "automatic_recovery_cooldown",
+                            "message": "Serving the last verified generation until the next bounded recovery.",
+                        },
+                        "payload": cached,
+                    }
+                )
+                response.headers["X-Market-Pulse-Outcome"] = "partial"
+                response.headers["X-Market-Pulse-Next-Check"] = "15"
+                return response
+    if not _market_pulse_context_refresh_lock.acquire(blocking=False):
+        if cached:
+            return jsonify(
+                {
+                    "ok": True,
+                    "refresh_outcome": {
+                        "status": "unchanged",
+                        "attempted_at": app_runtime.now_et().isoformat(),
+                        "last_valid_at": str(
+                            (cached.get("canonical_freshness") or {}).get("generated_at") or ""
+                        ),
+                        "next_retry_seconds": 15,
+                        "blocking_components": list(
+                            (cached.get("canonical_freshness") or {}).get(
+                                "stale_required_components"
+                            )
+                            or []
+                        ),
+                        "message": "Canonical refresh already running.",
+                    },
+                    "payload": cached,
+                }
+            )
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "refresh_outcome": {
+                        "status": "unchanged",
+                        "attempted_at": app_runtime.now_et().isoformat(),
+                        "next_retry_seconds": 3,
+                        "message": "Canonical refresh already running.",
+                    },
+                }
+            ),
+            202,
+        )
+    try:
+        response = (
+            _market_pulse_context_api_impl(recover_stale=True)
+            if recover_stale
+            else _market_pulse_context_api_impl()
+        )
+        if getattr(response, "status_code", 500) == 200:
+            body = response.get_json(silent=True) or {}
+            payload = body.get("payload")
+            if isinstance(payload, dict):
+                _market_pulse_context_response_cache[selected_ticker] = copy.deepcopy(payload)
+                valid, validation_problems = validate_context_payload(
+                    payload, ticker=selected_ticker
+                )
+                if valid:
+                    freshness = dict(payload.get("canonical_freshness") or {})
+                    if (
+                        not freshness.get("execution_locked")
+                        and not current_app.config.get("TESTING")
+                    ):
+                        promoted = promote_shared_context(
+                            _market_pulse_context_cache_file(selected_ticker),
+                            payload,
+                            ticker=selected_ticker,
+                        )
+                        _market_pulse_log(
+                            "generation_promoted" if promoted else "generation_not_promoted",
+                            ticker=selected_ticker,
+                            generation_id=str(freshness.get("generation_id") or ""),
+                        )
+                else:
+                    _market_pulse_log(
+                        "candidate_rejected",
+                        ticker=selected_ticker,
+                        blockers=validation_problems,
+                    )
+        return response
+    finally:
+        _market_pulse_context_refresh_lock.release()
 
 
 def gamma_ladder_api():
@@ -13945,8 +15647,12 @@ def gamma_ladder_api():
     symbol = gamma_map_service.normalize_gamma_ladder_symbol(request.args.get("symbol") or "")
     window = gamma_map_service.normalize_gamma_ladder_window(request.args.get("window") or "")
     dte = gamma_map_service.normalize_gamma_ladder_dte(request.args.get("dte") or "")
+    force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     try:
-        payload = gamma_map_service.build_gamma_ladder(symbol, window=window, dte=dte)
+        ladder_kwargs = {"window": window, "dte": dte}
+        if force_refresh:
+            ladder_kwargs["force_refresh"] = True
+        payload = gamma_map_service.build_gamma_ladder(symbol, **ladder_kwargs)
     except Exception as exc:
         return (
             jsonify(
@@ -13963,7 +15669,58 @@ def gamma_ladder_api():
     return jsonify(payload)
 
 
-def market_pulse_tape_api():
+def market_pulse_setup_replay_api():
+    """Return point-in-time-safe potential setups without writing trading data."""
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    now_et = app_runtime.now_et()
+    ticker = str(get_playbook_ticker_context(request.args.get("ticker"))["ticker"])
+    session_date = str(request.args.get("session_date") or now_et.date().isoformat()).strip()
+    try:
+        date.fromisoformat(session_date)
+    except ValueError:
+        return jsonify({"ok": False, "error": "invalid_session_date"}), 400
+    include_rejected = str(request.args.get("include_rejected") or "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    snapshot = _market_pulse_setup_replay_source_snapshot(now_et, ticker=ticker)
+    snapshot = _market_pulse_sanitize_cached_snapshot_targets(dict(snapshot))
+    structure = dict(snapshot.get("market_structure_snapshot") or {})
+    quote = dict(snapshot.get("playbook_quote") or snapshot.get("spx_quote") or {})
+    chart = dict(snapshot.get("execution_chart") or {})
+    gamma = dict(snapshot.get("gamma_snapshot") or {})
+    gamma_as_of = (
+        gamma.get("last_successful_compute") or gamma.get("computed_at") or gamma.get("asof")
+    )
+    levels = [
+        {"key": "gamma_flip", "value": structure.get("main_flip"), "as_of": gamma_as_of},
+        {"key": "local_flip", "value": structure.get("local_flip"), "as_of": gamma_as_of},
+        {"key": "call_wall", "value": structure.get("call_wall"), "as_of": gamma_as_of},
+        {"key": "put_wall", "value": structure.get("put_wall"), "as_of": gamma_as_of},
+        {"key": "new_call_wall", "value": structure.get("next_call_wall"), "as_of": gamma_as_of},
+        {"key": "new_put_wall", "value": structure.get("next_put_wall"), "as_of": gamma_as_of},
+        {"key": "prior_day_high", "value": quote.get("prior_day_high")},
+        {"key": "prior_day_low", "value": quote.get("prior_day_low")},
+        {"key": "current_day_high", "value": quote.get("day_high")},
+        {"key": "current_day_low", "value": quote.get("day_low")},
+    ]
+    payload = build_intraday_setup_replay(
+        ticker=ticker,
+        session_date=session_date,
+        bars=chart.get("strategy_bars_5m") or [],
+        levels=levels,
+        strategy=structure.get("strategy") or {},
+        gamma_regime=str(structure.get("gamma_regime") or ""),
+        gamma_as_of=gamma_as_of,
+        include_rejected=include_rejected,
+    )
+    return jsonify({"ok": True, "payload": payload})
+
+
+def _market_pulse_tape_api_impl():
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
     started = time.perf_counter()
@@ -14100,53 +15857,55 @@ def market_pulse_tape_api():
         label_by_symbol[symbol] = label
 
     if include_series:
-        max_workers = min(8, max(1, len(quote_by_symbol)))
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(_load_tape_series, symbol): symbol for symbol in quote_by_symbol
-            }
-            for future in as_completed(futures):
-                symbol, rows, points, prior_rows, cached_points = future.result()
-                q = quote_by_symbol.get(symbol)
-                label = label_by_symbol.get(symbol, symbol)
-                if not q:
-                    continue
-                current_range = _market_pulse_range_payload(rows, source="current_session")
-                prior_range = _market_pulse_range_payload(prior_rows, source="prior_session")
-                cached_range = _market_pulse_range_payload(cached_points, source="cached_replay")
-                _market_pulse_apply_range_payload(q, current_range or prior_range or cached_range)
-                if len(points) >= 4:
-                    series_points[label] = points
-                    q["series"] = points
-                    q["mini_series"] = [
-                        float(p["v"]) for p in points if isinstance(p.get("v"), (int, float))
-                    ]
-                    timeframe_rows = rows
-                elif len(prior_rows) >= 2:
-                    prior_points = _market_pulse_rows_to_points(prior_rows)
-                    series_points[label] = prior_points
-                    q["prior_session_series"] = prior_points
-                    q["mini_series"] = [
-                        float(p["v"]) for p in prior_points if isinstance(p.get("v"), (int, float))
-                    ]
-                    timeframe_rows = prior_rows
-                elif len(cached_points) >= 2:
-                    series_points[label] = cached_points
-                    q["prior_session_series"] = cached_points
-                    q["mini_series"] = [
-                        float(p["v"]) for p in cached_points if isinstance(p.get("v"), (int, float))
-                    ]
-                    timeframe_rows = cached_points
-                else:
-                    timeframe_rows = []
-                timeframe_map = _market_pulse_timeframe_payloads(timeframe_rows, symbol=symbol)
-                if timeframe_map:
-                    q["timeframes"] = timeframe_map
-                    q["last_hour"] = timeframe_map.get("1H") or {}
-    quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
+        # Provider calls can block. Keep this path deliberately sequential and
+        # single-flight so repeated browser refreshes cannot create unbounded
+        # per-request executor threads.
+        for symbol in quote_by_symbol:
+            symbol, rows, points, prior_rows, cached_points = _load_tape_series(symbol)
+            q = quote_by_symbol.get(symbol)
+            label = label_by_symbol.get(symbol, symbol)
+            if not q:
+                continue
+            current_range = _market_pulse_range_payload(rows, source="current_session")
+            prior_range = _market_pulse_range_payload(prior_rows, source="prior_session")
+            cached_range = _market_pulse_range_payload(cached_points, source="cached_replay")
+            _market_pulse_apply_range_payload(q, current_range or prior_range or cached_range)
+            if len(points) >= 4:
+                series_points[label] = points
+                q["series"] = points
+                q["mini_series"] = [
+                    float(p["v"]) for p in points if isinstance(p.get("v"), (int, float))
+                ]
+                timeframe_rows = rows
+            elif len(prior_rows) >= 2:
+                prior_points = _market_pulse_rows_to_points(prior_rows)
+                series_points[label] = prior_points
+                q["prior_session_series"] = prior_points
+                q["mini_series"] = [
+                    float(p["v"]) for p in prior_points if isinstance(p.get("v"), (int, float))
+                ]
+                timeframe_rows = prior_rows
+            elif len(cached_points) >= 2:
+                series_points[label] = cached_points
+                q["prior_session_series"] = cached_points
+                q["mini_series"] = [
+                    float(p["v"]) for p in cached_points if isinstance(p.get("v"), (int, float))
+                ]
+                timeframe_rows = cached_points
+            else:
+                timeframe_rows = []
+            timeframe_map = _market_pulse_timeframe_payloads(timeframe_rows, symbol=symbol)
+            if timeframe_map:
+                q["timeframes"] = timeframe_map
+                q["last_hour"] = timeframe_map.get("1H") or {}
     stats = _market_pulse_stats(quotes)
     context = _market_pulse_context(quotes)
-    core_quotes = [q for q in quotes if str(q.get("label") or "") != "SPX"]
+    market_radar = _market_radar_viewmodel(quotes)
+    core_quotes = market_radar["watchlist"]
+    quotes_map = {
+        str(q.get("radar_symbol") or q.get("label") or ""): q
+        for q in market_radar["index_pulse"] + market_radar["watchlist"]
+    }
     leaders = [
         str(q.get("label") or q.get("symbol") or "")
         for q in core_quotes
@@ -14180,10 +15939,35 @@ def market_pulse_tape_api():
                     "missing": int(stats.get("missing") or 0),
                     "advancers": int(stats.get("advancers") or 0),
                     "decliners": int(stats.get("decliners") or 0),
+                    "order": [item["radar_symbol"] for item in core_quotes],
+                    "leaders_ranked": [item["radar_symbol"] for item in market_radar["leaders"]],
+                    "laggards_ranked": [item["radar_symbol"] for item in market_radar["laggards"]],
                 },
             },
         }
     )
+
+
+def market_pulse_tape_api():
+    """Single-flight tape refresh that never queues overlapping provider work."""
+
+    if not _market_pulse_tape_refresh_lock.acquire(blocking=False):
+        cached = copy.deepcopy(_market_pulse_tape_response_cache.get("payload"))
+        if cached:
+            cached["refresh_outcome"] = "unchanged"
+            cached["refresh_message"] = "Tape refresh already running; showing last result."
+            return jsonify({"ok": True, "payload": cached})
+        return jsonify({"ok": False, "message": "Tape refresh already running."}), 202
+    try:
+        response = _market_pulse_tape_api_impl()
+        if getattr(response, "status_code", 500) == 200:
+            body = response.get_json(silent=True) or {}
+            payload = body.get("payload")
+            if isinstance(payload, dict):
+                _market_pulse_tape_response_cache["payload"] = copy.deepcopy(payload)
+        return response
+    finally:
+        _market_pulse_tape_refresh_lock.release()
 
 
 def market_pulse_news_feed_api():
@@ -16727,28 +18511,15 @@ def _trading_month_index_map(year: int) -> Tuple[Dict[date, int], set[date]]:
 
 
 def _is_market_session(day: date) -> bool:
-    return day.weekday() < 5 and not _market_holiday_name(day)
+    return shared_is_market_session(day)
 
 
 def _market_holiday_name(day: date) -> str:
-    return _market_holidays(day.year).get(day, "")
+    return shared_market_holiday_name(day)
 
 
 def _market_holidays(year: int) -> Dict[date, str]:
-    easter = _easter_sunday(year)
-    holidays = {
-        _observed_fixed_holiday(year, 1, 1): "New Years Day",
-        _nth_weekday_of_month(year, 1, 0, 3): "Martin Luther King Jr. Day",
-        _nth_weekday_of_month(year, 2, 0, 3): "Presidents Day",
-        easter - timedelta(days=2): "Good Friday",
-        _last_weekday_of_month(year, 5, 0): "Memorial Day",
-        _observed_fixed_holiday(year, 6, 19): "Juneteenth",
-        _observed_fixed_holiday(year, 7, 4): "Independence Day",
-        _nth_weekday_of_month(year, 9, 0, 1): "Labor Day",
-        _nth_weekday_of_month(year, 11, 3, 4): "Thanksgiving",
-        _observed_fixed_holiday(year, 12, 25): "Christmas Day",
-    }
-    return holidays
+    return dict(shared_market_holidays(year))
 
 
 def _observed_fixed_holiday(year: int, month: int, day_num: int) -> date:

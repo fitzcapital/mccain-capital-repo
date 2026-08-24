@@ -27,20 +27,49 @@ def test_market_pulse_uses_gamma_first_workflow(client):
     assert body.count('id="marketPulseTradeReadCard"') == 1
 
 
+def test_spx_playbook_renders_failed_sweep_decision_and_six_step_checklist(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+
+    assert "Wait · Location" in body
+    assert "Trigger" in body
+    assert "Act" in body
+    assert "Cancel" in body
+    assert "Reversal Checklist" in body
+    for label in (
+        "Location reached",
+        "Liquidity swept",
+        "Five-minute close back inside",
+        "Five-minute 2-2 confirmed",
+        "Trigger broken",
+        "Setup ready",
+    ):
+        assert label in body
+    assert body.count('data-trigger-step="') == 6
+    assert "Risk Calculator" not in body
+    assert "Daily Loss Panel" not in body
+    assert "Account Locking" not in body
+    assert "Contract Sizing" not in body
+
+
 def test_market_pulse_exposes_decision_narrative_and_support_disclosures(client):
     body = client.get("/market-pulse").get_data(as_text=True)
 
     assert 'id="marketPulseDecisionNarrative"' in body
     for label in (
         "Execution Read",
-        "Regime",
-        "Spot / Availability",
-        "Permission",
-        "Freshness",
-        "Trigger",
+        "Active Level",
+        "Next Evidence",
         "Invalidation",
     ):
         assert label in body
+    for duplicate_label in (
+        "Spot / Availability",
+        "Permission / State",
+        "Component Freshness",
+        "Completed candles only",
+        "Exit the thesis when this condition fails",
+    ):
+        assert duplicate_label not in body
     assert body.index('id="marketPulseDecisionNarrative"') < body.index(
         'id="marketPulseGammaCockpit"'
     )
@@ -62,6 +91,10 @@ def test_market_pulse_preserves_primary_controls_and_hooks(client):
         'id="marketPulseHeroToggleMarkers"',
         'id="marketPulseHeroToggleLevels"',
         'id="marketPulseHeroToggleDayLevels"',
+        'id="marketPulseHeroMicroTapeStatus"',
+        'id="marketPulseFastTapeChart"',
+        "Connecting · visual only",
+        "js/market_pulse_micro_tape.js",
         "data-gamma-symbol-search",
         'data-gamma-window-pill="standard"',
         "data-gamma-refresh",
@@ -72,19 +105,172 @@ def test_market_pulse_preserves_primary_controls_and_hooks(client):
         assert hook in body
 
 
-def test_playbook_header_pin_is_accessible_persistent_and_default_off(client):
+def test_five_second_tape_reuses_shared_stream_with_poll_fallback_and_stays_isolated():
+    chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
+    workflow_script = (ROOT / "static/js/market_pulse_gamma_workflow.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "acceptMicroTapeQuote(payload, price)" in chart_script
+    assert "microTapeSeries.setData(microTapeState.points)" in chart_script
+    assert "micro_tape_max_points" in chart_script
+    assert 'addEventListener("market-pulse-stream-payload"' in chart_script
+    assert "LightweightCharts.createChart(fastTapeCanvas" in chart_script
+    assert "fastTapeChart.timeScale().fitContent()" in chart_script
+    assert "chart.timeScale().applyOptions({secondsVisible: false})" in chart_script
+    assert "new EventSource" not in chart_script
+    assert "micro-tape" not in chart_script
+    assert "MicroTape" not in workflow_script
+
+
+def test_market_radar_groups_indexes_and_exposes_decision_hierarchy(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+
+    assert "Market Radar" in body
+    assert "Index Pulse" in body
+    assert "Ranked Watchlist" in body
+    assert "Relative strength" in body
+    assert "Relative weakness" in body
+    assert "data-market-radar-index" in body
+    assert "data-market-radar-watchlist" in body
+    assert 'data-role="range-position"' in body
+    assert "Selected timeframe candles · white bull" not in body
+
+
+def test_playbook_uses_one_labeled_canonical_refresh_control(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+
+    assert body.count("data-market-pulse-context-refresh") == 2  # button + JS selector
+    assert 'aria-label="Refresh data"' in body
+    assert "Refresh data" in body
+    assert "Refresh Market Pulse" not in body
+    assert 'id="marketPulseRefreshFeedback"' in body
+    assert 'id="marketPulseDiagnosticsHeading"' in body
+    assert 'blockerLabels.length ? "Why execution is locked" : "Data health"' in body
+    assert 'label.textContent = isLoading ? "Refreshing…" : "Refresh data"' not in body
+    assert "Refresh delayed · showing last valid data" in body
+    assert "Auto-refresh delayed · showing last valid data" not in body
+    assert "AUTO_REFRESH_INTERVAL_MS = 15000" in body
+    assert 'document.addEventListener("visibilitychange"' in body
+    assert 'window.addEventListener("focus"' in body
+    assert 'window.addEventListener("pageshow"' in body
+    assert "if (!event.persisted) return" in body
+    assert "suspendCanonicalRefresh()" in body
+    assert 'resumeCanonicalRefresh({ force: true, reason: "Page restored" })' in body
+    assert "refreshCountdownTimer = null" in body
+    assert "liveSetupCountdownTimer = null" in body
+    assert "nextGenerationId === currentGenerationId" in body
+    assert "nextGenerationAtMs < currentGenerationAtMs" in body
+    assert "Already showing newer data" in body
+    assert "applyCanonicalMarketPulsePayload(data.payload)" in body
+    assert 'new CustomEvent("market-pulse-canonical-update"' in body
+    assert "window.location.assign(nextUrl.toString())" not in body
+    assert "saveCanonicalUiState" not in body
+    assert "refreshMarketPulseContext(true, false)" in body
+    assert 'if (automatic && currentGenerationId) url.searchParams.set("generation", currentGenerationId)' in body
+    assert '"If-None-Match"' in body
+    assert "response.status === 304" in body
+    assert body.index("stageCanonicalPayload(payload)") < body.index(
+        'setCanonicalText("marketPulseStatusSpot", staged.spot)'
+    )
+    assert body.index('setCanonicalText("marketPulseStatusSpot", staged.spot)') < body.index(
+        "currentGenerationId = applyCanonicalMarketPulsePayload(data.payload)"
+    )
+    assert body.index("nextGenerationAtMs < currentGenerationAtMs") < body.index(
+        "currentGenerationId = applyCanonicalMarketPulsePayload(data.payload)"
+    )
+
+
+def test_playbook_canonical_refresh_has_stable_in_place_targets(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+
+    for target_id in (
+        "marketPulseCanonicalDecision",
+        "marketPulseCanonicalDecisionDetail",
+        "marketPulseCanonicalActiveLevel",
+        "marketPulseCanonicalDistance",
+        "marketPulseCanonicalNextEvidence",
+        "marketPulseCanonicalInvalidation",
+    ):
+        assert f'id="{target_id}"' in body
+
+
+def test_playbook_data_lock_diagnostics_are_collapsed_canonical_and_noncompeting(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+
+    assert '<details class="marketPulseDiagnostics marketPulseSection"' in body
+    assert 'id="marketPulseDataLockDiagnostics"' in body
+    assert 'id="marketPulseDataLockDiagnostics" open' not in body
+    diagnostics = body[
+        body.index('id="marketPulseDataLockDiagnostics"') : body.index(
+            'aria-label="Market Pulse session and data state"'
+        )
+    ]
+    assert diagnostics.count('data-diagnostic-component="') == 5
+    for label in (
+        "Data Lock Diagnostics",
+        "Completed Bars",
+        "Age / Limit",
+        "Last Success",
+        "Source / Cache",
+        "Canonical success",
+        "Retry cadence",
+    ):
+        assert label in body
+    assert "data-market-pulse-context-refresh" not in diagnostics
+    assert "applyCanonicalDiagnostics(staged.payload)" in body
+    assert '"marketPulseDiagnosticsSummaryText"' in body
+    assert "stale_required_components" in body
+    assert "Sync delayed · retry ≤" in body
+    assert 'value === null || value === undefined || value === ""' in body
+    assert "Provider completed-bar cache" in body
+
+
+def test_playbook_template_prioritizes_data_lock_over_actionable_copy():
+    template = (ROOT / "mccain_capital/templates/core/market_pulse.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "'Data locked' if guardrail.active" in template
+    assert "guardrail.message if guardrail.active" in template
+
+
+def test_playbook_sticky_summary_is_accessible_persistent_and_default_off(client):
     body = client.get("/market-pulse").get_data(as_text=True)
     assert "data-playbook-pin-toggle" in body
     assert 'aria-pressed="false"' in body
-    assert "Pin header" in body
+    assert 'aria-label="Toggle sticky summary"' in body
+    assert "Sticky summary: Off" in body
+    assert 'id="marketPulseStatusRegime"' in body
+    assert 'return state.includes("strong") ? "Strong Positive Ⲅ" : "Positive Ⲅ"' in body
+    assert 'return state.includes("strong") ? "Strong Negative Ⲅ" : "Negative Ⲅ"' in body
 
     workflow = (ROOT / "static/js/market_pulse_gamma_workflow.js").read_text(encoding="utf-8")
     assert "mccain.marketPulse.playbookPinned.v1" in workflow
     assert "is-playbook-pinned" in workflow
+    assert 'Sticky summary: ${pinned ? "On" : "Off"}' in workflow
 
     styles = (ROOT / "static/css/market_pulse.css").read_text(encoding="utf-8")
+    status_metric_rule = styles[
+        styles.index("body.page-market-pulse .marketPulseStatusMetric strong{") :
+        styles.index("body.page-market-pulse .marketPulseStatusMetric.is-spot{")
+    ]
+    assert "line-height:1.8;" in status_metric_rule
+    assert "line-height:1.1;" not in status_metric_rule
     assert "body.page-market-pulse #marketPulseStatusBar{\n  position:relative" in styles
-    assert "body.page-market-pulse.is-playbook-pinned #marketPulseStatusBar" in styles
+    assert "body.page-market-pulse.is-playbook-pinned .marketPulseExecutionStrip" in styles
+
+
+def test_canonical_refresh_rebinds_regime_from_complete_fallback_chain(client):
+    body = client.get("/market-pulse").get_data(as_text=True)
+
+    assert "const canonicalGammaRegime = (payload = {})" in body
+    assert "playbook.gamma_regime" in body
+    assert "structure.gamma_regime" in body
+    assert "gamma.regime" in body
+    assert '"marketPulseStatusRegime",\n      canonicalRegimeLabel' in body
+    assert 'setCanonicalText("marketPulseHeaderGammaLabel", canonicalRegimeLabel)' in body
+    assert 'headerGammaCard.dataset.gammaState = canonicalRegime.value' in body
 
 
 def test_playbook_header_search_popover_is_unclipped_and_header_is_compact(client):
@@ -225,3 +411,87 @@ def test_chart_consumes_gamma_selection_without_resetting_on_timeframe_change():
     assert "gammaSelectionLine = candleSeries.createPriceLine" in chart_script
     interval_handler = chart_script[chart_script.index("const bindIntervalToggles") :]
     assert "clearGammaSelectionLine" not in interval_handler.split("loadDisplayPrefs", 1)[0]
+
+
+def test_chart_keeps_distant_levels_in_rail_without_flattening_candles():
+    chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
+
+    assert "const OFF_CHART_LEVEL_PCT = 0.01" in chart_script
+    assert "const levelFitsActiveRange" in chart_script
+    add_level_line = chart_script[
+        chart_script.index("const addLevelLine") : chart_script.index("const addSpotPriceLine")
+    ]
+    assert "levelFitsActiveRange(numeric, activeBars, anchor)" in add_level_line
+    frame_bounds = chart_script[
+        chart_script.index("const applyFrameBounds") : chart_script.index(
+            "const activeBarsForPayload"
+        )
+    ]
+    assert "levelFitsActiveRange(numeric, bars, spot)" in frame_bounds
+
+
+def test_chart_reconciles_canonical_strategy_overlays_without_chart_reset():
+    chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
+
+    assert 'window.addEventListener("market-pulse-canonical-update"' in chart_script
+    assert "verdict.invalidation_level" in chart_script
+    assert "verdict.primary_target" in chart_script
+    assert 'state === "REVERSAL_READY"' in chart_script
+    assert 'state === "CONTINUATION_ACTIVE"' in chart_script
+    assert '"BEAR INVALIDATION"' in chart_script
+    assert '"BULL INVALIDATION"' in chart_script
+    assert '"REVERSAL TARGET"' in chart_script
+    assert '"CONTINUATION TARGET"' in chart_script
+    assert "buildCanonicalStrategyOverlays" in chart_script
+    assert "canonicalStrategyLines" in chart_script
+    assert "marketPulseCanonicalChartOverlayState" in chart_script
+    canonical_handler = chart_script[
+        chart_script.index("const applyCanonicalStrategyOverlays") : chart_script.index(
+            "const handleGammaLevelSelection"
+        )
+    ]
+    assert "fitContent" not in canonical_handler
+    assert "setVisibleLogicalRange" not in canonical_handler
+    assert "clearGammaSelectionLine" not in canonical_handler
+    assert "priceLines" not in canonical_handler
+    assert "dayLevelLines" not in canonical_handler
+
+
+def test_market_pulse_busts_chart_cache_for_canonical_overlays(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+
+    assert "market-pulse-ladder-20260810c" in body
+
+
+def test_trade_decision_uses_an_explicit_five_step_sequence(client):
+    body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
+    decision = body[body.index('id="marketPulseTradeReadCard"') : body.index('id="spxPrioritySpotPanel"')]
+
+    for label in ("Wait · Location", "Trigger", "Act", "Target", "Cancel"):
+        assert label in decision
+    for element_id in (
+        "marketPulseDecisionWait",
+        "marketPulseNeed",
+        "marketPulseBestLook",
+        "marketPulseExecutionStatus",
+        "marketPulseIfThen",
+    ):
+        assert f'id="{element_id}"' in decision
+        assert f'setCanonicalText("{element_id}"' in body
+    assert ">Active level<" not in decision
+    assert ">Interaction<" not in decision
+    assert ">Path / Direction<" not in decision
+    assert "No entry until the trigger confirms" in body
+
+
+def test_market_pulse_refresh_rejects_contradictory_execution_generations(client):
+    body = client.get("/market-pulse?ticker=SPX", follow_redirects=True).get_data(as_text=True)
+
+    assert "authoritative_action_state" in body
+    assert "Execution permission conflicts with canonical state." in body
+    assert "Execution guide belongs to a different state generation." in body
+    assert "Actionable state lacks required canonical confirmation." in body
+    assert "Gamma Ladder belongs to a different generation." in body
+    assert "Gamma Ladder spot diverged from the canonical SPX quote." in body
+    assert 'setCanonicalText("marketPulseHeroStateChip", staged.actionCode)' in body
+    assert "Execution locked · ${reason}" in body

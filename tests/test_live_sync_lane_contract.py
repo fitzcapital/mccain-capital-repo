@@ -82,6 +82,31 @@ def test_no_new_trades_completes_today():
     assert state["today_status"] == "completed"
 
 
+def test_previous_session_success_is_presented_as_pending_today():
+    now = datetime(2026, 8, 11, 19, 0, tzinfo=ZoneInfo("America/New_York"))
+    state = trades_sync._canonical_live_sync_state(
+        last_status={
+            "status": "success",
+            "stage": "import_complete",
+            "inserted": 4,
+            "updated_at": "2026-08-05T22:08:00+00:00",
+            "requested": {"debug_only": False},
+        },
+        active_job={},
+        history=[],
+        auto_cfg={},
+        preflight=_preflight(),
+        now_et=now,
+    )
+
+    assert state["last_outcome"] == "completed"
+    assert state["outcome"] == "ready"
+    assert state["state_label"] == "READY"
+    assert state["current_sync_label"] == "Ready for today's import"
+    assert state["import_completed_today"] is False
+    assert state["today_status"] == "pending"
+
+
 def test_earlier_success_is_preserved_after_failure():
     now = datetime(2026, 8, 5, 12, 0, tzinfo=ZoneInfo("America/New_York"))
     state = trades_sync._canonical_live_sync_state(

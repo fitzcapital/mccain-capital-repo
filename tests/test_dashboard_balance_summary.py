@@ -149,6 +149,37 @@ def test_account_broker_metrics_reports_drawdown_off_peak_from_max_drawdown(app)
     assert metrics["drawdown_off_peak_label"] == "$53.50 off peak"
 
 
+def test_account_broker_metrics_uses_ledger_balance_and_configured_drawdown_fallback(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "starting_balance": 50000.0,
+            "current_balance": 60000.0,
+            "max_drawdown": 2500.0,
+        }
+    )
+
+    assert metrics["account_balance"] == 60000.0
+    assert metrics["account_balance_source_label"] == "Recorded trades"
+    assert metrics["display_remaining_drawdown"] == 2500.0
+    assert metrics["display_remaining_drawdown_source_label"] == "Plan limit"
+
+
+def test_account_broker_metrics_applies_known_demo_drawdown_rule(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "broker_account_id": "DEMO-AUG-10K-35",
+            "starting_balance": 50000.0,
+            "current_balance": 60000.0,
+        }
+    )
+
+    assert metrics["account_balance"] == 60000.0
+    assert metrics["display_remaining_drawdown"] == 2500.0
+    assert metrics["display_remaining_drawdown_source_label"] == "Demo plan limit"
+
+
 def test_account_broker_metrics_clamps_drawdown_off_peak_at_zero(app):
     metrics = core_service._account_broker_metrics_viewmodel(
         {

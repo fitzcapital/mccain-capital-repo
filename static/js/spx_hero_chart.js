@@ -12,13 +12,19 @@
   const markersToggle = document.getElementById("marketPulseHeroToggleMarkers");
   const levelsToggle = document.getElementById("marketPulseHeroToggleLevels");
   const dayLevelsToggle = document.getElementById("marketPulseHeroToggleDayLevels");
+  const microTapeToggle = document.getElementById("marketPulseHeroToggleMicroTape");
+  const microTapeStatusNode = document.getElementById("marketPulseHeroMicroTapeStatus");
+  const fastTapeCanvas = document.getElementById("marketPulseFastTapeChart");
+  const fastTapePriceNode = document.getElementById("marketPulseFastTapePrice");
   const intervalToggles = Array.from(document.querySelectorAll("[data-hero-chart-interval]"));
   const emptyState = document.getElementById("spxExecutionHeroChartEmpty");
   const pollStatusNode = document.getElementById("marketPulseHeroPollStatus");
   const sessionBreakLabel = document.getElementById("spxExecutionHeroSessionBreak");
+  const sessionShade = document.getElementById("spxExecutionHeroSessionShade");
   if (!host || !canvas) return;
 
   const LightweightCharts = window.LightweightCharts;
+  const MicroTape = window.MarketPulseMicroTape;
   if (!LightweightCharts || typeof LightweightCharts.createChart !== "function") {
     if (emptyState) emptyState.textContent = "Lightweight Charts failed to load.";
     return;
@@ -135,20 +141,20 @@
     gridMajor: "rgba(199, 208, 217, 0.18)",
     gridMinor: "rgba(199, 208, 217, 0.09)",
     axis: "rgba(199, 208, 217, 0.30)",
-    bull: "#F4F8FF",
-    bullBorder: "#E6EEF9",
-    bullWick: "#F4F8FF",
-    bear: "#4988FF",
-    bearBorder: "#3C79F2",
-    bearWick: "#4988FF",
-    bullMuted: "rgba(244, 248, 255, 0.72)",
-    bullBorderMuted: "rgba(230, 238, 249, 0.78)",
-    bullWickMuted: "rgba(244, 248, 255, 0.72)",
-    bearMuted: "rgba(73, 136, 255, 0.68)",
-    bearBorderMuted: "rgba(60, 121, 242, 0.76)",
-    bearWickMuted: "rgba(73, 136, 255, 0.70)",
+    bull: "#F4F6FA",
+    bullBorder: "#B9C1CD",
+    bullWick: "#D7DCE5",
+    bear: "#1F4ACB",
+    bearBorder: "#2F6BFF",
+    bearWick: "#D7DCE5",
+    bullMuted: "rgba(244, 246, 250, 0.48)",
+    bullBorderMuted: "rgba(185, 193, 205, 0.54)",
+    bullWickMuted: "rgba(215, 220, 229, 0.50)",
+    bearMuted: "rgba(31, 74, 203, 0.50)",
+    bearBorderMuted: "rgba(47, 107, 255, 0.56)",
+    bearWickMuted: "rgba(215, 220, 229, 0.50)",
     spx: "#63B3FF",
-    current: "#C23B57",
+    current: "rgba(99, 179, 255, 0.62)",
     cw: "#C85A72",
     ncw: "#E07186",
     lf: "#A88BFF",
@@ -171,8 +177,8 @@
     labelMintText: "#08111D",
     labelGreenBg: "#19c77e",
     labelGreenText: "#EAF2FF",
-    stratUp: "#F4F8FF",
-    stratDown: "#4988FF",
+    stratUp: "#F4F6FA",
+    stratDown: "#2F6BFF",
     stratInside: "#AFC5E8",
     stratOutside: "#E6EEF9",
     pdh: "#f7d56f",
@@ -182,7 +188,7 @@
   };
   const DEFAULT_VISIBLE_BARS = 20;
   const LEFT_SCROLL_BUFFER_BARS = 3;
-  const DEFAULT_RIGHT_OFFSET_BARS = 4;
+  const DEFAULT_RIGHT_OFFSET_BARS = 6;
   const HERO_CHART_HEIGHT = 600;
   const LEGACY_HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
   const HERO_CHART_PREFS_KEY = `mc_hero_chart_display_prefs_${symbol}`;
@@ -190,7 +196,7 @@
   const STRAT_MARKER_LIMIT = 96;
   const LEVEL_RAIL_MIN_GAP = 38;
 
-  const priceScaleWidth = 96;
+  const priceScaleWidth = 112;
   const chart = LightweightCharts.createChart(canvas, {
     autoSize: false,
     height: HERO_CHART_HEIGHT,
@@ -260,6 +266,49 @@
     priceLineVisible: false,
   });
 
+  // Seconds observations own a separate time scale so they cannot distort the
+  // completed five-minute execution chart.
+  const MICRO_TAPE_IN_MAIN_CHART_ENABLED = false;
+  const fastTapeChart = fastTapeCanvas ? LightweightCharts.createChart(fastTapeCanvas, {
+    autoSize: false,
+    height: 86,
+    layout: {
+      background: {type: LightweightCharts.ColorType.Solid, color: "#06131f"},
+      textColor: "rgba(203,219,239,.68)",
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
+      fontSize: 9,
+    },
+    grid: {
+      vertLines: {color: "rgba(99,179,255,.06)"},
+      horzLines: {color: "rgba(99,179,255,.08)"},
+    },
+    rightPriceScale: {
+      borderVisible: false,
+      scaleMargins: {top: .2, bottom: .2},
+      minimumWidth: 72,
+    },
+    timeScale: {
+      borderVisible: false,
+      timeVisible: true,
+      secondsVisible: true,
+      rightOffset: 2,
+      barSpacing: 9,
+      lockVisibleTimeRangeOnResize: true,
+    },
+    crosshair: {mode: 0},
+    handleScroll: false,
+    handleScale: false,
+  }) : null;
+  const microTapeSeries = fastTapeChart?.addLineSeries({
+    color: "rgba(66, 221, 180, 0.94)",
+    lineWidth: 2,
+    lineStyle: 0,
+    crosshairMarkerVisible: true,
+    crosshairMarkerRadius: 3,
+    lastValueVisible: false,
+    priceLineVisible: false,
+  }) || null;
+
   const volumeSeries = chart.addHistogramSeries({
     priceScaleId: "",
     priceFormat: { type: "volume" },
@@ -292,6 +341,8 @@
   let spotPriceLines = [];
   let dayLevelLines = [];
   let gammaSelectionLine = null;
+  let canonicalStrategyLines = [];
+  let canonicalStrategyState = { generationId: "", overlays: [] };
   let lastGammaSelectionTimestamp = 0;
   let polling = {
     session_phase: "open",
@@ -305,10 +356,20 @@
     hidden_quote_interval_ms: 15000,
     hidden_levels_interval_ms: 300000,
     bar_boundary_grace_ms: 3000,
+    micro_tape_interval_seconds: 5,
+    micro_tape_gap_seconds: 15,
+    micro_tape_max_points: 72,
+    micro_tape_authoritative: false,
   };
   let barsTimer = null;
   let levelsTimer = null;
   let quoteTimer = null;
+  const refreshCoordinator = window.marketPulseRefreshCoordinator || null;
+  const refreshLaneNames = {
+    bars: `market-pulse:${symbol}:bars`,
+    levels: `market-pulse:${symbol}:levels`,
+    quote: `market-pulse:${symbol}:quote`,
+  };
   let initialized = false;
   let lastBarsPayload = null;
   let lastLevelsPayload = null;
@@ -338,7 +399,13 @@
     quote: { label: "Quote", state: "pending", text: "pending" },
     levels: { label: "Levels", state: "pending", text: "pending" },
   };
-  let displayPrefs = { showMarkers: true, showLevels: true, showDayLevels: true };
+  let displayPrefs = {
+    showMarkers: true,
+    showLevels: true,
+    showDayLevels: true,
+    showMicroTape: false,
+  };
+  let microTapeState = null;
   let drawingState = { enabled: false, lines: [], series: [] };
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
@@ -359,7 +426,11 @@
     call: "call_wall",
     put: "put_wall",
   };
-  const OFF_CHART_LEVEL_PCT = 0.018;
+  // Keep the execution chart scaled around price. Distant structural levels
+  // remain available in the level rail without flattening the candles.
+  const OFF_CHART_LEVEL_PCT = 0.01;
+  const ACTIVE_RANGE_LEVEL_PADDING_MULTIPLIER = 0.75;
+  const ACTIVE_RANGE_LEVEL_MIN_PCT = 0.0025;
 
   const asNum = (value) => {
     const numeric = Number(value);
@@ -393,6 +464,22 @@
   };
 
   const LOCAL_FLIP_NONE_LABEL = "No local flip in band";
+  const humanizeMarketState = (value, fallback = "Watch") => {
+    const code = String(value || "").trim().toUpperCase();
+    const labels = {
+      LEVEL_BEING_TESTED: "Testing active level",
+      WAITING_FOR_LOCATION: "Waiting for price to reach level",
+      PLANNING_ONLY: "Planning only",
+      NO_TRADE: "No trade",
+      REVERSAL_READY: "Reversal setup ready",
+      CONTINUATION_ACTIVE: "Continuation active",
+      SETUP_READY: "Setup ready",
+    };
+    if (!code) return fallback;
+    if (labels[code]) return labels[code];
+    const text = code.replaceAll("_", " ").toLowerCase();
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
 
   const renderHeaderLevels = (items) => {
     const node = document.getElementById("marketPulseHeaderSubline");
@@ -473,14 +560,14 @@
   };
 
   const regimeDisplayLabel = (state, fallback = "REGIME UNAVAILABLE") => {
-    if (state === "positive") return "Positive Ⲅ";
-    if (state === "negative") return "Negative Ⲅ";
+    if (state.includes("positive")) return state.includes("strong") ? "Strong Positive Ⲅ" : "Positive Ⲅ";
+    if (state.includes("negative")) return state.includes("strong") ? "Strong Negative Ⲅ" : "Negative Ⲅ";
     return fallback;
   };
 
   const gammaStateMeta = (state) => {
     const normalized = String(state || "").toLowerCase();
-    if (normalized === "positive") {
+    if (normalized.includes("positive")) {
       return {
         cardClass: "gamma-card--positive",
         pillClass: "state-pill--positive",
@@ -488,7 +575,7 @@
         badges: ["PINNING", "MEAN REVERSION"],
       };
     }
-    if (normalized === "negative") {
+    if (normalized.includes("negative")) {
       return {
         cardClass: "gamma-card--negative",
         pillClass: "state-pill--negative",
@@ -546,6 +633,7 @@
       if (typeof parsed?.showDayLevels === "boolean") {
         displayPrefs.showDayLevels = parsed.showDayLevels;
       }
+      displayPrefs.showMicroTape = false;
     } catch (_) {}
   };
 
@@ -687,6 +775,96 @@
       dayLevelsToggle.setAttribute("aria-pressed", displayPrefs.showDayLevels ? "true" : "false");
       dayLevelsToggle.classList.toggle("is-active", displayPrefs.showDayLevels);
     }
+    if (microTapeToggle) {
+      microTapeToggle.hidden = !MICRO_TAPE_IN_MAIN_CHART_ENABLED;
+      microTapeToggle.setAttribute("aria-pressed", "false");
+      microTapeToggle.classList.remove("is-active");
+    }
+  };
+
+  const microTapeStatusLabel = (status) => {
+    const labels = {
+      live: "Streaming · 5s visual only",
+      fallback: "Polling fallback · visual only",
+      interrupted: "Feed interrupted · polling available",
+      paused: "Paused while hidden",
+      closed: "Session closed · last valid tape",
+      unavailable: "Tape unavailable",
+      pending: "Connecting · visual only",
+    };
+    return labels[status] || labels.pending;
+  };
+
+  const renderMicroTapeState = (status) => {
+    const nextStatus = String(status || microTapeState?.status || "pending");
+    if (microTapeStatusNode) {
+      microTapeStatusNode.textContent = microTapeStatusLabel(nextStatus);
+      microTapeStatusNode.className = `marketPulseMicroTapeStatus is-${nextStatus}`;
+    }
+    chart.timeScale().applyOptions({secondsVisible: false});
+  };
+
+  const configureMicroTape = () => {
+    if (!fastTapeChart || !microTapeSeries || !MicroTape || typeof MicroTape.create !== "function") {
+      renderMicroTapeState("unavailable");
+      return;
+    }
+    microTapeState = MicroTape.create({
+      intervalSeconds: polling.micro_tape_interval_seconds,
+      gapSeconds: polling.micro_tape_gap_seconds,
+      maxPoints: polling.micro_tape_max_points,
+    });
+    renderMicroTapeState("pending");
+  };
+
+  const acceptMicroTapeObservation = (payload, price, source) => {
+    if (!microTapeState || !MicroTape || typeof MicroTape.accept !== "function") return;
+    const now = Date.now();
+    if (
+      source === "poll"
+      && typeof MicroTape.sourceIsFresh === "function"
+      && MicroTape.sourceIsFresh(
+        microTapeState,
+        "stream",
+        now,
+        polling.micro_tape_gap_seconds,
+      )
+    ) {
+      return;
+    }
+    const result = MicroTape.accept(microTapeState, {
+      price,
+      asOf: payload?.as_of,
+      now,
+      marketPhase: polling?.session_phase,
+      visible: pageVisible,
+      source,
+    });
+    if (result.changed) {
+      try {
+        microTapeSeries.setData(microTapeState.points);
+        fastTapeChart.timeScale().fitContent();
+      } catch (_) {}
+      if (fastTapePriceNode) fastTapePriceNode.textContent = fmt(price, 2);
+    }
+    renderMicroTapeState(source === "poll" && result.changed ? "fallback" : result.status);
+  };
+
+  const acceptMicroTapeQuote = (payload, price) => {
+    acceptMicroTapeObservation(payload, price, "poll");
+  };
+
+  const handleSharedStreamPayload = (event) => {
+    const payload = event?.detail || {};
+    const prices = payload?.prices || {};
+    const tick = prices[symbol] || (symbol === "SPX" ? prices.SPX : null);
+    const price = asNum(tick?.price);
+    if (price === null || price <= 0) return;
+    acceptMicroTapeObservation(
+      {as_of: tick?.as_of || payload?.updated_at || payload?.server_ts},
+      price,
+      "stream",
+    );
   };
 
   const stratTypeForBar = (previousBar, currentBar) => {
@@ -813,24 +991,65 @@
     const marker = sessionBreakMarkersForPayload(lastBarsPayload)[0];
     if (!marker) {
       sessionBreakLabel.hidden = true;
+      if (sessionShade) sessionShade.hidden = true;
       host.classList.remove("has-session-break");
       return;
     }
     const x = chart.timeScale().timeToCoordinate(marker.time);
     if (!Number.isFinite(x)) {
       sessionBreakLabel.hidden = true;
+      if (sessionShade) sessionShade.hidden = true;
       host.classList.remove("has-session-break");
       return;
     }
     const width = canvas.clientWidth || host.clientWidth || 0;
-    const left = Math.min(Math.max(Number(x), 18), Math.max(18, width - 54));
-    sessionBreakLabel.textContent = "Today";
+    const left = Math.min(Math.max(Number(x), 10), Math.max(10, width - priceScaleWidth - 10));
+    const nearLeftEdge = left < 72;
+    const nearRightEdge = left > width - priceScaleWidth - 72;
+    sessionBreakLabel.textContent = "Current session";
     sessionBreakLabel.style.left = `${left}px`;
+    sessionBreakLabel.style.transform = nearLeftEdge
+      ? "translateX(0)"
+      : nearRightEdge
+        ? "translateX(-100%)"
+        : "translateX(-50%)";
+    sessionBreakLabel.style.setProperty(
+      "--session-break-line-x",
+      nearLeftEdge ? "0%" : nearRightEdge ? "100%" : "50%",
+    );
     sessionBreakLabel.hidden = false;
+    if (sessionShade) {
+      sessionShade.style.left = `${left}px`;
+      sessionShade.style.right = "108px";
+      sessionShade.hidden = false;
+    }
     host.classList.add("has-session-break");
   };
 
-  const markersForPayload = (payload) => stratMarkersForPayload(payload);
+  let setupReplayMarkers = [];
+
+  const markersForPayload = (payload) => [
+    ...stratMarkersForPayload(payload),
+    ...(displayPrefs.showMarkers ? setupReplayMarkers : []),
+  ].sort((left, right) => Number(left.time || 0) - Number(right.time || 0));
+
+  const handleSetupReplayMarkers = (event) => {
+    const setups = Array.isArray(event?.detail?.setups) ? event.detail.setups : [];
+    setupReplayMarkers = setups.flatMap((setup) => {
+      const stamp = Date.parse(String(setup?.time || ""));
+      if (!Number.isFinite(stamp)) return [];
+      const bullish = String(setup?.direction || "").toLowerCase() === "bullish";
+      return [{
+        time: Math.floor(stamp / 1000),
+        position: bullish ? "belowBar" : "aboveBar",
+        shape: "text",
+        color: bullish ? "#42DDB4" : "#FF647C",
+        text: "◇",
+        size: 1.4,
+      }];
+    });
+    applyStratMarkers({ force: true });
+  };
 
   const applyStratMarkers = ({ force = false } = {}) => {
     const markers = markersForPayload(lastBarsPayload);
@@ -846,8 +1065,7 @@
     const biasState = String(levels.bias_state || "").toLowerCase();
     const gammaMeta = gammaStateMeta(gammaState);
     const decisionMeta = decisionStateMeta(levels.decision_label || "Not actionable yet");
-    const snapshotLabel = String(levels.last_valid_snapshot_time_label || levels.snapshot_timestamp_label || "—");
-    const spotSourceLabel = String(levels?.spot_meta?.source_label || "Last Valid Session");
+    const snapshotLabel = String(levels.last_completed_candle_time_label || "—");
     const localFlip = levels.local_flip === null || levels.local_flip === undefined
       ? (levels.local_flip_found === false ? LOCAL_FLIP_NONE_LABEL : "—")
       : fmtCompactLevel(levels.local_flip, 0);
@@ -859,7 +1077,7 @@
       { label: "PW", value: fmtCompactLevel(levels.put_wall, 0) },
     ]);
     setText("marketPulseTitle", `${symbol} PLAYBOOK`);
-    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel}`);
+    setText("marketPulseHeaderSnapshot", `Last candle · ${snapshotLabel}`);
     const gammaDisplayLabel = regimeDisplayLabel(gammaState, levels.gamma_regime_label || "REGIME UNAVAILABLE");
     setText("marketPulseHeaderGammaLabel", gammaDisplayLabel);
     setText("marketPulseHeaderGammaSummary", levels.hero_summary || `${gammaDisplayLabel || "Regime unavailable"}, ${(levels.bias_summary_label || levels.bias_label || "wait for cleaner structure").toLowerCase()}.`);
@@ -921,7 +1139,7 @@
     return {
       time,
       value: Number.isFinite(amount) ? amount : 0,
-      color: close >= open ? "rgba(244, 248, 255, 0.18)" : "rgba(73, 136, 255, 0.18)",
+      color: close >= open ? "rgba(244, 246, 250, 0.16)" : "rgba(47, 107, 255, 0.20)",
     };
   };
 
@@ -941,7 +1159,7 @@
   const setStateChip = (id, state) => {
     const node = document.getElementById(id);
     if (!node) return;
-    node.textContent = String(state || "WATCH").replaceAll("_", " ");
+    node.textContent = humanizeMarketState(state);
     node.classList.remove("tone-positive", "tone-warn", "tone-negative");
     node.classList.add(toneClass(state));
   };
@@ -1077,6 +1295,22 @@
     lowerFrameSeries.setData([]);
   };
 
+  const levelFitsActiveRange = (value, bars, spot) => {
+    const numeric = asNum(value);
+    if (numeric === null || !Array.isArray(bars) || !bars.length) return false;
+    const highs = bars.map((bar) => asNum(bar.high)).filter((price) => price !== null);
+    const lows = bars.map((bar) => asNum(bar.low)).filter((price) => price !== null);
+    if (!highs.length || !lows.length) return false;
+    const high = Math.max(...highs);
+    const low = Math.min(...lows);
+    const anchor = asNum(spot) ?? asNum(bars[bars.length - 1]?.close) ?? ((high + low) / 2);
+    const padding = Math.max(
+      (high - low) * ACTIVE_RANGE_LEVEL_PADDING_MULTIPLIER,
+      Math.abs(anchor) * ACTIVE_RANGE_LEVEL_MIN_PCT,
+    );
+    return numeric >= low - padding && numeric <= high + padding;
+  };
+
   const applyFrameBounds = (bars, levels) => {
     if (!Array.isArray(bars) || !bars.length) {
       clearFrameBounds();
@@ -1101,10 +1335,7 @@
     ].forEach((value) => {
       const numeric = asNum(value);
       if (numeric === null) return;
-      if (spot !== null) {
-        const pctDistance = Math.abs(numeric - spot) / Math.max(Math.abs(spot), 1);
-        if (pctDistance > OFF_CHART_LEVEL_PCT) return;
-      }
+      if (!levelFitsActiveRange(numeric, bars, spot)) return;
       prices.push(numeric);
     });
     if (!prices.length) {
@@ -1262,6 +1493,14 @@
   }) => {
     const numeric = asNum(value);
     if (numeric === null) return;
+    const activeBars = activeBarsForPayload(lastBarsPayload);
+    const anchor = currentChartPrice() ?? asNum(lastLevelsPayload?.spot);
+    if (activeBars.length && !levelFitsActiveRange(numeric, activeBars, anchor)) return;
+    if (
+      !activeBars.length
+      && anchor !== null
+      && Math.abs(numeric - anchor) / Math.max(Math.abs(anchor), 1) > OFF_CHART_LEVEL_PCT
+    ) return;
     priceLines.push(
       candleSeries.createPriceLine({
         price: numeric,
@@ -1324,6 +1563,143 @@
     } catch (_) {}
     gammaSelectionLine = null;
   };
+
+  const canonicalOverlayValue = (source) => {
+    const value = asNum(source && source.value);
+    return value !== null && value > 0 ? value : null;
+  };
+
+  const buildCanonicalStrategyOverlays = (payload) => {
+    const verdict = payload && typeof payload.verdict === "object"
+      ? payload.verdict
+      : payload?.playbook_view?.verdict;
+    if (!verdict || typeof verdict !== "object") return [];
+    const path = String(verdict.path || "").toLowerCase();
+    const state = String(verdict.state || "").toUpperCase();
+    const direction = String(verdict.direction || "").toLowerCase();
+    const invalidationRole = direction === "bullish"
+      ? "BULL INVALIDATION"
+      : direction === "bearish"
+        ? "BEAR INVALIDATION"
+        : "THESIS INVALIDATION";
+    const targetRole = state === "REVERSAL_READY" && path === "reversal"
+      ? "REVERSAL TARGET"
+      : state === "CONTINUATION_ACTIVE" && path === "continuation"
+        ? "CONTINUATION TARGET"
+        : "";
+    const spot = currentChartPrice()
+      ?? asNum(payload?.quote?.price)
+      ?? asNum(payload?.spot)
+      ?? asNum(host.dataset.spot);
+    const candidates = [
+      { role: "ACTIVE", source: verdict.active_level, color: "#63B3FF", style: 0, width: 2 },
+      { role: invalidationRole, source: verdict.invalidation_level, color: "#FF5F78", style: 2, width: 2 },
+      {
+        role: targetRole,
+        source: targetRole ? verdict.primary_target : null,
+        color: "#4DD599",
+        style: 2,
+        width: 2,
+      },
+    ];
+    const grouped = new Map();
+    candidates.forEach((candidate) => {
+      const value = canonicalOverlayValue(candidate.source);
+      if (value === null) return;
+      const key = String(value);
+      const current = grouped.get(key);
+      if (current) {
+        current.roles.push(candidate.role);
+        current.labels.push(String(candidate.source.label || "").trim());
+        if (candidate.role.includes("INVALIDATION")) Object.assign(current, candidate);
+        return;
+      }
+      grouped.set(key, {
+        value,
+        roles: [candidate.role],
+        labels: [String(candidate.source.label || "").trim()],
+        color: candidate.color,
+        style: candidate.style,
+        width: candidate.width,
+      });
+    });
+    const compactLevelLabel = (label) => {
+      const normalized = String(label || "").trim().toLowerCase();
+      const labels = {
+        "current-day high": "CDH",
+        "current-day low": "CDL",
+        "prior-day high": "PDH",
+        "prior-day low": "PDL",
+        "local flip": "LF",
+        "main flip": "MAIN",
+        "call wall": "CW",
+        "put wall": "PW",
+        "new call wall": "NCW",
+        "new put wall": "NPW",
+      };
+      return labels[normalized] || String(label || "").trim().slice(0, 12);
+    };
+    return Array.from(grouped.values()).map((overlay) => {
+      const distance = spot === null ? null : overlay.value - spot;
+      const distanceLabel = distance === null
+        ? ""
+        : ` · ${distance >= 0 ? "+" : ""}${distance.toFixed(1)}`;
+      const isInvalidation = overlay.roles.some((role) => role.includes("INVALIDATION"));
+      const invalidationNear = isInvalidation && distance !== null && Math.abs(distance) <= 5;
+      return {
+        ...overlay,
+        width: invalidationNear ? 4 : overlay.width,
+        color: invalidationNear ? "#FF647C" : overlay.color,
+        title: `${overlay.roles.join("/")} · ${overlay.labels.filter(Boolean).map(compactLevelLabel).join("/")}${distanceLabel}`,
+      };
+    });
+  };
+
+  const clearCanonicalStrategyLines = () => {
+    canonicalStrategyLines.forEach((line) => {
+      try {
+        candleSeries.removePriceLine(line);
+      } catch (_) {}
+    });
+    canonicalStrategyLines = [];
+  };
+
+  const applyCanonicalStrategyOverlays = (payload) => {
+    const overlays = buildCanonicalStrategyOverlays(payload);
+    clearCanonicalStrategyLines();
+    canonicalStrategyLines = overlays.map((overlay) => candleSeries.createPriceLine({
+      price: overlay.value,
+      color: overlay.color,
+      lineWidth: overlay.width,
+      lineStyle: overlay.style,
+      axisLabelVisible: true,
+      axisLabelColor: overlay.color,
+      axisLabelTextColor: "#07111F",
+      title: overlay.title,
+    }));
+    canonicalStrategyState = {
+      generationId: String(payload?.canonical_freshness?.generation_id || ""),
+      overlays: overlays.map(({ value, roles, title }) => ({ value, roles: [...roles], title })),
+    };
+    return canonicalStrategyState;
+  };
+
+  const handleCanonicalMarketPulseUpdate = (event) => {
+    const payload = event.detail && typeof event.detail.payload === "object"
+      ? event.detail.payload
+      : null;
+    if (payload) {
+      applyCanonicalStrategyOverlays(payload);
+    }
+  };
+
+  window.marketPulseCanonicalChartOverlayState = () => ({
+    generationId: canonicalStrategyState.generationId,
+    overlays: canonicalStrategyState.overlays.map((overlay) => ({
+      ...overlay,
+      roles: [...overlay.roles],
+    })),
+  });
 
   const handleGammaLevelSelection = (event) => {
     const detail = event.detail && typeof event.detail === "object" ? event.detail : {};
@@ -1450,7 +1826,7 @@
     addLevelLine({
       title: "Main",
       value: mainFlip,
-      color: HERO_CHART_THEME.main,
+      color: "rgba(199,208,217,0.28)",
       width: 1,
       style: 2,
       axisLabelColor: HERO_CHART_THEME.labelDark,
@@ -1460,7 +1836,7 @@
     addLevelLine({
       title: "NPW",
       value: nextPutWall,
-      color: HERO_CHART_THEME.npw,
+      color: "rgba(77,213,153,0.48)",
       width: 1,
       style: 1,
       axisLabelColor: HERO_CHART_THEME.labelMintBg,
@@ -1470,7 +1846,7 @@
     addLevelLine({
       title: "PW",
       value: putWall,
-      color: HERO_CHART_THEME.pw,
+      color: "rgba(33,138,90,0.66)",
       width: 2,
       style: 0,
       axisLabelColor: HERO_CHART_THEME.labelGreenBg,
@@ -1480,7 +1856,7 @@
     addLevelLine({
       title: "LF",
       value: localFlip,
-      color: HERO_CHART_THEME.lf,
+      color: "rgba(168,139,255,0.64)",
       width: 2,
       style: 0,
       axisLabelColor: HERO_CHART_THEME.labelLfBg,
@@ -1490,7 +1866,7 @@
     addLevelLine({
       title: "CW",
       value: callWall,
-      color: HERO_CHART_THEME.cw,
+      color: "rgba(200,90,114,0.78)",
       width: state === "NO_TRADE" ? 3 : 2,
       style: 0,
       axisLabelColor: HERO_CHART_THEME.labelCwBg,
@@ -1500,7 +1876,7 @@
     addLevelLine({
       title: "NCW",
       value: nextCallWall,
-      color: HERO_CHART_THEME.ncw,
+      color: "rgba(224,113,134,0.48)",
       width: 1,
       style: 1,
       axisLabelColor: HERO_CHART_THEME.labelNcwBg,
@@ -1614,7 +1990,7 @@
 
   const renderSummary = (levels) => {
     // /api/hero/levels already derives read, pullback, destination, and trade state.
-    const state = String(levels.decision_label || levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
+    const state = humanizeMarketState(levels.decision_label || levels.trade_state_label || levels.state);
     const currentRead = String(levels.current_read || "Await structure");
     const headline = `${state} - ${currentRead}`.toUpperCase();
 
@@ -1704,6 +2080,7 @@
       }
 
       const nextBarsSignature = barsSignature(candles, payload);
+      const shouldNotifyCanonical = initialized && nextBarsSignature !== lastBarsSignature;
       const nextDataShapeSignature = barsShapeSignature(candles, payload);
       const previousSessionBarCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
       const currentSessionBarCount = Math.max(0, Number(payload.current_session_bar_count) || 0);
@@ -1768,6 +2145,11 @@
         lastDataShapeSignature = nextDataShapeSignature;
         lastLiveBarSignature = nextLiveBarSignature;
         setSpotTrendTone(detectShortTermTrend(activeCandles));
+        if (shouldNotifyCanonical) {
+          window.dispatchEvent(new CustomEvent("market-pulse-component-updated", {
+            detail: { component: "bars", version: nextBarsSignature },
+          }));
+        }
         if (emptyState) emptyState.hidden = true;
         return;
       }
@@ -1782,6 +2164,11 @@
       lastDataShapeSignature = nextDataShapeSignature;
       lastLiveBarSignature = nextLiveBarSignature;
       setSpotTrendTone(detectShortTermTrend(activeCandles));
+      if (shouldNotifyCanonical) {
+        window.dispatchEvent(new CustomEvent("market-pulse-component-updated", {
+          detail: { component: "bars", version: nextBarsSignature },
+        }));
+      }
       if (fitContent || !initialized) applyViewport({ fitContent });
       if (emptyState) emptyState.hidden = true;
       if (!initialized) {
@@ -1812,6 +2199,11 @@
         return;
       }
       scheduleLevelsApply(nextLevels);
+      if (lastAppliedLevelsSignature) {
+        window.dispatchEvent(new CustomEvent("market-pulse-component-updated", {
+          detail: { component: "levels", version: nextSignature },
+        }));
+      }
     } catch (error) {
       setPollStatus("levels", "error", "error");
       console.warn(`${symbol} hero levels update failed`, error);
@@ -1834,6 +2226,7 @@
         return;
       }
       setPollStatus("quote", "fresh", formatAge(payload?.as_of || new Date()));
+      acceptMicroTapeQuote(payload, price);
 
       const signature = [
         Number(price).toFixed(4),
@@ -1852,6 +2245,9 @@
   };
 
   const clearPollTimers = () => {
+    if (refreshCoordinator) {
+      Object.values(refreshLaneNames).forEach((name) => refreshCoordinator.unregister(name));
+    }
     window.clearTimeout(barsTimer);
     window.clearTimeout(levelsTimer);
     window.clearTimeout(quoteTimer);
@@ -1918,6 +2314,10 @@
   };
 
   const scheduleBarsPoll = (delay) => {
+    if (refreshCoordinator) {
+      refreshCoordinator.schedule(refreshLaneNames.bars, Math.max(0, Number(delay) || 0));
+      return;
+    }
     window.clearTimeout(barsTimer);
     if (!pageVisible) return;
     const fallbackDelay = nextBarsPollDelayMs();
@@ -1937,6 +2337,10 @@
   };
 
   const scheduleLevelsPoll = (delay) => {
+    if (refreshCoordinator) {
+      refreshCoordinator.schedule(refreshLaneNames.levels, Math.max(0, Number(delay) || 0));
+      return;
+    }
     window.clearTimeout(levelsTimer);
     if (!pageVisible) return;
     const intervalMs = levelsBaseIntervalMs();
@@ -1952,6 +2356,10 @@
   };
 
   const scheduleQuotePoll = (delay) => {
+    if (refreshCoordinator) {
+      refreshCoordinator.schedule(refreshLaneNames.quote, Math.max(0, Number(delay) || 0));
+      return;
+    }
     window.clearTimeout(quoteTimer);
     if (!pageVisible) return;
     const intervalMs = quoteBaseIntervalMs();
@@ -1968,6 +2376,46 @@
 
   const startPolling = () => {
     clearPollTimers();
+    if (refreshCoordinator) {
+      refreshCoordinator.register(refreshLaneNames.bars, {
+        run: async () => {
+          try {
+            await updateBars();
+          } catch (error) {
+            setPollStatus("bars", "error", "error");
+            if (emptyState) {
+              emptyState.hidden = false;
+              emptyState.textContent = `${symbol} chart refresh failed: ${error.message}`;
+            }
+          }
+        },
+        getDelay: nextBarsPollDelayMs,
+        initialDelay: nextBarsPollDelayMs(),
+      });
+      refreshCoordinator.register(refreshLaneNames.levels, {
+        run: async () => {
+          try {
+            await updateLevels();
+          } catch (_) {
+            setPollStatus("levels", "error", "error");
+          }
+        },
+        getDelay: levelsBaseIntervalMs,
+        initialDelay: levelsBaseIntervalMs(),
+      });
+      refreshCoordinator.register(refreshLaneNames.quote, {
+        run: async () => {
+          try {
+            await updateQuotePatch();
+          } catch (_) {
+            setPollStatus("quote", "error", "error");
+          }
+        },
+        getDelay: quoteBaseIntervalMs,
+        initialDelay: quoteBaseIntervalMs(),
+      });
+      return;
+    }
     scheduleBarsPoll(nextBarsPollDelayMs());
     scheduleLevelsPoll(levelsBaseIntervalMs());
     scheduleQuotePoll(quoteBaseIntervalMs());
@@ -1980,6 +2428,7 @@
         polling = { ...polling, ...streamPayload };
       }
     } catch (_) {}
+    configureMicroTape();
 
     try {
       await updateBars({ fitContent: true });
@@ -2010,6 +2459,11 @@
     try {
       chart.applyOptions({ width: nextWidth, height: nextHeight });
     } catch (_) {}
+    if (fastTapeChart && fastTapeCanvas?.clientWidth) {
+      try {
+        fastTapeChart.applyOptions({width: fastTapeCanvas.clientWidth, height: 86});
+      } catch (_) {}
+    }
     renderLevelRail(lastLevelsPayload);
     renderSessionBreakLabel();
   };
@@ -2054,6 +2508,15 @@
         syncToggleButtons();
         lastDayLevelSignature = "";
         updateDayLevelLines();
+      });
+    }
+    if (microTapeToggle) {
+      microTapeToggle.addEventListener("click", () => {
+        if (!MICRO_TAPE_IN_MAIN_CHART_ENABLED) return;
+        displayPrefs.showMicroTape = !displayPrefs.showMicroTape;
+        saveDisplayPrefs();
+        syncToggleButtons();
+        renderMicroTapeState();
       });
     }
   };
@@ -2113,6 +2576,18 @@
   bindDisplayToggles();
   bindIntervalToggles();
   document.addEventListener("market-pulse:gamma-level-selected", handleGammaLevelSelection);
+  window.addEventListener("market-pulse-canonical-update", handleCanonicalMarketPulseUpdate);
+  window.addEventListener("market-pulse-setup-replay-updated", handleSetupReplayMarkers);
+  window.addEventListener("market-pulse-stream-payload", handleSharedStreamPayload);
+  try {
+    const canonicalPayloadNode = document.getElementById("spxPriorityBasePayload");
+    const canonicalPayload = canonicalPayloadNode
+      ? JSON.parse(canonicalPayloadNode.textContent || "null")
+      : null;
+    if (canonicalPayload) {
+      applyCanonicalStrategyOverlays(canonicalPayload);
+    }
+  } catch (_) {}
   applyLevelVisibility();
   renderDrawings();
   window.addEventListener("resize", () => {
@@ -2153,13 +2628,31 @@
   document.addEventListener("visibilitychange", () => {
     pageVisible = document.visibilityState !== "hidden";
     if (!pageVisible) {
+      if (microTapeState && MicroTape?.setLifecycle) {
+        renderMicroTapeState(MicroTape.setLifecycle(microTapeState, {
+          visible: false,
+          marketPhase: polling?.session_phase,
+        }));
+      }
       clearPollTimers();
+      startPolling();
       return;
     }
     resize();
+    if (microTapeState && MicroTape?.setLifecycle) {
+      renderMicroTapeState(MicroTape.setLifecycle(microTapeState, {
+        visible: true,
+        marketPhase: polling?.session_phase,
+      }));
+    }
+    startPolling();
     scheduleBarsPoll(0);
     scheduleLevelsPoll(0);
     scheduleQuotePoll(0);
+  });
+  window.addEventListener("pagehide", () => {
+    clearPollTimers();
+    window.removeEventListener("market-pulse-stream-payload", handleSharedStreamPayload);
   });
   resize();
   boot();

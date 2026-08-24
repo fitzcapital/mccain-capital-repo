@@ -179,7 +179,7 @@ def test_get_intraday_uses_short_lived_curve_cache(monkeypatch):
     assert first is not second
 
 
-def test_get_intraday_does_not_use_market_worker_when_tradier_empty(monkeypatch):
+def test_get_intraday_uses_same_day_market_stream_when_tradier_empty(monkeypatch):
     monkeypatch.setattr(market_data_service, "_INTRADAY_CURVE_CACHE", {})
     monkeypatch.setattr(
         app_runtime,
@@ -203,7 +203,24 @@ def test_get_intraday_does_not_use_market_worker_when_tradier_empty(monkeypatch)
 
     rows = market_data_service.get_intraday("SPX")
 
-    assert rows == []
+    assert rows == [
+        {
+            "ts": "2026-04-10T09:35:00-04:00",
+            "open": 6828.25,
+            "high": 6829.1,
+            "low": 6828.25,
+            "close": 6829.1,
+            "volume": 0.0,
+        },
+        {
+            "ts": "2026-04-10T09:36:00-04:00",
+            "open": 6830.5,
+            "high": 6830.5,
+            "low": 6830.5,
+            "close": 6830.5,
+            "volume": 0.0,
+        },
+    ]
 
 
 def test_get_prior_session_intraday_uses_short_lived_curve_cache(monkeypatch):

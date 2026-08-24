@@ -792,8 +792,27 @@ def test_market_pulse_page_uses_deferred_context_refresh_button(client):
     assert 'id="marketPulseFeedFold" open' not in body
     assert "Source standby" in body
     assert "Actionability" in body
-    assert "Gamma Data" in body
+    assert 'id="marketPulseStatusRegime"' in body
     assert "Decision" in body
+    assert "setTransientRefreshFeedback" in body
+    assert "scheduleCanonicalRetry(refreshOutcome.next_retry_seconds || 3)" in body
+    assert "Refresh in progress · current playbook retained" in body
+    assert "automaticRefreshEnabled" in body
+    assert "pauseCanonicalRefresh" in body
+    assert 'refreshCountdown.textContent = "Paused"' in body
+    assert 'countdownPill.dataset.state = "paused"' in body
+    assert "if (!automaticRefreshEnabled)" in body
+    assert "marketPulseAutomaticRefreshAllowed" in body
+
+
+def test_gamma_ladder_scopes_distribution_regime_from_execution_regime():
+    script = (Path(__file__).resolve().parents[1] / "static/js/gamma_ladder.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"Ladder mix · Mixed"' in script
+    assert '`Ladder positioning · ${' in script
+    assert "The page header shows the canonical execution regime." in script
 
 
 def test_market_pulse_context_api_returns_playbook_payload(client):
@@ -803,19 +822,145 @@ def test_market_pulse_context_api_returns_playbook_payload(client):
     assert payload["ok"] is True
     assert "payload" in payload
     assert "gamma_snapshot" in payload["payload"]
+    assert "gamma_ladder" in payload["payload"]
     assert "execution_model" in payload["payload"]
     assert "market_structure_snapshot" in payload["payload"]
 
 
-def test_dashboard_renders_daily_brief_card(client):
+def test_market_pulse_context_api_supports_lightweight_market_refresh(client, monkeypatch):
+    calls = []
+    original = core_service._market_pulse_snapshot
+
+    def record_snapshot(force_refresh=False, **kwargs):
+        calls.append(bool(force_refresh))
+        return original(force_refresh=force_refresh, **kwargs)
+
+    monkeypatch.setattr(core_service, "_market_pulse_snapshot", record_snapshot)
+
+    resp = client.get(
+        "/api/market-pulse/context?ticker=SPX&refresh_market=1",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    assert calls and calls[0] is True
+
+
+def test_market_pulse_combined_generation_stays_coherent_for_browser_refresh():
+    freshness = {"generation_id": "market-generation"}
+    verdict = {"generation_id": "market-generation"}
+    playbook = {
+        "scenario_rankings": {"generation_id": "market-generation"},
+        "live_execution_guide": {"generation_id": "market-generation"},
+    }
+    structure = {"scenario_rankings": {"generation_id": "market-generation"}}
+    ladder = {"gamma_generation_id": "gamma-generation"}
+
+    core_service._market_pulse_align_generation_id(
+        "combined-generation",
+        canonical_freshness=freshness,
+        verdict=verdict,
+        playbook_view=playbook,
+        market_structure_snapshot=structure,
+        gamma_ladder=ladder,
+    )
+
+    assert freshness["generation_id"] == "combined-generation"
+    assert verdict["generation_id"] == "combined-generation"
+    assert playbook["scenario_rankings"]["generation_id"] == "combined-generation"
+    assert playbook["live_execution_guide"]["generation_id"] == "combined-generation"
+    assert structure["scenario_rankings"]["generation_id"] == "combined-generation"
+    assert structure["canonical_freshness"]["generation_id"] == "combined-generation"
+    assert structure["verdict"]["generation_id"] == "combined-generation"
+    assert ladder["canonical_generation_id"] == "combined-generation"
+
+
+def test_market_pulse_authoritative_state_waits_when_ranked_scenario_outpaces_strategy():
+    state = core_service._market_pulse_authoritative_execution_state(
+        strategy={
+            "state": "LEVEL_BEING_TESTED",
+            "missing_evidence": "Wait for price to sweep the active level.",
+        },
+        primary_scenario={"state": "confirmed", "lane": "active_now", "score": 100},
+        canonical_freshness={"execution_locked": False, "stale_required_components": []},
+    )
+
+    assert state["action_state"] == "WAIT"
+    assert state["permission"] == "planning"
+    assert state["confirmed"] is False
+    assert state["reason"] == "Wait for price to sweep the active level."
+
+
+def test_market_pulse_authoritative_state_requires_strategy_and_scenario_confirmation():
+    state = core_service._market_pulse_authoritative_execution_state(
+        strategy={"state": "CONTINUATION_ACTIVE"},
+        primary_scenario={"state": "confirmed", "lane": "active_now"},
+        canonical_freshness={"execution_locked": False, "stale_required_components": []},
+    )
+
+    assert state["action_state"] == "ACTIVE"
+    assert state["permission"] == "ready"
+    assert state["confirmed"] is True
+
+
+def test_market_pulse_authoritative_state_locks_stale_required_component():
+    state = core_service._market_pulse_authoritative_execution_state(
+        strategy={"state": "REVERSAL_READY"},
+        primary_scenario={"state": "confirmed", "lane": "active_now"},
+        canonical_freshness={
+            "execution_locked": True,
+            "stale_required_components": ["gamma"],
+        },
+    )
+
+    assert state["action_state"] == "LOCKED"
+    assert state["permission"] == "locked"
+    assert state["blocking_components"] == ["gamma"]
+
+
+def test_dashboard_renders_unified_execution_plan(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Daily Brief" in resp.data
-    assert b"Building the next-session brief" in resp.data
+    assert b"Execution Plan" in resp.data
+    assert b"Plan context" in resp.data
+    assert b"Structure &amp; Context" in resp.data
     assert b"More Info" in resp.data
     assert b"Active Level" in resp.data
     assert b"Execution Triggers" in resp.data
-    assert b"Do Not Do" in resp.data
+    assert b"Invalidation" in resp.data
+
+
+def test_dashboard_import_readiness_uses_canonical_sync_state():
+    complete = core_service._dashboard_import_readiness_viewmodel(
+        {"outcome": "completed", "import_completed_today": True}
+    )
+    assert complete == {
+        "state": "complete",
+        "status": "Loaded",
+        "detail": "Today's broker import is complete.",
+        "done": True,
+        "href": "/trades",
+        "action": "Open",
+        "tone": "positive",
+    }
+
+    pending = core_service._dashboard_import_readiness_viewmodel(
+        {
+            "outcome": "ready",
+            "import_completed_today": False,
+            "detail": "Today's broker import is pending.",
+        }
+    )
+    assert pending["state"] == "pending"
+    assert pending["status"] == "Pending"
+    assert pending["done"] is False
+    assert pending["action"] == "Sync"
+
+    unavailable = core_service._dashboard_import_readiness_viewmodel(None)
+    assert unavailable["state"] == "unavailable"
+    assert unavailable["status"] == "Unavailable"
+    assert unavailable["done"] is False
 
 
 def test_dashboard_renders_accountability_checklist(client):
@@ -830,13 +975,13 @@ def test_dashboard_renders_accountability_checklist(client):
     assert "No debrief or quick capture logged for today yet." in body
 
 
-def test_dashboard_renders_foundation_routine_and_reflection_layers(client):
+def test_dashboard_renders_performance_and_session_snapshot_layers(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Operating State" in body
-    assert "Permission" in body
-    assert "Next Step" in body
+    assert "Trading Business Dashboard" in body
+    assert "Daily realized P&amp;L" in body
+    assert "SPX session snapshot" in body
 
 
 def test_dashboard_renders_support_health_fold_toggle_button(client):
@@ -2132,7 +2277,7 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
 
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Core Tape" in resp.data
+    assert b"Market Radar" in resp.data
     assert b"SPX" in resp.data
     assert b"TSLA" in resp.data
     assert b'"quotes_map"' in resp.data
@@ -2383,8 +2528,9 @@ def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch)
     resp = client.get("/market-pulse?refresh=1", follow_redirects=True)
     assert resp.status_code == 200
     assert force_flags == [True]
-    assert b"/market-pulse?refresh=1" in resp.data
     assert b'url.searchParams.delete("refresh")' in resp.data
+    assert b"Refresh data" in resp.data
+    assert b"Refresh Market Pulse" not in resp.data
 
 
 def test_market_pulse_source_is_normalized_to_yahoo():
@@ -2676,17 +2822,61 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
                 "SPY": quote("SPY", 711.69, -0.49, [715.2, 714.1, 713.0, 712.2, 711.69]),
                 "VIX": quote("VIX", 17.83, -1.06, [18.6, 18.4, 18.2, 18.0, 17.83]),
                 "SPX": quote("SPX", 6780.25, -0.36, [6801.0, 6794.5, 6788.0, 6783.4, 6780.25]),
+                "IWM": quote("IWM", 240.25, 0.21, [239.2, 239.5, 239.8, 240.0, 240.25]),
             },
         },
     )
 
-    resp = client.get("/api/dashboard/tape?symbols=QQQ,SPY", follow_redirects=True)
+    resp = client.get(
+        "/api/dashboard/tape?symbols=SPX,VIX,SPY,QQQ,IWM", follow_redirects=True
+    )
 
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload["ok"] is True
-    assert sorted(payload["series_points"]) == ["QQQ", "SPY"]
+    assert sorted(payload["series_points"]) == ["IWM", "QQQ", "SPX", "SPY", "VIX"]
     assert len(payload["series_points"]["SPY"]) == 5
+
+
+def test_dashboard_primary_spx_and_vix_use_same_ohlc_chart_contract(monkeypatch):
+    now = core_service.app_runtime.now_et()
+    rows = [
+        {
+            "ts": (now - timedelta(minutes=25 - index * 5)).isoformat(),
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+        }
+        for index in range(6)
+    ]
+
+    class FakeMarketData:
+        @staticmethod
+        def get_intraday(_symbol):
+            return rows
+
+    quote = {
+        "price": 105.5,
+        "pct_change": 0.25,
+        "as_of": now.isoformat(),
+        "provider": "tradier",
+        "reason": "tradier_live_quote",
+    }
+    snapshot = {"prices": {symbol: dict(quote) for symbol in ("SPX", "SPY", "VIX")}}
+    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _s: ([], ""))
+
+    view = core_service._dashboard_tape_viewmodel(
+        selected_ticker="SPX",
+        alternate_ticker="SPY",
+        tape_snapshot=snapshot,
+        testing_mode=False,
+        market_data_service=FakeMarketData(),
+    )
+    rows_by_symbol = {row["symbol"]: row for row in view["dashboard_tape_rows"]}
+
+    assert rows_by_symbol["SPX"]["last_hour"]["status"] == "ohlc"
+    assert rows_by_symbol["VIX"]["last_hour"]["status"] == "ohlc"
 
 
 def test_dashboard_tape_refresh_backfills_vix_intraday_curve(client, monkeypatch):
@@ -2746,7 +2936,7 @@ def test_dashboard_tape_refresh_backfills_vix_intraday_curve(client, monkeypatch
     assert payload["quotes"]["VIX"]["mini_series"][-1] == 17.39
 
 
-def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatch):
+def test_dashboard_first_render_uses_spx_session_snapshot(client, monkeypatch):
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
 
@@ -2802,17 +2992,107 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert body.count("dashboardTapeHourChart") >= 2
-    assert body.count("dashboardTapeHourLine") >= 2
-    assert body.count("dashboardTapeHourPoint") >= 2
-    assert body.count("dashboardTapeHourBaseline") >= 2
-    assert body.count("dashboardTapeFreshnessGlyph") >= 2
-    assert body.count("data-freshness-label=") >= 2
-    assert body.count('data-role="row-live"') >= 2
-    assert "Broad tape is defensive" in body
+    assert 'id="dashboardSpxSnapshot"' in body
+    assert 'id="dashboardSpxSpot"' in body
+    assert "6780.25" in body
+    assert 'id="dashboardSpxMiniChart"' in body
+    assert "dashboardTapeHourChart" not in body
+    assert "Last hour · 5-minute candles" in body
+    assert "dashboardTapeChartLane" not in body
+    assert "Context only" in body
 
 
-def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, monkeypatch):
+def test_dashboard_spx_mini_chart_uses_prior_session_ohlc_when_current_is_missing(
+    monkeypatch,
+):
+    now = core_service.app_runtime.now_et()
+    prior_rows = [
+        {
+            "ts": (now - timedelta(days=1, minutes=55 - index * 5)).isoformat(),
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+        }
+        for index in range(12)
+    ]
+
+    class FakeMarketData:
+        @staticmethod
+        def get_intraday(_symbol):
+            return []
+
+        @staticmethod
+        def get_prior_session_intraday(_symbol):
+            return prior_rows
+
+    quote = {
+        "price": 111.5,
+        "pct_change": 0.25,
+        "as_of": now.isoformat(),
+        "provider": "tradier",
+        "reason": "tradier_live_quote",
+    }
+    snapshot = {"prices": {symbol: dict(quote) for symbol in ("SPX", "SPY", "VIX")}}
+    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _s: ([], ""))
+
+    view = core_service._dashboard_tape_viewmodel(
+        selected_ticker="SPX",
+        alternate_ticker="SPY",
+        tape_snapshot=snapshot,
+        testing_mode=False,
+        market_data_service=FakeMarketData(),
+    )
+    rows_by_symbol = {row["symbol"]: row for row in view["dashboard_tape_rows"]}
+
+    assert rows_by_symbol["SPX"]["last_hour"]["status"] == "ohlc"
+    assert len(rows_by_symbol["SPX"]["last_hour"]["candles"]) >= 2
+
+
+def test_dashboard_spx_mini_chart_rejects_flat_quote_candles_for_prior_session(monkeypatch):
+    now = core_service.app_runtime.now_et()
+    flat_rows = [
+        {"ts": now.isoformat(), "open": 111.5, "high": 111.5, "low": 111.5, "close": 111.5},
+        {"ts": now.isoformat(), "open": 111.5, "high": 111.5, "low": 111.5, "close": 111.5},
+    ]
+    prior_rows = [
+        {
+            "ts": (now - timedelta(days=2, minutes=55 - index * 5)).isoformat(),
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+        }
+        for index in range(12)
+    ]
+
+    class FakeMarketData:
+        @staticmethod
+        def get_intraday(_symbol):
+            return flat_rows
+
+        @staticmethod
+        def get_prior_session_intraday(_symbol):
+            return prior_rows
+
+    quote = {"price": 111.5, "pct_change": 0.0, "provider": "cached", "reason": "cached"}
+    snapshot = {"prices": {symbol: dict(quote) for symbol in ("SPX", "SPY", "VIX")}}
+    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _s: ([], ""))
+
+    view = core_service._dashboard_tape_viewmodel(
+        selected_ticker="SPX",
+        alternate_ticker="SPY",
+        tape_snapshot=snapshot,
+        testing_mode=False,
+        market_data_service=FakeMarketData(),
+    )
+    spx = next(row for row in view["dashboard_tape_rows"] if row["symbol"] == "SPX")
+
+    assert len(spx["last_hour"]["candles"]) >= 2
+    assert spx["last_hour"]["change"] != 0
+
+
+def test_dashboard_vix_is_rendered_as_secondary_quote_context(client, monkeypatch):
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
 
@@ -2862,8 +3142,10 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "VIX" in body
-    assert "17.10-17.50" in body
-    assert "dashboardTapeHourPoint" in body
+    assert "17.39" in body
+    assert 'data-comparison-symbol="VIX"' in body
+    assert "Context only" in body
+    assert "dashboardTapeHourPoint" not in body
 
 
 def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
@@ -3258,22 +3540,15 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     assert b"dashboardCoreTapeCard" in resp.data
-    assert b"dashboardCoreTapeRow" in resp.data
-    assert b"dashboardCoreTapeStat" in resp.data
     assert b"dashboardTapeStreamStatus" in resp.data
-    assert b"Market Tape" in resp.data
+    assert b"SPX Session Snapshot" in resp.data
     assert b"Live Tape" not in resp.data
-    assert b"dashboardTapeHourModule" in resp.data
-    assert b"dashboardTapeHourChart" in resp.data
+    assert b"dashboardSpxLocation" in resp.data
+    assert b"dashboardSpxRangePosition" in resp.data
     assert b"SPX" in resp.data
     assert b"6775.80" in resp.data
-    assert b"-0.09%" in resp.data
-    assert b"6773.42-6775.80" in resp.data
     assert b"VIX" in resp.data
-    assert b"Live \xc2\xb7" not in resp.data
-    assert b"Delayed \xc2\xb7" not in resp.data
-    assert b'data-role="market-state">Live</span>' not in resp.data
-    assert b"dashboardTapeAssetStatus is-" in resp.data
+    assert b"Context only" in resp.data
 
 
 def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
@@ -3340,16 +3615,23 @@ def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "dashboardTapeAssetStatus is-delayed" in body
-    assert "dashboardTapeAssetStatus is-missing" in body
-    assert "dashboardTapeAssetStatus is-delayed" in body
+    assert 'id="dashboardSpxSnapshot"' in body
+    assert 'id="dashboardSpxLocation"' in body
+    assert 'data-available="false"' in body
+    assert "Context only" in body
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
+    from mccain_capital import runtime as app_runtime
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
     from mccain_capital.services import gamma_map_service
 
+    monkeypatch.setattr(
+        app_runtime,
+        "now_et",
+        lambda: datetime(2026, 8, 20, 12, 0, tzinfo=ZoneInfo("America/New_York")),
+    )
     monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
     monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
     monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
@@ -3400,6 +3682,30 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     assert b"QQQ" in resp.data
     assert b"options" in resp.data
     assert b"gamma_map" in resp.data
+
+
+def test_stream_market_stops_without_provider_snapshot_after_hours(client, monkeypatch):
+    from mccain_capital import runtime as app_runtime
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(
+        app_runtime,
+        "now_et",
+        lambda: datetime(2026, 8, 20, 20, 0, tzinfo=ZoneInfo("America/New_York")),
+    )
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("after-hours stream requested a provider snapshot")
+        ),
+    )
+
+    response = client.get("/stream/market", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b'"stream_ready": false' in response.data
+    assert b'"market_phase": "closed"' in response.data
 
 
 def test_stream_market_ws_requires_upgrade(client):
@@ -3556,7 +3862,8 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
     assert b"Next walls: Inferred from strike ladder" in resp.data
     assert b"Gamma range estimate: Wall-based gamma range" in resp.data
     assert b"Best Contracts" in resp.data
-    assert b"SPXW 2026-03-06 5125C" in resp.data
+    # Contract selection stays hidden until the ordered strategy is actually ready.
+    assert b"SPXW 2026-03-06 5125C" not in resp.data
 
 
 def test_market_pulse_gamma_quality_flags_stale_snapshots(client):

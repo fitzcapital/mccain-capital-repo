@@ -9,12 +9,13 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 import json
+import hashlib
 import logging
 import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -187,6 +188,8 @@ def normalize_gamma_ladder_dte(dte: str) -> str:
         return "7"
     if value in {"all", "all_expirations"}:
         return "all"
+    if value in {"prior", "prior_session"}:
+        return "prior"
     return "0"
 
 
@@ -233,6 +236,188 @@ def _expiration_label(expiration: str, *, now_et: Optional[datetime] = None) -> 
     if delta_days <= 0:
         return "0DTE"
     return f"{delta_days}DTE"
+
+
+class GammaLadderSessionContext(TypedDict):
+    market_phase: str
+    session_date: str
+    next_session_date: str
+    expiration_lifecycle: str
+    display_state: str
+    display_label: str
+
+
+def gamma_ladder_session_context(
+    expirations: List[str], *, now_et: Optional[datetime] = None
+) -> GammaLadderSessionContext:
+    now = (now_et or app_runtime.now_et()).astimezone(app_runtime.TZ)
+    phase = _gamma_builder_session_mode(now)
+    live = phase == "rth"
+    session_date = now.date()
+    next_session = date.fromisoformat(app_runtime.next_trading_day_iso(session_date.isoformat()))
+    parsed = sorted(
+        value
+        for value in (
+            date.fromisoformat(item)
+            for item in expirations
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", str(item))
+        )
+    )
+    selected = parsed[0] if parsed else None
+    lifecycle = (
+        "unavailable"
+        if selected is None
+        else (
+            "live"
+            if live and selected == session_date
+            else (
+                "prior_session"
+                if selected == session_date
+                else "expired_stale" if selected < session_date else "next_session"
+            )
+        )
+    )
+    return {
+        "market_phase": phase,
+        "session_date": session_date.isoformat(),
+        "next_session_date": next_session.isoformat(),
+        "expiration_lifecycle": lifecycle,
+        "display_state": (
+            "live"
+            if lifecycle == "live"
+            else (
+                "after_hours_planning"
+                if lifecycle in {"prior_session", "next_session"}
+                else "expired_stale" if lifecycle == "expired_stale" else "unavailable"
+            )
+        ),
+        "display_label": (
+            "Live session"
+            if lifecycle == "live"
+            else (
+                "After-hours planning"
+                if lifecycle in {"prior_session", "next_session"}
+                else "Expired / stale" if lifecycle == "expired_stale" else "Unavailable"
+            )
+        ),
+    }
+
+
+def gamma_ladder_source_freshness(
+    *,
+    quote_as_of: str,
+    chain_as_of: str,
+    computed_at: str,
+    session_context: GammaLadderSessionContext,
+    now_et: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    now = (now_et or app_runtime.now_et()).astimezone(timezone.utc)
+    live = session_context.get("market_phase") == "rth"
+    thresholds = {
+        "quote": 180 if live else 86_400,
+        "chain": 600 if live else 43_200,
+        "compute": 600 if live else 43_200,
+    }
+
+    def component(value: str, threshold: int) -> Dict[str, Any]:
+        parsed = _parse_runtime_iso(value)
+        if parsed is None:
+            return {"as_of": value or None, "age_seconds": None, "status": "unavailable"}
+        age = max(0, int((now - parsed.astimezone(timezone.utc)).total_seconds()))
+        return {
+            "as_of": parsed.isoformat(),
+            "age_seconds": age,
+            "status": "current" if age <= threshold else "stale",
+        }
+
+    sources = {
+        "quote": component(quote_as_of, thresholds["quote"]),
+        "chain": component(chain_as_of, thresholds["chain"]),
+        "compute": component(computed_at, thresholds["compute"]),
+        "expiration": {
+            "as_of": session_context.get("session_date"),
+            "age_seconds": None,
+            "status": (
+                "stale"
+                if session_context.get("expiration_lifecycle") == "expired_stale"
+                else (
+                    "unavailable"
+                    if session_context.get("expiration_lifecycle") == "unavailable"
+                    else "current"
+                )
+            ),
+        },
+    }
+    statuses = {str(value.get("status")) for value in sources.values()}
+    overall = (
+        "unavailable"
+        if "unavailable" in statuses
+        else "degraded" if "stale" in statuses else "current"
+    )
+    return {"overall": overall, "thresholds_seconds": thresholds, "sources": sources}
+
+
+def compute_qualified_local_gamma_flip(
+    grouped_df: pd.DataFrame,
+    spot: float,
+    *,
+    max_distance_pct: float = 0.02,
+    minimum_magnitude_ratio: float = 0.02,
+) -> Dict[str, Any]:
+    if grouped_df.empty:
+        return {
+            "found": False,
+            "value": None,
+            "confidence": "none",
+            "reason": "no_rows",
+            "candidates": [],
+        }
+    ordered = grouped_df.sort_values("strike", kind="mergesort").copy()
+    ordered["strike"] = ordered["strike"].astype(float)
+    ordered["net_gex"] = ordered["net_gex"].astype(float)
+    max_abs = float(ordered["net_gex"].abs().max() or 0.0)
+    min_magnitude = max_abs * max(0.0, minimum_magnitude_ratio)
+    distance_cap = abs(float(spot)) * max(0.0, max_distance_pct)
+    candidates = []
+    rows = ordered.to_dict("records")
+    for left, right in zip(rows, rows[1:]):
+        x1, x2 = float(left["strike"]), float(right["strike"])
+        y1, y2 = float(left["net_gex"]), float(right["net_gex"])
+        if y1 == 0 or y2 == 0 or np.sign(y1) == np.sign(y2):
+            continue
+        if min(abs(y1), abs(y2)) < min_magnitude:
+            continue
+        value = x1 + ((-y1) / (y2 - y1)) * (x2 - x1)
+        distance = abs(value - float(spot))
+        if distance > distance_cap:
+            continue
+        candidates.append(
+            {
+                "value": float(value),
+                "distance_from_spot": distance,
+                "lower_strike": x1,
+                "upper_strike": x2,
+                "lower_net_gex": y1,
+                "upper_net_gex": y2,
+            }
+        )
+    candidates.sort(key=lambda row: (row["distance_from_spot"], row["value"]))
+    if not candidates:
+        return {
+            "found": False,
+            "value": None,
+            "confidence": "none",
+            "reason": "no_qualified_local_transition",
+            "candidates": [],
+        }
+    best = candidates[0]
+    return {
+        "found": True,
+        **best,
+        "confidence": "high" if best["distance_from_spot"] <= distance_cap / 2 else "medium",
+        "reason": "qualified_adjacent_sign_transition",
+        "candidates": candidates,
+    }
 
 
 def _parse_runtime_iso(value: Any) -> Optional[datetime]:
@@ -1165,7 +1350,20 @@ def _select_gamma_ladder_expirations(
     if dte_preset == "all":
         return [expiration for _, expiration in candidates], dte_preset
 
+    now = app_runtime.now_et()
+    after_close = now.weekday() >= 5 or (now.hour, now.minute) >= (16, 0)
+    if dte_preset == "prior":
+        prior_candidates = [item for item in candidates if item[0] <= today]
+        return (
+            ([prior_candidates[-1][1]], dte_preset)
+            if prior_candidates
+            else ([candidates[0][1]], "0")
+        )
     target = today + timedelta(days=int(dte_preset))
+    if dte_preset == "0" and after_close:
+        next_candidates = [item for item in candidates if item[0] > today]
+        if next_candidates:
+            return [next_candidates[0][1]], "next"
     closest = min(candidates, key=lambda item: (abs((item[0] - target).days), item[0]))
     return [closest[1]], dte_preset
 
@@ -1943,7 +2141,9 @@ def calculate_gamma_exposure(
     exposures = compute_exposures(chain_data, float(spot))
     grouped = aggregate_gex_by_strike(exposures)
     net_total = compute_net_gex_total(grouped)
-    flip_strike = compute_gamma_flip(grouped, float(spot))
+    global_flip_strike = compute_gamma_flip(grouped, float(spot))
+    local_flip = compute_qualified_local_gamma_flip(grouped, float(spot))
+    flip_strike = local_flip.get("value") if local_flip.get("found") else None
     ladder_regime, ladder_regime_label = classify_gamma_ladder_regime(net_total)
     strongest_row = (
         grouped.assign(_abs_net=lambda frame: frame["net_gex"].astype(float).abs())
@@ -1969,6 +2169,12 @@ def calculate_gamma_exposure(
         "spot": float(spot),
         "total_net_gamma": float(net_total),
         "flip_strike": float(flip_strike) if flip_strike is not None else None,
+        "local_flip": local_flip,
+        "global_flip_diagnostic": (
+            {"value": float(global_flip_strike), "role": "secondary_diagnostic"}
+            if global_flip_strike is not None
+            else None
+        ),
         "strongest_level": strongest_level,
         "regime": ladder_regime,
         "regime_label": ladder_regime_label,
@@ -1979,6 +2185,73 @@ def calculate_gamma_exposure(
         "window_max_strike": focused_rows.get("window_max_strike"),
         "window_mode": str(focused_rows.get("window_mode") or "spot_band"),
         "window_preset": str(focused_rows.get("window_preset") or "standard"),
+    }
+
+
+def build_gamma_ladder_execution_model(
+    rows: List[Dict[str, Any]], *, spot: float, regime: str, session_context: Dict[str, Any]
+) -> Dict[str, Any]:
+    normalized = [dict(row) for row in rows]
+    max_abs = max((abs(float(row.get("net_gex") or 0.0)) for row in normalized), default=0.0)
+    for row in normalized:
+        strike = float(row.get("strike") or 0.0)
+        distance = abs(strike - float(spot))
+        role_bonus = (
+            0.35
+            if row.get("is_strongest")
+            else 0.25 if row.get("is_flip") else 0.15 if row.get("is_spot_nearest") else 0.0
+        )
+        magnitude = abs(float(row.get("net_gex") or 0.0)) / max_abs if max_abs else 0.0
+        proximity = max(0.0, 1.0 - distance / max(abs(float(spot)) * 0.02, 1.0))
+        row["relevance_score"] = round(proximity * 0.5 + magnitude * 0.35 + role_bonus, 6)
+    ranked = sorted(
+        normalized,
+        key=lambda row: (
+            -row["relevance_score"],
+            abs(float(row.get("strike") or 0.0) - float(spot)),
+            -float(row.get("strike") or 0.0),
+        ),
+    )
+    relevant_strikes = {float(row["strike"]) for row in ranked[:9]}
+    for row in normalized:
+        row["is_decision_relevant"] = float(row.get("strike") or 0.0) in relevant_strikes
+    above = sorted(
+        (row for row in normalized if float(row.get("strike") or 0.0) > spot),
+        key=lambda row: float(row["strike"]),
+    )
+    below = sorted(
+        (row for row in normalized if float(row.get("strike") or 0.0) < spot),
+        key=lambda row: float(row["strike"]),
+        reverse=True,
+    )
+    decision = below[0] if below else None
+    upside = max(above, key=lambda row: abs(float(row.get("net_gex") or 0.0)), default=None)
+    downside = below[1] if len(below) > 1 else None
+    positive = str(regime).lower() in {"positive_gamma", "strong_positive_gamma"}
+
+    def value(row: Optional[Dict[str, Any]]) -> Optional[float]:
+        return float(row["strike"]) if row else None
+
+    execution_map = {
+        "permission": "planning_only",
+        "session_label": session_context.get("display_label") or "Unavailable",
+        "decision_level": value(decision),
+        "upside_level": value(upside),
+        "downside_failure_level": value(downside),
+        "expected_range": {"low": value(decision), "high": value(upside)} if positive else None,
+        "next_evidence": (
+            f"Hold {value(decision):.0f} or accept above {value(upside):.0f}."
+            if positive and decision and upside
+            else "Wait for completed-price acceptance or rejection at the nearest Gamma boundary."
+        ),
+        "environment": (
+            "Positive Gamma stabilization" if positive else "Negative Gamma acceleration risk"
+        ),
+    }
+    return {
+        "rows": normalized,
+        "relevant_rows": [row for row in normalized if row["is_decision_relevant"]],
+        "execution_map": execution_map,
     }
 
 
@@ -2208,7 +2481,13 @@ def compute_local_gamma_flip(
     }
 
 
-def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") -> Dict[str, Any]:
+def build_gamma_ladder(
+    symbol: str,
+    window: str = "standard",
+    dte: str = "0",
+    *,
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
     normalized = normalize_gamma_ladder_symbol(symbol)
     window_preset = normalize_gamma_ladder_window(window)
     listed_expirations = _get_expirations_for_symbol(normalized)
@@ -2217,7 +2496,7 @@ def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") ->
     )
     expiration = ",".join(expirations)
     cache_key = gamma_ladder_cache_key(normalized, f"{dte_preset}:{expiration}", window_preset)
-    cached = _gamma_ladder_cache_get(cache_key)
+    cached = None if force_refresh else _gamma_ladder_cache_get(cache_key)
     if cached is not None:
         return cached
 
@@ -2238,6 +2517,35 @@ def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") ->
         window_preset=window_preset,
     )
     updated_at = str(quote.get("updated_at") or _now_iso())
+    computed_at = _now_iso()
+    session_context = gamma_ladder_session_context(expirations)
+    source_freshness = gamma_ladder_source_freshness(
+        quote_as_of=updated_at,
+        chain_as_of=computed_at,
+        computed_at=computed_at,
+        session_context=session_context,
+    )
+    execution = build_gamma_ladder_execution_model(
+        list(exposure.get("rows") or []),
+        spot=float(spot),
+        regime=str(exposure.get("regime") or "mixed_gamma"),
+        session_context=session_context,
+    )
+    generation_id = hashlib.sha256(
+        json.dumps(
+            {
+                "symbol": normalized,
+                "expirations": expirations,
+                "spot": float(spot),
+                "rows": execution["rows"],
+                "session": session_context,
+                "local_flip": exposure.get("local_flip"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()[:20]
     payload = {
         "ok": True,
         "symbol": normalized,
@@ -2245,7 +2553,13 @@ def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") ->
         "expiration": expiration,
         "expirations": expirations,
         "dte_preset": dte_preset,
-        "available_dte_options": _available_gamma_ladder_dte_options(listed_expirations),
+        "available_dte_options": _available_gamma_ladder_dte_options(listed_expirations)
+        + (
+            ["prior"]
+            if session_context.get("market_phase") != "rth"
+            and session_context.get("session_date") in listed_expirations
+            else []
+        ),
         "expiration_label": (
             "All DTE"
             if dte_preset == "all"
@@ -2255,6 +2569,28 @@ def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") ->
         "regime_label": str(exposure.get("regime_label") or "Mixed Gamma Regime"),
         "updated_at": updated_at,
         "updated_label": _format_ladder_updated_label(updated_at),
+        "quote_as_of": updated_at,
+        "chain_as_of": computed_at,
+        "computed_at": computed_at,
+        "session_context": session_context,
+        "source_freshness": source_freshness,
+        "data_state": (
+            session_context.get("display_state")
+            if session_context.get("display_state") == "expired_stale"
+            or source_freshness["overall"] == "current"
+            else source_freshness["overall"]
+        ),
+        "data_state_label": (
+            session_context.get("display_label")
+            if session_context.get("display_state") == "expired_stale"
+            or source_freshness["overall"] == "current"
+            else (
+                "Data unavailable"
+                if source_freshness["overall"] == "unavailable"
+                else f"{session_context.get('display_label')} · degraded sources"
+            )
+        ),
+        "gamma_generation_id": generation_id,
         "previous_spot": recent_context.get("previous_spot"),
         "recent_high": recent_context.get("recent_high"),
         "recent_low": recent_context.get("recent_low"),
@@ -2262,6 +2598,8 @@ def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") ->
         "candle_timeframe": recent_context.get("candle_timeframe") or "5min",
         "total_net_gamma": float(exposure.get("total_net_gamma") or 0.0),
         "flip_strike": exposure.get("flip_strike"),
+        "local_flip": exposure.get("local_flip"),
+        "global_flip_diagnostic": exposure.get("global_flip_diagnostic"),
         "strongest_level": exposure.get("strongest_level"),
         "rows_total": int(exposure.get("rows_total") or 0),
         "rows_visible": int(exposure.get("rows_visible") or 0),
@@ -2269,7 +2607,9 @@ def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") ->
         "window_max_strike": exposure.get("window_max_strike"),
         "window_mode": str(exposure.get("window_mode") or "spot_band"),
         "window_preset": str(exposure.get("window_preset") or window_preset),
-        "rows": list(exposure.get("rows") or []),
+        "rows": execution["rows"],
+        "relevant_rows": execution["relevant_rows"],
+        "execution_map": execution["execution_map"],
     }
     return _gamma_ladder_cache_set(cache_key, payload)
 

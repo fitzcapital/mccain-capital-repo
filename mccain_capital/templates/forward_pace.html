@@ -1,154 +1,63 @@
-{% from "partials/app_theme_macros.html" import app_pill, app_icon %}
-<div class="forwardPacePage" id="forwardPaceApp" data-today="{{ today }}">
+{% from "partials/app_theme_macros.html" import app_pill %}
+<div class="forwardPacePage forwardLifecycle" id="forwardPaceApp" data-today="{{ today }}">
   <section class="forwardPaceHero">
-    <div>
-      {{ app_pill('pace', 'Forward Pace') }}
-      <h2 class="pageTitle">Projection Command</h2>
-      <p class="pageSub">Model weekly payouts, tax drag, buffers, and projected balance structure.</p>
-    </div>
-    <div class="forwardPaceHeroActions">
-      <button class="btn primary" id="forwardPacePdfButton" type="button">Download PDF</button>
-      <a class="btn" href="/budget">Budget Command</a>
-    </div>
+    <div>{{ app_pill('pace', 'Forward Pace') }}<h2 class="pageTitle">Profit & Payout Planner</h2><p class="pageSub">Choose a daily pace and date. See the ending balance, milestone timing, and whether to withdraw or wait.</p></div>
+    <a class="btn" href="/payouts">Payout History</a>
   </section>
 
-  <section class="forwardPaceGrid">
+  <section class="forwardLifecycleWorkspace">
     <form class="forwardPacePanel forwardPaceControls" id="forwardPaceForm">
-      <div class="forwardPaceSectionHead">
-        <span>Inputs</span>
-        <strong>Cashflow Model</strong>
+      <div class="forwardPaceSectionHead"><span>Projection Inputs</span><strong>Balance + pace + date</strong></div>
+      <div class="forwardPaceModeSwitch" role="group" aria-label="Account phase">
+        <label><input type="radio" name="account_phase" value="evaluation" checked><span>Pass Target</span></label>
+        <label><input type="radio" name="account_phase" value="performance"><span>Plan Payout</span></label>
       </div>
-      <div class="forwardPaceFormGrid">
-        <label>
-          <span>Base Account</span>
-          <input name="base_balance" type="number" min="0" step="100" value="50000">
-        </label>
-        <label>
-          <span>Gross Payout</span>
-          <input name="gross_payout" type="number" min="0" step="25" value="250">
-        </label>
-        <label>
-          <span>Payouts / Week</span>
-          <input name="payouts_per_week" type="number" min="1" max="14" step="1" value="5">
-        </label>
-        <label>
-          <span>Projection Weeks</span>
-          <input name="weeks" type="number" min="1" max="104" step="1" value="12">
-        </label>
-        <label>
-          <span>Fixed Buffer</span>
-          <input name="fixed_buffer" type="number" min="0" step="100" value="5000">
-        </label>
-        <label>
-          <span>Weekly Buffer %</span>
-          <input name="buffer_rate" type="number" min="0" max="90" step="1" value="10">
-        </label>
-        <label>
-          <span>Start Date</span>
-          <input name="start_date" type="date" value="{{ today }}">
-        </label>
-        <label>
-          <span>Filing Status</span>
-          <select name="filing_status">
-            <option value="single">Single</option>
-            <option value="married_joint">Married Joint</option>
-            <option value="head_household">Head of Household</option>
-          </select>
-        </label>
-        <label class="forwardPaceWide">
-          <span>State</span>
-          <select name="state">
-            {% for abbr, name in states %}
-              <option value="{{ abbr }}" {% if abbr == 'GA' %}selected{% endif %}>{{ name }} · {{ abbr }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <p class="forwardPaceFinePrint">Tax is an automatic planning estimate using 2026 federal brackets and a state planning rate.</p>
+      <fieldset class="forwardPaceInputGroup"><legend>Account</legend><div class="forwardPaceFormGrid">
+        <label><span>Plan Size</span><select name="base_balance"><option value="10000">$10,000</option><option value="50000" selected>$50,000</option><option value="75000">$75,000</option><option value="100000">$100,000</option><option value="150000">$150,000</option></select></label>
+        <label><span>Current Balance</span><input name="current_balance" type="number" min="0" step="100" value="50000"></label>
+        <label><span>Average Net Profit / Trading Day</span><input name="daily_profit" type="number" min="0" step="25" value="250"></label>
+        <label><span>Trading Days / Week</span><input name="trading_days_week" type="number" min="1" max="5" value="5"></label>
+        <label><span>Start Date</span><input name="start_date" type="date" value="{{ today }}"></label>
+        <label><span>Projection Date</span><input name="target_date" type="date"></label>
+        <input type="hidden" name="horizon_mode" value="date"><input type="hidden" name="weeks" value="12">
+      </div></fieldset>
+      <fieldset class="forwardPaceInputGroup forwardLifecyclePerformance" id="forwardLifecyclePerformance"><legend>Performance Rules</legend><div class="forwardPaceFormGrid">
+        <label><span>Profit Buffer Balance</span><input name="performance_buffer" type="number" min="0" step="25" value="52875"></label>
+        <label><span>Current Loss Limit</span><input name="current_loss_limit" type="number" min="0" step="25" value="48500"></label>
+        <label><span>Fixed Loss Limit</span><input name="fixed_loss_limit" type="number" min="0" step="25" value="50375"></label>
+        <label><span>Safety Cushion</span><input name="safety_cushion" type="number" min="0" step="100" value="1000"></label>
+        <label class="forwardPacePayoutGoal"><span>Desired Payout</span><input name="proposed_payout" type="number" min="0" step="100" value="10000"><small>How much do you want to take?</small></label>
+        <label><span>Next Account Cost</span><input name="next_account_cost" type="number" min="0" step="50" value="0"></label>
+      </div><p>Defaults reflect the documented $50,000 example. Verify the values shown in your Vanquish account before using the projection.</p></fieldset>
+      <p class="forwardPaceFormError" id="forwardPaceError" role="alert" hidden></p>
+      <div class="forwardPaceSubmitBar"><div class="forwardPaceUpdateState" id="forwardPaceUpdateState" aria-live="polite" data-state="ready"><span class="forwardPaceUpdateDot"></span><div><strong>Projection ready</strong><small id="forwardPaceUpdatedAt">Using current inputs</small></div></div><button class="btn primary forwardPaceSubmit" id="forwardPaceSubmit" type="submit">Run Projection</button></div>
     </form>
 
-    <section class="forwardPacePanel forwardPaceSummary">
-      <div class="forwardPaceSectionHead">
-        <span>Output</span>
-        <strong id="forwardPaceHeadline">$0 / week</strong>
+    <section class="forwardPacePanel forwardLifecycleCommand">
+      <div class="forwardPaceSectionHead"><span>Your Plan</span><button class="forwardPaceIconButton" id="forwardPacePdfButton" type="button" aria-label="Download projection PDF">⇩</button></div>
+      <article class="forwardLifecycleNext forwardPaceDecision" id="forwardLifecycleNext" data-status="active"><span id="forwardPaceDecisionEyebrow">KEEP BUILDING</span><h3 id="forwardPaceDecisionTitle">Keep trading until the passing balance.</h3><p id="forwardPaceDecisionDetail">The selected pace determines when the next action is ready.</p><div class="forwardPaceDecisionFacts"><div><span>Required balance</span><strong id="forwardPaceDecisionBalance">--</strong></div><div><span>Profit needed</span><strong id="forwardPaceDecisionProfit">--</strong></div><div><span>Ready date</span><strong id="forwardPaceDecisionDate">--</strong></div><div><span>Sessions</span><strong id="forwardPaceDecisionSessions">--</strong></div><div><span>Balance after payout</span><strong id="forwardPaceDecisionAfter">--</strong></div></div></article>
+      <div class="forwardLifecycleMetrics">
+        <div><span>Current Balance</span><strong id="forwardLifecycleCurrent">$50,000</strong></div>
+        <div><span>Projected Balance</span><strong id="forwardLifecycleProjected">$0</strong></div>
+        <div><span>Daily Pace</span><strong id="forwardLifecycleDaily">$250</strong></div>
+        <div><span>Weekly Pace</span><strong id="forwardLifecycleWeekly">$1,250</strong></div>
       </div>
-      <div class="forwardPaceCommandBoard" id="forwardPaceCommandBoard" data-tone="positive">
-        <div class="forwardPaceCommandHero">
-          <div class="forwardPaceCommandSignal" aria-hidden="true">{{ app_icon('pace') }}</div>
-          <div class="forwardPaceCommandHeadline">
-            <span class="forwardPaceCommandLabel">Net Pace</span>
-            <strong id="forwardPaceWeeklyNetHero">$0.00</strong>
-            <small id="forwardPaceProjectedMeta">After tax and buffer.</small>
-          </div>
-          <div class="forwardPaceCommandLive">
-            <span>Projection Horizon</span>
-            <strong id="forwardPaceProjectionHorizon">0 weeks</strong>
-          </div>
-        </div>
-
-        <div class="forwardPaceHeroOutput">
-          <div class="forwardPaceBalanceStage" id="forwardPaceBalanceStage" data-tone="positive">
-            <div class="forwardPaceBalanceStageHead">
-              <span>Projected Balance</span>
-              <strong id="forwardPaceProjectionEnd">--</strong>
-            </div>
-            <div class="forwardPaceBalanceStageValue" id="forwardPaceProjectedBalance">$0.00</div>
-            <div class="forwardPaceBalanceStageMeta" id="forwardPaceProjectedBalanceMeta">Projected end balance.</div>
-          </div>
-
-          <div class="forwardPaceProfitInset" id="forwardPaceProfitMetric" data-tone="positive">
-            <span>Projected Profit</span>
-            <strong id="forwardPaceProjectedProfit">$0.00</strong>
-            <small id="forwardPaceProjectedProfitMeta">Net projection over the run.</small>
-          </div>
-        </div>
-
-        <div class="forwardPaceSignalStrip">
-          <div class="forwardPaceSignalCard">
-            <span>Projection End</span>
-            <strong id="forwardPaceProjectionEndSignal">--</strong>
-          </div>
-          <div class="forwardPaceSignalCard">
-            <span>Weekly Net Pace</span>
-            <strong id="forwardPaceWeeklyNetSignal">$0.00</strong>
-          </div>
-          <div class="forwardPaceSignalCard">
-            <span>Runway</span>
-            <strong id="forwardPaceRunwayLabel">0 trading weeks</strong>
-          </div>
-        </div>
-
-        <div class="forwardPaceTrajectoryCard" id="forwardPaceTrajectoryCard" data-tone="positive">
-          <div class="forwardPaceTrajectoryHead">
-            <span>Balance Trajectory</span>
-            <strong id="forwardPaceTrajectoryEnd">$0.00</strong>
-          </div>
-          <div class="forwardPaceTrajectory" id="forwardPaceTrajectory"></div>
-        </div>
-
-        <div class="forwardPaceCommandStats">
-          <div class="forwardPaceMetricGrid">
-            <div><span>Gross</span><strong id="forwardPaceWeeklyGross">$0.00</strong></div>
-            <div><span>Tax</span><strong id="forwardPaceWeeklyTax">$0.00</strong></div>
-            <div><span>Buffer</span><strong id="forwardPaceWeeklyBuffer">$0.00</strong></div>
-            <div><span>Net Pace</span><strong id="forwardPaceWeeklyNet">$0.00</strong></div>
-          </div>
-          <div class="forwardPaceTaxStrip">
-            <div><span>Federal Annual</span><strong id="forwardPaceFederalTax">$0.00</strong></div>
-            <div><span>State Rate</span><strong id="forwardPaceStateRate">0%</strong></div>
-            <div><span>Effective Tax</span><strong id="forwardPaceEffectiveTax">0%</strong></div>
-          </div>
-        </div>
-      </div>
+      <article class="forwardPaceTrajectoryCard"><div class="forwardPaceTrajectoryHead"><span>Account Trajectory</span><strong id="forwardPaceTrajectoryEnd">--</strong></div><div class="forwardPaceTrajectory" id="forwardPaceTrajectory"></div></article>
     </section>
   </section>
 
-  <section class="forwardPacePanel forwardPaceStructure">
-    <div class="forwardPaceSectionHead">
-      <span>Structure</span>
-      <strong>Weekly Payout Schedule</strong>
-    </div>
-    <div class="forwardPaceSchedule" id="forwardPaceSchedule"></div>
+  <section class="forwardPacePanel forwardLifecycleLadder"><div class="forwardPaceSectionHead"><span>Decision Path</span><strong id="forwardPaceProjectedStatus">Current → projected → action</strong></div><div id="forwardLifecycleLadder"></div></section>
+
+  <section class="forwardPaceDetailGrid" id="forwardLifecyclePerformanceOutput">
+    <article class="forwardPacePanel forwardLifecycleSafety" id="forwardLifecycleSafety" data-status="neutral"><div class="forwardPaceSectionHead"><span>Payout Safety</span><strong id="forwardLifecyclePayoutStatus">Available after performance buffer</strong></div><div class="forwardLifecycleSafetyGrid">
+      <div><span>Theoretical Capacity</span><strong id="forwardLifecycleTheoretical">--</strong></div><div><span>Protected Capacity</span><strong id="forwardLifecycleProtected">--</strong></div><div><span>Post-Payout Balance</span><strong id="forwardLifecyclePostBalance">--</strong></div><div><span>Cushion After Payout</span><strong id="forwardLifecyclePostCushion">--</strong></div>
+    </div><p id="forwardLifecycleSafetyText">Switch to Performance to model payout protection.</p></article>
+    <article class="forwardPacePanel"><div class="forwardPaceSectionHead"><span>Loss Limit</span><strong id="forwardLifecycleLossState">Evaluation rules</strong></div><div class="forwardLifecycleLoss"><span>Applicable Limit</span><strong id="forwardLifecycleLossLimit">--</strong><small id="forwardLifecycleProtectedFloor">Protected floor --</small></div></article>
   </section>
+
+  <section class="forwardPacePanel"><div class="forwardPaceSectionHead"><span>Pace Scenarios</span><strong>Projected milestone dates</strong></div><div class="forwardPaceScenarioGrid" id="forwardPaceScenarioGrid"></div></section>
+
+  <details class="forwardPacePanel forwardPaceDisclosure"><summary><span>Rules & assumptions</span><strong>Source and calculation notes</strong></summary><p id="forwardLifecycleRuleSource"></p><p>Planning only. Payout eligibility can include additional rules. Weekday dates exclude weekends but not market holidays.</p></details>
+  <details class="forwardPacePanel forwardPaceDisclosure"><summary><span>Projection schedule</span><strong id="forwardPaceScheduleSummary">View all periods</strong></summary><div class="forwardPaceSchedule" id="forwardPaceSchedule"></div></details>
 </div>
 <script src="{{ url_for('static', filename='js/forward_pace.js') }}?v={{ static_v }}"></script>

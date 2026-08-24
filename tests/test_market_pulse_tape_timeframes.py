@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from mccain_capital.services.market_pulse_tape import timeframe_payloads
+from mccain_capital.services.market_pulse_tape import has_meaningful_ohlc, timeframe_payloads
 
 
 def _row(timestamp: datetime, close: float) -> dict[str, object]:
@@ -11,6 +11,16 @@ def _row(timestamp: datetime, close: float) -> dict[str, object]:
         "low": close - 0.5,
         "close": close,
     }
+
+
+def test_identical_quote_points_are_not_treated_as_candles() -> None:
+    rows = [
+        {"open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0},
+        {"open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0},
+    ]
+
+    assert has_meaningful_ohlc(rows) is False
+    assert has_meaningful_ohlc([_row(datetime.now(timezone.utc), 100.0), _row(datetime.now(timezone.utc), 101.0)]) is True
 
 
 def test_timeframe_payloads_use_ts_timestamps_for_distinct_windows() -> None:

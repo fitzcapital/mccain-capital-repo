@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import re
 import time
 
 from mccain_capital.repositories import trades as trades_repo
@@ -395,6 +396,48 @@ def test_upload_statement_workspaces_render(client):
     assert resp_rec.status_code == 200
     assert b"Reconcile Import Batches (30D)" in resp_rec.data
     assert b"Unresolved Batches" in resp_rec.data
+
+
+def test_upload_statement_collapses_legacy_broker_account_duplicates(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:OEV0035974",
+        starting_balance=50000.0,
+    )
+    with db() as conn:
+        account = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        conn.execute(
+            """
+            INSERT INTO accounts (
+                prop_firm, account_name, broker_account_id, account_size,
+                starting_balance, current_balance, max_drawdown, archived,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                account["prop_firm"],
+                account["account_name"],
+                account["broker_account_id"],
+                account["account_size"],
+                account["starting_balance"],
+                account["current_balance"],
+                account["max_drawdown"],
+                now_iso(),
+                now_iso(),
+            ),
+        )
+        conn.commit()
+
+    resp = client.get(
+        f"/trades/upload/statement?ws=live&account_id={account_id}",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    # The canonical account appears once in each of the page's two account selectors.
+    options = re.findall(r"<option[^>]*>[^<]*OEV0035974[^<]*</option>", resp.get_data(as_text=True))
+    assert len(options) == 2
 
 
 def test_upload_statement_live_workspace_injects_csrf_into_all_sync_forms(client):
@@ -956,6 +999,58 @@ def test_save_account_reuses_existing_active_broker_account(client):
         if row.get("broker_account_id") == "default:OEV0035974"
     ]
     assert [int(row["id"]) for row in matching] == [int(existing_account_id)]
+
+
+def test_create_account_reuses_active_broker_account_at_repository_boundary(client):
+    first_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:OEV0035974",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+
+    repeated_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="OEV0035974",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+
+    assert repeated_account_id == first_account_id
+    matching = [
+        row
+        for row in trades_repo.list_accounts()
+        if row.get("broker_account_id") == "default:OEV0035974"
+    ]
+    assert [int(row["id"]) for row in matching] == [int(first_account_id)]
+
+
+def test_dashboard_account_display_collapses_legacy_broker_duplicates(client):
+    older_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect original",
+        broker_account_id="default:OEV0035974",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+    accounts = trades_repo.list_accounts()
+    duplicate = dict(accounts[0])
+    duplicate["id"] = int(older_id) + 1
+    duplicate["account_name"] = "Protect duplicate"
+
+    displayed = trades_repo.dedupe_accounts_for_display(
+        [duplicate, accounts[0]],
+        selected_account_id=older_id,
+    )
+
+    assert len(displayed) == 1
+    assert int(displayed[0]["id"]) == int(older_id)
+    assert displayed[0]["account_name"] == "Protect original"
 
 
 def test_bulk_archive_accounts_hides_selected_and_falls_back_to_remaining_account(client):

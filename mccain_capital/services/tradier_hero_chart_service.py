@@ -985,4 +985,8 @@ def get_stream_session_payload() -> Dict[str, Any]:
         "hidden_quote_interval_ms": 15000,
         "hidden_levels_interval_ms": 300000,
         "bar_boundary_grace_ms": 3000,
+        "micro_tape_interval_seconds": 5,
+        "micro_tape_gap_seconds": 15,
+        "micro_tape_max_points": 72,
+        "micro_tape_authoritative": False,
     }

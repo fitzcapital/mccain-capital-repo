@@ -49,6 +49,30 @@ def test_adaptive_shell_defines_one_authoritative_width_contract():
     assert "@media (max-width:900px)" in styles
 
 
+def test_primary_desktop_pages_use_centered_page_appropriate_reading_canvases():
+    styles = (ROOT / "static/css/command_surfaces.css").read_text(encoding="utf-8")
+
+    for selector in (
+        "body.page-dashboard .wrap",
+        "body.page-market-pulse .wrap",
+        "body.page-executive .wrap",
+    ):
+        assert selector in styles
+    assert "--primary-reading-canvas:1180px" in styles
+    assert "body.page-market-pulse{" in styles
+    assert "--primary-reading-canvas:1360px" in styles
+    assert "width:min(calc(100% - 40px),var(--primary-reading-canvas)) !important" in styles
+    assert "max-width:var(--primary-reading-canvas) !important" in styles
+
+
+def test_executive_is_a_first_class_primary_navigation_item(client):
+    body = client.get("/dashboard", follow_redirects=True).get_data(as_text=True)
+    primary_nav = body.split('<div class="navGroup">', 1)[1].split("</div>", 1)[0]
+
+    assert 'href="/executive"' in primary_nav
+    assert primary_nav.index('href="/executive"') < primary_nav.index('href="/dashboard"')
+
+
 def test_budget_redirect_and_dense_mode_contract_are_preserved(client):
     response = client.get("/budget", follow_redirects=False)
     template = (ROOT / "mccain_capital/templates/base.html").read_text(encoding="utf-8")

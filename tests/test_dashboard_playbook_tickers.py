@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 
 from mccain_capital.runtime import set_setting_value
 from mccain_capital.services import core
@@ -31,7 +32,10 @@ def test_profile_defaults_drive_dashboard_and_market_pulse_when_no_query(client)
     assert dashboard_resp.status_code == 200
     assert market_resp.status_code == 200
     assert 'data-selected-ticker="SPX"' in dashboard_resp.get_data(as_text=True)
-    assert "QQQ PLAYBOOK" in market_resp.get_data(as_text=True)
+    market_body = market_resp.get_data(as_text=True)
+    assert "QQQ PLAYBOOK" in market_body
+    assert "spx_hero_chart.js?v=&" not in market_body
+    assert re.search(r"lightweight-charts\.standalone\.production\.js\?v=\d+", market_body)
 
 
 def test_dashboard_defaults_to_spy_switcher_and_market_pulse_links(client):
