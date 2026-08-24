@@ -13,7 +13,6 @@ __pycache__/
 .ruff_cache/
 .idea/
 .vscode/
-ios/**/.build/
 *.pyc
 *.pyo
 *.pyd
