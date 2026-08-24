@@ -34,16 +34,53 @@
   {% endif -%}
 {%- endmacro %}
 
+{% macro mp_state_label(value, fallback='Pending') -%}
+  {%- set code = (value or '')|string|trim|upper -%}
+  {%- if not code -%}{{ fallback }}
+  {%- elif code == 'LEVEL_BEING_TESTED' -%}Testing active level
+  {%- elif code == 'WAITING_FOR_LOCATION' -%}Waiting for price to reach level
+  {%- elif code == 'PLANNING_ONLY' -%}Planning only
+  {%- elif code == 'NO_TRADE' -%}No trade
+  {%- elif code == 'REVERSAL_READY' -%}Reversal setup ready
+  {%- elif code == 'CONTINUATION_ACTIVE' -%}Continuation active
+  {%- elif code == 'SETUP_READY' -%}Setup ready
+  {%- elif code == 'AFTER_HOURS_VALID' -%}After-hours planning
+  {%- elif code == 'LIVE_SESSION' -%}Live session
+  {%- else -%}{{ code|replace('_', ' ')|lower|capitalize }}
+  {%- endif -%}
+{%- endmacro %}
+
 {% set gamma_quality_tone = 'marketPulseTrustChip-critical' if gamma_quality.get('tone') == 'critical' else 'marketPulseTrustChip-warn' if gamma_quality.get('tone') == 'warn' else 'marketPulseTrustChip-ok' %}
 {% set gamma_snapshot_status = gamma_snapshot.get('snapshot_status') or 'invalid' %}
 {% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
 {% set structure_snapshot = market_structure_snapshot or {} %}
 {% set playbook = playbook_view or {} %}
+{% set canonical = canonical_freshness or playbook.get('canonical_freshness') or {} %}
+{% set verdict = verdict or playbook.get('verdict') or {} %}
+{% set strategy = playbook.get('strategy') or structure_snapshot.get('strategy') or {} %}
+{% set scenario_rankings = playbook.get('scenario_rankings') or structure_snapshot.get('scenario_rankings') or {} %}
+{% set primary_scenario = playbook.get('primary_scenario') or scenario_rankings.get('primary') or {} %}
+{% set primary_plan = primary_scenario.get('plan') or {} %}
+{% set live_guide = playbook.get('live_execution_guide') or {} %}
+{% set live_monitor = live_setup_monitor or {} %}
+{% set ops_health = operational_health or {} %}
+{% set live_primary = live_monitor.get('primary') or {} %}
+{% set authoritative_action = canonical.get('authoritative_action_state') or {} %}
+{% set authoritative_action_state = authoritative_action.get('action_state') or live_guide.get('action_state') or 'WAIT' %}
+{% set scenario_alternatives = scenario_rankings.get('alternatives') or [] %}
+{% set scenario_dormant = scenario_rankings.get('dormant') or [] %}
+{% set strategy_level = strategy.get('active_level') or {} %}
+{% set strategy_target = strategy.get('primary_target') or {} %}
+{% set strategy_state = strategy.get('state') or '' %}
+{% set strategy_direction = strategy.get('direction') or '' %}
+{% set strategy_interaction = strategy.get('interaction') or '' %}
+{% set strategy_level_label = strategy_level.get('label') or 'active level' %}
+{% set strategy_level_value = ('%.0f'|format(strategy_level.get('value'))) if strategy_level.get('value') is number else '' %}
 {% set selected_ticker = ticker or 'SPY' %}
 {% set quote = playbook_quote or spx_quote or {} %}
 {% set priority_context = playbook_priority_context or spx_priority_context or {} %}
 {% set spot_price_label = ('%.2f'|format(quote.get('price')) if quote.get('price') is number else ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is number else (playbook.get('spot_label') or '—'))) %}
-{% set market_closed = execution_chart.mode != 'live_session' %}
+{% set market_closed = not market_hours %}
 {% set model_levels = {
   'spot': structure_snapshot.get('spot'),
   'main_flip': structure_snapshot.get('main_flip'),
@@ -81,28 +118,30 @@
 } %}
 {% set distance_rows = playbook.get('distance_rows') or (execution_model.distance_rows if execution_model else []) %}
 {% set trigger_validation = structure_snapshot.get('trigger_validation') or {} %}
-{% set gamma_positive = macro_regime.state == 'positive' %}
-{% set gamma_neutral = macro_regime.state == 'neutral' %}
+{% set gamma_state_key = macro_regime.state|string|lower %}
+{% set gamma_positive = 'positive' in gamma_state_key %}
+{% set gamma_negative = 'negative' in gamma_state_key %}
+{% set gamma_neutral = gamma_state_key == 'neutral' %}
 {% set bias_context = local_bias.context or 'LOCAL BIAS' %}
 {% set bias_label = local_bias.label or 'WAIT' %}
 {% set trade_state_label = playbook.get('trade_state_label') or structure_snapshot.get('trade_state_label') or 'WAIT' %}
 {% set hero_tradeability_label = playbook.get('tradeability_label') or structure_snapshot.get('execution_regime_label') or structure_snapshot.get('tradeability') or 'WAIT' %}
 {% set hero_tradeability_display = hero_tradeability_label|replace('_', ' ') %}
 {% set hero_session_label = playbook.get('session_summary_label') or structure_snapshot.get('session') or macro_regime.subtitle or 'Confirmation required' %}
-{% set decision_label = playbook.get('decision_label') or ('Planning only' if trade_state_label == 'PLANNING ONLY' else 'No trade' if trade_state_label == 'NO TRADE' else 'Not actionable yet' if trade_state_label == 'WAIT' else trade_state_label|replace('_', ' ')|title) %}
-{% set decision_detail = playbook.get('decision_detail') or (playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Awaiting market posture.') %}
+{% set decision_label = 'Data locked' if guardrail.active else (playbook.get('decision_label') or ('Planning only' if trade_state_label == 'PLANNING ONLY' else 'No trade' if trade_state_label == 'NO TRADE' else 'Not actionable yet' if trade_state_label == 'WAIT' else trade_state_label|replace('_', ' ')|title)) %}
+{% set decision_detail = guardrail.message if guardrail.active else (playbook.get('decision_detail') or strategy.get('missing_evidence') or playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Awaiting market posture.') %}
 {% set bias_summary = playbook.get('bias_summary_label') or (playbook.get('bias_label') or local_bias.action or 'Wait for cleaner structure') %}
 {% set tradeability_display = playbook.get('tradeability_display_label') or hero_tradeability_display %}
 {% set hero_summary = playbook.get('hero_summary') or ((macro_regime.title or 'Regime unavailable') ~ ', ' ~ (bias_summary|lower) ~ ', ' ~ (decision_label|lower) ~ '.') %}
 {% set hero_reason = playbook.get('hero_reason_label') or (playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or '') %}
 {% set show_session_reason = guardrail.active or market_closed or macro_regime.state in ['unconfirmed', 'unavailable'] or structure_snapshot.get('gamma_data_status') in ['partial', 'invalid', 'stale_but_usable'] %}
 {% set session_reason = guardrail.message if guardrail.active else (hero_reason or macro_regime.subtitle or 'Market Pulse context ready.') %}
-{% set gamma_state_class = 'gamma-card--positive' if macro_regime.state == 'positive' else 'gamma-card--negative' if macro_regime.state == 'negative' else 'gamma-card--unconfirmed' if macro_regime.state == 'unconfirmed' else 'gamma-card--neutral' %}
-{% set gamma_pill_class = 'state-pill--positive' if macro_regime.state == 'positive' else 'state-pill--negative' if macro_regime.state == 'negative' else 'state-pill--wait' %}
-{% set gamma_display_title = 'Positive Ⲅ' if macro_regime.state == 'positive' else 'Negative Ⲅ' if macro_regime.state == 'negative' else macro_regime.title or 'REGIME UNKNOWN' %}
-{% set gamma_pill_label = 'POSITIVE Ⲅ' if macro_regime.state == 'positive' else 'NEGATIVE Ⲅ' if macro_regime.state == 'negative' else 'WAIT FOR CONFIRMATION' if macro_regime.state == 'unconfirmed' else 'NEUTRAL / DATA' %}
-{% set gamma_badges = ['PINNING', 'MEAN REVERSION'] if macro_regime.state == 'positive' else ['EXPANSION RISK', 'TREND CONTINUATION'] if macro_regime.state == 'negative' else ['WAIT FOR CONFIRMATION'] %}
-{% set gamma_state_icon = 'check' if macro_regime.state == 'positive' else 'warning' if macro_regime.state == 'negative' else 'compass' %}
+{% set gamma_state_class = 'gamma-card--positive' if gamma_positive else 'gamma-card--negative' if gamma_negative else 'gamma-card--unconfirmed' if macro_regime.state == 'unconfirmed' else 'gamma-card--neutral' %}
+{% set gamma_pill_class = 'state-pill--positive' if gamma_positive else 'state-pill--negative' if gamma_negative else 'state-pill--wait' %}
+{% set gamma_display_title = 'Strong Positive Ⲅ' if 'strong_positive' in gamma_state_key else 'Positive Ⲅ' if gamma_positive else 'Strong Negative Ⲅ' if 'strong_negative' in gamma_state_key else 'Negative Ⲅ' if gamma_negative else mp_state_label(macro_regime.title, 'Regime unknown') %}
+{% set gamma_pill_label = 'POSITIVE Ⲅ' if gamma_positive else 'NEGATIVE Ⲅ' if gamma_negative else 'WAIT FOR CONFIRMATION' if macro_regime.state == 'unconfirmed' else 'NEUTRAL / DATA' %}
+{% set gamma_badges = ['PINNING', 'MEAN REVERSION'] if gamma_positive else ['EXPANSION RISK', 'TREND CONTINUATION'] if gamma_negative else ['WAIT FOR CONFIRMATION'] %}
+{% set gamma_state_icon = 'check' if gamma_positive else 'warning' if gamma_negative else 'compass' %}
 {% set level_strip = [
   {'label': 'Spot', 'icon': 'activity', 'value': spot_price_label},
   {'label': 'Main', 'icon': 'orbit', 'value': ('%.0f'|format(main_flip_num)) if main_flip_num is not none else '—'},
@@ -117,7 +156,7 @@
   {'key': 'put_wall', 'label': 'Put Wall', 'short': 'PW', 'value': put_wall_num, 'classification': 'Support / downside magnet'}
 ] %}
 
-<div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact" id="marketPulseStatusBar">
+<div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact" id="marketPulseStatusBar" data-command-surface="header">
   <div class="toolbar gamma-ladder-toolbar">
     <div class="marketPulsePlaybookHero">
       <div class="marketPulsePlaybookTitleZone marketPulseCockpitCommand">
@@ -176,7 +215,7 @@
             </div>
           </div>
         </div>
-        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</div>
+        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{% if bootstrap_refresh_required %}Updating · {% endif %}Last candle · {{ structure_snapshot.get('last_completed_candle_time_label') or '—' }}</div>
         <div class="marketPulseStatusReadout" aria-label="Current market status">
           <div class="marketPulseStatusMetric is-spot">
             <span>{{ selected_ticker }} Spot</span>
@@ -184,15 +223,12 @@
           </div>
           <div class="marketPulseStatusMetric">
             <span>Session</span>
-            <strong>{% if guardrail.active %}Locked{% elif market_closed %}Planning{% else %}Live execution{% endif %}</strong>
+            <strong id="marketPulseStatusSession">{% if bootstrap_refresh_required %}Synchronizing{% elif guardrail.active %}Locked{% elif market_closed %}Planning{% else %}Live execution{% endif %}</strong>
           </div>
-          <div class="marketPulseStatusMetric is-{{ gamma_snapshot_status_tone }}">
-            <span>Gamma Data</span>
-            <strong id="marketPulseStatusDataState">{{ gamma_snapshot.get('snapshot_status_label') or macro_regime.subtitle or 'Awaiting snapshot' }}</strong>
-          </div>
-          <div class="marketPulseStatusMetric">
-            <span>Updated</span>
-            <strong id="marketPulseStatusUpdated">{{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</strong>
+          <div class="marketPulseStatusMetric is-{{ gamma_snapshot_status_tone }}{% if gamma_positive %} is-regime-positive{% elif gamma_negative %} is-regime-negative{% endif %}">
+            <span>Regime</span>
+            <strong id="marketPulseStatusRegime">{{ gamma_display_title }}</strong>
+            <small id="marketPulseStatusDataState">{% if bootstrap_refresh_required %}Updating{% else %}{{ gamma_snapshot_status|replace('_', ' ')|title }}{% endif %}</small>
           </div>
         </div>
         <div class="marketPulseHeaderLevels" id="marketPulseHeaderSubline">
@@ -204,8 +240,8 @@
           {% endfor %}
         </div>
       </div>
-      <div class="marketPulseCockpitDecisionBand marketPulseCockpitDecisionBand-compact">
-        <div class="marketPulseGammaStateCard marketPulseCockpitRegime {{ gamma_state_class }} {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
+      <div class="marketPulseCockpitDecisionBand marketPulseCockpitDecisionBand-compact" aria-label="Market Pulse utilities">
+        <div class="marketPulseGammaStateCard marketPulseCockpitRegime {{ gamma_state_class }} {% if gamma_positive %}is-positive{% elif gamma_negative %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
           <div class="marketPulseGammaStateOrb" aria-hidden="true">Ⲅ</div>
           <div class="marketPulseGammaStateTop">
             <span class="marketPulseGammaStateDot" aria-hidden="true">Ⲅ</span>
@@ -245,11 +281,16 @@
           </div>
         </div>
         <div class="marketPulsePlaybookActions marketPulseCockpitUtility">
+          <div class="marketPulsePollCountdown" role="status" aria-live="polite" title="Next automatic data check">
+            <i aria-hidden="true"></i>
+            <span id="marketPulseRefreshCountdown">{{ canonical.get('sync_interval_seconds', 15) }}s</span>
+          </div>
           <button
-            class="btn marketPulsePlaybookPinToggle"
+            class="btn marketPulseUtilityIconButton marketPulsePlaybookPinToggle"
             type="button"
             aria-pressed="false"
-            title="Keep the Playbook header visible while scrolling"
+            aria-label="Toggle sticky summary"
+            title="Keep the execution summary visible while scrolling"
             data-playbook-pin-toggle
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -257,22 +298,24 @@
               <path d="m10 4 .8 6-3.3 3.4h9L13.2 10 14 4"></path>
               <path d="M12 13.4V20"></path>
             </svg>
-            <span data-playbook-pin-label>Pin header</span>
+            <span class="srOnly" data-playbook-pin-label>Sticky summary: Off</span>
           </button>
           <button
             id="marketPulseContextRefreshBtn"
-            class="notifRefreshBtn marketPulseContextRefreshBtn"
+            class="btn marketPulseUtilityIconButton marketPulseContextRefreshBtn"
             data-market-pulse-context-refresh
             type="button"
-            aria-label="Refresh gamma context"
-            title="Refresh gamma context"
+            aria-label="Refresh data"
+            title="Refresh quotes, gamma, strategy, and guardrail data"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
               <path d="M21 3v6h-6"></path>
             </svg>
+            <span class="srOnly" data-market-pulse-refresh-label>Refresh data</span>
           </button>
-          <a class="btn" href="/candle-opens"><span class="marketPulseInlineIcon">{{ mp_icon('candles') }}</span><span>Candle Opens</span></a>
+          <span class="tiny muted marketPulseRefreshFeedback" id="marketPulseRefreshFeedback" aria-live="polite"></span>
+          <a class="btn marketPulseUtilityIconButton" href="/candle-opens" aria-label="Open Candle Opens" title="Open Candle Opens"><span class="marketPulseInlineIcon">{{ mp_icon('candles') }}</span><span class="srOnly">Candle Opens</span></a>
         </div>
       </div>
     </div>
@@ -284,14 +327,13 @@
     <span>Source Health</span>
     <span>Tape Drivers</span>
     <span>SPX Priority</span>
-    <span><a href="/market-pulse?refresh=1">Refresh Market Pulse</a></span>
     {% set spx_range_quote = spx_quote if spx_quote.get('prior_day_low') is number and spx_quote.get('prior_day_high') is number else quotes_map.get('SPX', {}) %}
     {% if spx_range_quote.get('prior_day_low') is number and spx_range_quote.get('prior_day_high') is number %}
       <span>{{ '%.2f - %.2f'|format(spx_range_quote.get('prior_day_low'), spx_range_quote.get('prior_day_high')) }}</span>
     {% endif %}
     <span>Loading Market Pulse</span>
     <span id="marketPulseSetupHeadline">{{ playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
-    <span id="marketPulseTradeReadState">{{ playbook.get('trade_state_label') or 'WAIT' }}</span>
+    <span id="marketPulseTradeReadState">{{ mp_state_label(playbook.get('trade_state_label'), 'Wait') }}</span>
     <span>{{ gamma_quality.summary if gamma_quality else '' }}</span>
     <span>{{ gamma_snapshot.get('source_effective_timestamp_note') or '' }}</span>
     <span>Fetch-time freshness proxy</span>
@@ -325,7 +367,7 @@
     {% if quote.get('prior_day_low') is number and quote.get('prior_day_high') is number %}
       <span>{{ '%.2f - %.2f'|format(quote.get('prior_day_low'), quote.get('prior_day_high')) }}</span>
     {% endif %}
-    {% if options_contracts %}
+    {% if options_contracts and strategy.get('setup_ready') %}
       {% for contract in options_contracts[:3] %}
         <span>{{ contract.label }}</span>
       {% endfor %}
@@ -333,51 +375,122 @@
   </div>
 </div>
 
-{% set permission_label = 'Locked' if guardrail.active else 'Planning only' if market_closed else trade_state_label %}
-{% set permission_detail = guardrail.message if guardrail.active else 'Market closed' if market_closed else 'Existing trade gate applies' %}
 <section
-  class="marketPulseDecisionNarrative marketPulseSection"
+  class="marketPulseDecisionNarrative marketPulseExecutionStrip marketPulseSection"
   id="marketPulseDecisionNarrative"
-  aria-label="Market Pulse execution narrative"
+  aria-label="Market Pulse command surface"
+  data-command-surface="primary"
 >
-  <div class="marketPulseDecisionNarrativeLead">
-    <span>Execution Read</span>
-    <strong>{{ decision_label }}</strong>
-    <small>{{ decision_detail }}</small>
+  <div class="marketPulseDecisionNarrativeLead is-permission{% if guardrail.active %} is-locked{% endif %}" data-decision-role="permission">
+    <div class="marketPulseDecisionNarrativeHeading">
+      <span>Execution Read</span>
+      <details class="marketPulseStateLegend">
+        <summary aria-label="Explain execution states" title="Explain execution states">?</summary>
+        <div class="marketPulseStateLegendPanel" role="note" aria-label="Execution state legend">
+          <strong>Execution state guide</strong>
+          <span><i class="is-permission" aria-hidden="true"></i><b>Execution Read</b> Can I act, plan, or wait?</span>
+          <span><i class="is-level" aria-hidden="true"></i><b>Active Level</b> Where is the current decision being made?</span>
+          <span><i class="is-evidence" aria-hidden="true"></i><b>Next Evidence</b> What must price confirm next?</span>
+          <span><i class="is-risk" aria-hidden="true"></i><b>Invalidation</b> What proves the thesis wrong?</span>
+          <span><i class="is-locked" aria-hidden="true"></i><b>Data locked</b> Required market data is stale or unavailable. Do not execute.</span>
+          <span><i class="is-planning" aria-hidden="true"></i><b>Planning only</b> Structure is available, but live confirmation is still required.</span>
+          <span><i class="is-actionable" aria-hidden="true"></i><b>Actionable</b> Required data and price evidence are current. Manual judgment still applies.</span>
+        </div>
+      </details>
+    </div>
+    <strong id="marketPulseCanonicalDecision">{{ verdict.get('label') or decision_label }}</strong>
+    <small id="marketPulseCanonicalDecisionDetail">{{ verdict.get('detail') or decision_detail }}</small>
   </div>
-  <div class="marketPulseDecisionNarrativeItem">
-    <span>Regime</span>
-    <strong>{{ macro_regime.title }}</strong>
-    <small>{{ macro_regime.subtitle }}</small>
+  <div class="marketPulseDecisionNarrativeItem is-level" data-decision-role="level">
+    <span>Active Level</span>
+    <strong id="marketPulseCanonicalActiveLevel">{% if verdict.get('active_level') %}{{ verdict.get('active_level', {}).get('label') }} {{ '%.0f'|format(verdict.get('active_level', {}).get('value')) }}{% else %}Unavailable{% endif %}</strong>
+    <small id="marketPulseCanonicalDistance">{% if verdict.get('distance') is number %}{{ '%+.1f'|format(verdict.get('distance')) }} points from spot{% else %}Distance unavailable{% endif %}</small>
   </div>
-  <div class="marketPulseDecisionNarrativeItem">
-    <span>Spot / Availability</span>
-    <strong>{{ spot_price_label }}</strong>
-    <small>{% if spot_num is number %}Available · {{ structure_snapshot.get('spot_source_label') or source_label }}{% else %}Unavailable · no valid spot{% endif %}</small>
+  <div class="marketPulseDecisionNarrativeItem is-evidence" data-decision-role="evidence">
+    <span>Next Evidence</span>
+    <strong id="marketPulseCanonicalNextEvidence">{{ verdict.get('next_evidence') or strategy.get('missing_evidence') or 'Confirmation required' }}</strong>
   </div>
-  <div class="marketPulseDecisionNarrativeItem">
-    <span>Permission</span>
-    <strong>{{ permission_label }}</strong>
-    <small>{{ permission_detail }}</small>
-  </div>
-  <div class="marketPulseDecisionNarrativeItem">
-    <span>Freshness</span>
-    <strong>{{ gamma_snapshot_status|replace('_', ' ')|title }}</strong>
-    <small>{{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or 'Timestamp unavailable' }}</small>
-  </div>
-  <div class="marketPulseDecisionNarrativeItem">
-    <span>Trigger</span>
-    <strong>{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Confirmation required' }}</strong>
-    <small>Manual confirmation remains authoritative</small>
-  </div>
-  <div class="marketPulseDecisionNarrativeItem">
+  <div class="marketPulseDecisionNarrativeItem is-risk" data-decision-role="risk">
     <span>Invalidation</span>
-    <strong>{{ playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'Wait for live structure' }}</strong>
-    <small>Exit the thesis when this condition fails</small>
+    <strong id="marketPulseCanonicalInvalidation">{{ verdict.get('invalidation') or playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'Wait for live structure' }}</strong>
   </div>
 </section>
 
-<section class="marketPulseSessionState marketPulseSection {% if guardrail.active %}is-locked{% else %}is-open{% endif %}" aria-label="Market Pulse session and data state">
+<details class="marketPulseWatchdog marketPulseSection is-{{ ops_health.get('status', 'warning') }}" id="marketPulseOperationalHealth">
+  <summary>
+    <span class="marketPulseWatchdogIdentity">
+      <i aria-hidden="true"></i>
+      <strong>Data pipeline</strong>
+      <b id="marketPulseOperationalHealthState">{{ ops_health.get('status', 'warning')|title }}</b>
+    </span>
+    <span class="marketPulseWatchdogSummary" id="marketPulseOperationalHealthSummary">{{ ops_health.get('summary') or 'Checking canonical pipeline' }}</span>
+    <span class="marketPulseWatchdogExpand" aria-hidden="true">⌄</span>
+  </summary>
+  <div class="marketPulseWatchdogDetails">
+    <span>Generation <strong id="marketPulseOperationalGeneration">{{ ops_health.get('generation_id') or 'Pending' }}</strong></span>
+    <span>Last promotion <strong id="marketPulseOperationalPromotion">{{ ops_health.get('last_successful_promotion') or 'Unavailable' }}</strong></span>
+    <span>Retry <strong id="marketPulseOperationalRetry">{{ ops_health.get('retry_deadline') or 'Paused' }}</strong></span>
+    <span>Blocker <strong id="marketPulseOperationalBlocker">{{ ops_health.get('blocking_components')|join(', ') or 'None' }}</strong></span>
+  </div>
+</details>
+
+{% set diagnostic_components = canonical.get('components') or {} %}
+{% set diagnostic_blockers = canonical.get('stale_required_components') or [] %}
+{% set diagnostic_sources = {
+  'spot': quote.get('source_badge_label') or quote.get('provider') or structure_snapshot.get('spot_source_label') or 'Canonical quote cache',
+  'bars': execution_chart.get('replay_source') or 'Completed bar cache',
+  'gamma': gamma_snapshot.get('source_label') or gamma_snapshot.get('provider') or 'Gamma snapshot cache',
+  'options': gamma_snapshot.get('options_source_label') or gamma_snapshot.get('provider') or 'Options snapshot cache',
+  'strategy': 'Completed candle evidence'
+} %}
+<details class="marketPulseDiagnostics marketPulseSection" id="marketPulseDataLockDiagnostics">
+  <summary class="marketPulseDiagnosticsSummary">
+    <span>
+      <strong><span id="marketPulseDiagnosticsHeading">{% if diagnostic_blockers %}Why execution is locked{% else %}Data health{% endif %}</span><span class="srOnly"> · Data Lock Diagnostics</span></strong>
+      <small id="marketPulseDiagnosticsSummaryText">
+        {% if diagnostic_blockers %}Locked — waiting for {{ diagnostic_blockers|join(', ')|replace('_', ' ')|lower }}{% else %}Ready — required inputs current{% endif %}
+      </small>
+    </span>
+    <span class="marketPulseDiagnosticsSummaryMeta">
+      <span
+        class="marketPulseDiagnosticsSyncIndicator"
+        id="marketPulseDiagnosticsSyncState"
+        aria-label="Automatic refresh active"
+        title="Automatic checks every {{ canonical.get('sync_interval_seconds', 15) }} seconds"
+      ><i aria-hidden="true"></i><span>Automatic checks</span></span>
+      <span aria-hidden="true">+</span>
+    </span>
+  </summary>
+  <div class="marketPulseDiagnosticsBody">
+    <div class="marketPulseDiagnosticsGrid" role="list" aria-label="Canonical data component diagnostics">
+      {% for component_name in ['spot', 'bars', 'gamma', 'options', 'strategy'] %}
+        {% set component = diagnostic_components.get(component_name, {}) %}
+        {% set component_status = component.get('status') or 'unavailable' %}
+        <article
+          class="marketPulseDiagnosticRow is-{{ component_status }}"
+          data-diagnostic-component="{{ component_name }}"
+          data-diagnostic-status="{{ component_status }}"
+          role="listitem"
+        >
+          <div class="marketPulseDiagnosticIdentity">
+            <strong>{{ 'Completed Bars' if component_name == 'bars' else component_name|title }}</strong>
+            <span data-diagnostic-role>{{ 'Required' if component.get('required') else 'Optional' }}</span>
+          </div>
+          <div><small>Status</small><strong data-diagnostic-status-text>{{ component_status|title }}</strong></div>
+          <div><small>Age / Limit</small><strong><span data-diagnostic-age>{{ (component.get('age_seconds') ~ 's') if component.get('age_seconds') is not none else '—' }}</span> / <span data-diagnostic-threshold>{{ (component.get('threshold_seconds') ~ 's') if component.get('threshold_seconds') is not none else '—' }}</span></strong></div>
+          <div><small>Last Success</small><strong data-diagnostic-as-of>{{ component.get('as_of') or 'Unavailable' }}</strong></div>
+          <div><small>Source / Cache</small><strong data-diagnostic-source>{{ diagnostic_sources.get(component_name) }}</strong></div>
+        </article>
+      {% endfor %}
+    </div>
+    <footer class="marketPulseDiagnosticsFooter">
+      <span>Canonical success <strong id="marketPulseDiagnosticsGeneratedAt">{{ canonical.get('generated_at') or 'Unavailable' }}</strong></span>
+      <span>Retry cadence <strong id="marketPulseDiagnosticsRetry">≤ {{ canonical.get('sync_interval_seconds', 15) }}s while visible</strong></span>
+    </footer>
+  </div>
+</details>
+
+<section class="marketPulseSessionState marketPulseSection {% if guardrail.active %}is-locked{% else %}is-open{% endif %}" aria-label="Market Pulse session and data state" data-command-surface="evidence">
   <div class="marketPulseSessionStateGrid">
     <div>
       <span>Session</span>
@@ -387,10 +500,7 @@
       <span>Gamma Data</span>
       <strong>{{ gamma_snapshot.get('snapshot_status_label') or macro_regime.subtitle or 'Awaiting snapshot' }}</strong>
     </div>
-    <div>
-      <span>Trigger</span>
-      <strong>{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or decision_label }}</strong>
-    </div>
+    <div><span>Strategy State</span><strong>{{ mp_state_label(strategy.get('state')) }}</strong></div>
   </div>
   {% if show_session_reason %}
     <p>{{ session_reason }}</p>
@@ -409,7 +519,7 @@
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-state" aria-label="Market state">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Market State</span>
-          <span class="trendChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateContext">{{ trade_state_label }}</span>
+          <span class="trendChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateContext">{{ mp_state_label(trade_state_label, 'Wait') }}</span>
         </div>
         <div class="marketPulseExecutionHeroMetrics">
           <div class="marketPulseExecutionHeroMetric is-spot" id="marketPulseHeroSpotCard">
@@ -581,7 +691,7 @@
         </div>
         <div class="marketPulseExecutionHeroChartShell">
           <div class="marketPulseExecutionHeroChartBanner">
-            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.get('hero_title_label') or (trade_state_label ~ ' - ' ~ (structure_snapshot.get('current_read') or location.zone or 'Awaiting structure')) }}</div>
+            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.get('hero_title_label') or (mp_state_label(trade_state_label, 'Wait') ~ ' — ' ~ (structure_snapshot.get('current_read') or location.zone or 'Awaiting structure')) }}</div>
             <div class="marketPulseExecutionHeroChartControls" aria-label="Chart display toggles">
               <button
                 class="marketPulseExecutionHeroChartToggle"
@@ -666,9 +776,22 @@
             data-next-put-wall="{{ next_put_wall_num if next_put_wall_num is not none else '' }}"
           >
             <div class="marketPulseExecutionHeroChartCanvas" id="spxExecutionHeroChartCanvas" aria-hidden="true"></div>
+            <div class="marketPulseExecutionHeroSessionShade" id="spxExecutionHeroSessionShade" hidden aria-hidden="true"></div>
             <div class="marketPulseExecutionHeroSessionBreak" id="spxExecutionHeroSessionBreak" hidden>Today</div>
             <div class="marketPulseExecutionHeroLevelRail" id="spxExecutionHeroLevelRail" aria-hidden="true"></div>
             <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading {{ selected_ticker }} chart · open TradingView if unavailable.</div>
+          </div>
+          <div class="marketPulseFastTape" id="marketPulseFastTape" aria-label="SPX fast visual tape">
+            <div class="marketPulseFastTape__meta">
+              <span class="marketPulseFastTape__label">Fast tape</span>
+              <strong id="marketPulseFastTapePrice">Awaiting SPX</strong>
+              <span
+                class="marketPulseMicroTapeStatus is-pending"
+                id="marketPulseHeroMicroTapeStatus"
+                aria-live="polite"
+              >Connecting · visual only</span>
+            </div>
+            <div class="marketPulseFastTape__chart" id="marketPulseFastTapeChart" aria-hidden="true"></div>
           </div>
         </div>
         <div class="marketPulseExecutionHeroRailFooter marketPulseExecutionHeroRailFooter-map">
@@ -712,46 +835,56 @@
       <section id="marketPulseTradeReadCard" class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-decision tradeRead-conditional" aria-label="Execution decision box">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Trade Decision</span>
-          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateChip">{{ playbook.get('execution_status_badge') or trigger_validation.get('status_badge') or structure_snapshot.get('trade_state_label') or trade_state_label }}</span>
+          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateChip">{{ authoritative_action_state|replace('_', ' ')|upper }}</span>
         </div>
-        <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{{ playbook.get('execution_status_label') or playbook.get('context_lead_label') or execution_model.posture_summary or 'Execution context pending.' }}</div>
+        <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{% if primary_scenario %}{{ primary_scenario.get('family_label') }} · {{ primary_scenario.get('level', {}).get('label') }} {{ '%.0f'|format(primary_scenario.get('level', {}).get('value')) }} · {{ authoritative_action_state|replace('_', ' ')|title }}{% else %}No valid scenario available.{% endif %}</div>
         <div class="marketPulseTradeabilityMetaRow marketPulseTradeabilityMetaRow-compact">
           <div class="marketPulseTradeabilityMeta">
-            <div class="tiny muted">Grade</div>
-            <strong id="marketPulseTradeabilityGrade">{{ playbook.get('context_grade') or structure_snapshot.get('context_grade') or '—' }}</strong>
+            <div class="tiny muted">Confluence Grade</div>
+            <strong id="marketPulseTradeabilityGrade">{{ primary_scenario.get('grade') or '—' }}</strong>
           </div>
           <div class="marketPulseTradeabilityMeta marketPulseTradeabilityScoreBlock">
             <div class="tiny muted">Score</div>
-            <strong><span id="marketPulseTradeabilityScore">{{ playbook.get('context_score') or structure_snapshot.get('context_score') or 0 }}</span><span class="tiny muted">/100</span></strong>
+            <strong><span id="marketPulseTradeabilityScore">{{ primary_scenario.get('score', 0) }}</span><span class="tiny muted">/100 confluence</span></strong>
             <div class="marketPulseTradeabilityBar" aria-hidden="true">
-              <span class="marketPulseTradeabilityBarFill tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseTradeabilityBarFill" style="width: {{ playbook.get('context_score') or structure_snapshot.get('context_score_pct') or 0 }}%;"></span>
+              <span class="marketPulseTradeabilityBarFill tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseTradeabilityBarFill" style="width: {{ primary_scenario.get('score', 0) }}%;"></span>
             </div>
           </div>
         </div>
-        <div class="marketPulseExecutionHeroDecisionGrid">
-          <div class="marketPulseExecutionHeroDecisionLead">
-            <div class="tiny muted">State</div>
-            <strong id="marketPulseHeroTradeState">{{ trade_state_label }}</strong>
+        <div class="marketPulseScoreMeaning" id="marketPulseScoreMeaning">{% if authoritative_action_state == 'ACTIVE' %}Trigger confirmed. Grade and score describe this scenario's supporting evidence.{% else %}Grade and score measure confluence—not permission. WAIT remains until the required trigger confirms.{% endif %}</div>
+        <div class="marketPulseExecutionHeroDecisionGrid" aria-label="Trade decision sequence">
+          <div class="marketPulseExecutionHeroDecisionLead" data-decision-stage="wait">
+            <div class="tiny muted"><span class="marketPulseDecisionStep">1</span> Wait · Location</div>
+            <strong id="marketPulseDecisionWait">{{ live_guide.get('location') or primary_plan.get('wait') or 'Waiting for a valid level' }}</strong>
+            <span class="marketPulseDecisionDetail" id="marketPulseHeroTradeState">{{ authoritative_action_state|replace('_', ' ')|title }}</span>
           </div>
-          <div class="marketPulseExecutionHeroDecisionCell">
-            <div class="tiny muted">Setup</div>
-            <strong id="marketPulseHeroBestLook"><span id="marketPulseBestLook">{{ playbook.get('action_context_label') or structure_snapshot.get('best_look') or 'Wait for cleaner structure' }}</span></strong>
+          <div class="marketPulseExecutionHeroDecisionCell" data-decision-stage="trigger">
+            <div class="tiny muted"><span class="marketPulseDecisionStep">2</span> Trigger</div>
+            <strong id="marketPulseHeroRequiredTrigger"><span id="marketPulseNeed">{{ live_guide.get('trigger') or primary_plan.get('trigger') or 'Confirmation unavailable' }}</span></strong>
           </div>
-          <div class="marketPulseExecutionHeroDecisionCell">
-            <div class="tiny muted">Trigger</div>
-            <strong id="marketPulseHeroRequiredTrigger"><span id="marketPulseNeed">{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Confirmation required' }}</span></strong>
+          <div class="marketPulseExecutionHeroDecisionCell" data-decision-stage="act">
+            <div class="tiny muted"><span class="marketPulseDecisionStep">3</span> Act</div>
+            <strong id="marketPulseHeroBestLook"><span id="marketPulseBestLook">{{ live_guide.get('action') or primary_plan.get('action') or 'No entry until the trigger confirms' }}</span></strong>
           </div>
-          <div class="marketPulseExecutionHeroDecisionCell">
-            <div class="tiny muted">Invalidation</div>
-            <strong id="marketPulseHeroInvalidation"><span id="marketPulseIfThen">{{ playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'Wait for live structure' }}</span></strong>
+          <div class="marketPulseExecutionHeroDecisionCell" data-decision-stage="target">
+            <div class="tiny muted"><span class="marketPulseDecisionStep">4</span> Target</div>
+            <strong id="marketPulseExecutionStatus">{{ live_guide.get('target') or primary_plan.get('target') or 'Set after direction confirms' }}</strong>
           </div>
-          <div class="marketPulseExecutionHeroDecisionCell">
-            <div class="tiny muted">Status</div>
-            <strong id="marketPulseExecutionStatus">{{ playbook.get('execution_status_label') or trigger_validation.get('manual_label') or trigger_validation.get('header_line') or 'Waiting for manual confirmation' }}</strong>
+          <div class="marketPulseExecutionHeroDecisionCell" data-decision-stage="cancel">
+            <div class="tiny muted"><span class="marketPulseDecisionStep">5</span> Cancel</div>
+            <strong id="marketPulseHeroInvalidation"><span id="marketPulseIfThen">{{ live_guide.get('invalidation') or primary_plan.get('cancel') or 'Stand down if confirmation fails' }}</span></strong>
           </div>
         </div>
+        <details class="marketPulseConfluenceBreakdown" id="marketPulseConfluenceBreakdown">
+          <summary>Why this score <span>Confluence supports ranking; confirmation controls execution.</span></summary>
+          <div id="marketPulseConfluenceComponents">
+            {% for component in primary_scenario.get('score_components', []) %}
+              <span class="is-{{ component.get('status') }}">{{ component.get('key')|replace('_', ' ')|title }} <strong>{{ component.get('earned') }}/{{ component.get('possible') }}</strong></span>
+            {% endfor %}
+          </div>
+        </details>
         <div class="marketPulseExecutionPanelFooter marketPulseExecutionPanelFooter-compact">
-          <span class="tiny marketPulseClampLine" id="spxPriorityFooterMeta">{{ playbook.get('context_footer_label') or structure_snapshot.get('plan_note') or playbook.get('trade_gate_label') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
+          <span class="tiny marketPulseClampLine" id="spxPriorityFooterMeta">{{ strategy.get('gamma_interpretation') or playbook.get('context_footer_label') or 'Awaiting market posture.' }} {{ strategy.get('missing_evidence') or '' }}</span>
         </div>
         <div id="spxPrioritySpotPanel" hidden></div>
         <div id="spxPriorityPriceLabel" hidden>{{ execution_chart.price_label or 'Live Price' }}</div>
@@ -765,7 +898,6 @@
         <div id="spxPriorityVolatilityState" hidden>—</div>
         <div id="spxPriorityTradeabilityLine" hidden>—</div>
         <div id="spxPrioritySessionRange" hidden>—</div>
-        <div id="spxPriorityVWAP" hidden>—</div>
         <div id="marketPulseEnvironment" hidden>{{ playbook.get('context_lead_label') or execution_model.posture_summary }}</div>
         <div id="spxPriorityNarrative" hidden></div>
         <div id="spxPriorityWarningBadges" hidden></div>
@@ -773,67 +905,140 @@
         <div id="spxPriorityNoTradeState" hidden>—</div>
         <div id="spxPriorityTrap" hidden>—</div>
       </section>
+
+      <section class="marketPulseScenarioLanes" id="marketPulseScenarioLanes" aria-label="Alternative market scenarios">
+        <article class="marketPulseScenarioLane is-alternative">
+          <span class="tiny muted">Alternative</span>
+          {% set alternate = scenario_alternatives[0] if scenario_alternatives else {} %}
+          <strong id="marketPulseAlternativeTitle">{{ alternate.get('family_label') or 'No alternative armed' }}</strong>
+          <span id="marketPulseAlternativeTrigger">{{ alternate.get('plan', {}).get('trigger') or 'Waiting for a valid secondary scenario.' }}</span>
+          <small id="marketPulseAlternativeScore">{% if alternate %}{{ alternate.get('score', 0) }}/100 confluence · not active{% endif %}</small>
+        </article>
+        <details class="marketPulseScenarioLane is-dormant" id="marketPulseDormantScenarios">
+          <summary><span class="tiny muted">Dormant watch</span><strong id="marketPulseDormantCount">{{ scenario_dormant|length }} scenarios</strong></summary>
+          <div id="marketPulseDormantList">
+            {% for candidate in scenario_dormant[:5] %}
+              <span>{{ candidate.get('family_label') }} · {{ candidate.get('level', {}).get('label') }} {{ '%.0f'|format(candidate.get('level', {}).get('value')) }}</span>
+            {% else %}<span>No dormant scenarios.</span>{% endfor %}
+          </div>
+        </details>
+
+        <details class="marketPulseLiveSetupMonitor" id="marketPulseLiveSetupMonitor">
+          <summary>
+            <span class="marketPulseLiveSetupIdentity">
+              <small>Live Setup Monitor</small>
+              <strong id="marketPulseLiveSetupHeadline">{% if live_primary %}{{ live_primary.get('state')|replace('_', ' ')|title }} · {{ live_primary.get('direction')|title }} {{ live_primary.get('level', {}).get('label') }} {{ '%.0f'|format(live_primary.get('level', {}).get('value')) }}{% else %}Watching for a qualified SPX setup{% endif %}</strong>
+            </span>
+            <span class="marketPulseLiveSetupMetrics">
+              <b id="marketPulseLiveSetupGrade">{{ live_primary.get('grade') or '—' }}</b>
+              {% set live_setup_age = live_primary.get('state_age_seconds', 0)|int %}
+              <span id="marketPulseLiveSetupAge">{% if live_setup_age >= 86400 %}{{ live_setup_age // 86400 }}d {{ (live_setup_age % 86400) // 3600 }}h{% elif live_setup_age >= 3600 %}{{ live_setup_age // 3600 }}h {{ (live_setup_age % 3600) // 60 }}m{% elif live_setup_age >= 60 %}{{ live_setup_age // 60 }}m{% else %}{{ live_setup_age }}s{% endif %}</span>
+              <span id="marketPulseLiveSetupFreshness">{{ 'Paused' if live_monitor.get('paused') else 'Fresh' if live_monitor.get('fresh') else 'Waiting' }}</span>
+              <span id="marketPulseLiveSetupCountdown">Next check soon</span>
+            </span>
+          </summary>
+          <div class="marketPulseLiveSetupBody">
+            <div class="marketPulseLiveSetupPlan" aria-label="Live setup execution plan">
+              <div><small>Location</small><strong id="marketPulseLiveSetupLocation">{{ live_primary.get('location') or 'Waiting for a valid location' }}</strong></div>
+              <div><small>Trigger</small><strong id="marketPulseLiveSetupTrigger">{{ live_primary.get('trigger') or 'Completed-candle confirmation required' }}</strong></div>
+              <div><small>Action</small><strong id="marketPulseLiveSetupAction">{{ live_primary.get('action') or 'No entry until confirmation' }}</strong></div>
+              <div><small>Invalidation</small><strong id="marketPulseLiveSetupInvalidation">{{ live_primary.get('invalidation') or 'Stand down if confirmation fails' }}</strong></div>
+              <div><small>Target</small><strong id="marketPulseLiveSetupTarget">{{ live_primary.get('target') or 'Set after confirmation' }}</strong></div>
+            </div>
+            <div class="marketPulseLiveSetupStatusRow">
+              <span id="marketPulseLiveSetupEvidence">Evidence {{ live_primary.get('evidence_at') or 'pending' }}</span>
+              <span id="marketPulseLiveSetupPersistence">{{ live_monitor.get('persistence', {}).get('message') or 'Durable monitor ready' }}</span>
+              <button class="btn" id="marketPulseLiveSetupAck" type="button"{% if not live_primary %} disabled{% endif %}>Acknowledge</button>
+              <button class="btn" id="marketPulseLiveSetupMute" type="button">Alerts muted</button>
+            </div>
+            <details class="marketPulseLiveSetupSecondary">
+              <summary>Secondary watches · best to least</summary>
+              <div id="marketPulseLiveSetupSecondaryList"></div>
+            </details>
+            <div class="marketPulseLiveSetupRecent" id="marketPulseLiveSetupRecent"></div>
+          </div>
+        </details>
+
+        <details class="marketPulseSetupReplay" id="marketPulseSetupReplay">
+          <summary>
+            <span>
+              <small>Intraday review</small>
+              <strong>Setup Replay</strong>
+            </span>
+            <span id="marketPulseReplaySummary">Checking earlier potential setups…</span>
+          </summary>
+          <div class="marketPulseSetupReplayBody">
+            <div class="marketPulseSetupReplayControls" aria-label="Setup Replay filters">
+              <span class="marketPulseReplayRankLabel">Highest signal quality first</span>
+              <span class="marketPulseReplayLegend" title="Historical replay setup; not a live entry">
+                <i aria-hidden="true">◇</i> Replay setup · historical, not a live entry
+              </span>
+              <span class="marketPulseReplayCutoff">Entries after 3:30 PM ET excluded</span>
+              <label>Direction
+                <select id="marketPulseReplayDirection">
+                  <option value="all">All</option>
+                  <option value="bullish">Bullish</option>
+                  <option value="bearish">Bearish</option>
+                </select>
+              </label>
+              <label>Family
+                <select id="marketPulseReplayFamily"><option value="all">All scenarios</option></select>
+              </label>
+              <label class="marketPulseReplayRejectedToggle">
+                <input type="checkbox" id="marketPulseReplayRejected"> Show rejected diagnostics
+              </label>
+            </div>
+            <div id="marketPulseReplayList" class="marketPulseSetupReplayList" aria-live="polite">
+              <p class="muted">Potential setups only; replay never creates trades or journal entries.</p>
+            </div>
+          </div>
+        </details>
+      </section>
     </div>
   </div>
 </section>
 
+{% set strategy_checklist = strategy.get('checklist') or {} %}
+{% set strategy_steps = [
+  ('location', 'Location reached'),
+  ('sweep', 'Liquidity swept'),
+  ('close_back_inside_5m', 'Five-minute close back inside'),
+  ('reversal_2_2_5m', 'Five-minute 2-2 confirmed'),
+  ('trigger_break', 'Trigger broken'),
+  ('setup_ready', 'Setup ready')
+] %}
+{% set confirmed_count = strategy_checklist.values()|select('equalto', 'Confirmed')|list|length %}
 <section class="card stack12 marketPulseSection marketPulseTriggerValidationShell" id="marketPulseEntryChecklist">
   <div class="toolbar">
     <div class="pillRow marketPulseTriggerTopline">
-      <span class="pill">Entry Checklist</span>
-      <span class="tiny muted marketPulseClampLine" id="marketPulseTriggerHeaderLine">{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or 'Manual confirmation required' }}</span>
+      <span class="pill">Reversal Checklist</span>
+      <span class="tiny muted marketPulseClampLine" id="marketPulseTriggerHeaderLine">{{ mp_state_label(strategy.get('state') or 'WAITING_FOR_LOCATION') }}</span>
     </div>
-    <div class="marketPulseTriggerProgressShell" aria-label="Entry checklist progress">
+    <div class="marketPulseTriggerProgressShell" aria-label="Reversal checklist progress">
       <div class="marketPulseTriggerProgressBar" aria-hidden="true">
-        <span class="marketPulseTriggerProgressFill" id="marketPulseTriggerProgressFill" style="width: {{ '%.2f'|format((((trigger_validation.get('items', {}).get('sweep', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reclaim', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reversal', {}).get('active')|int) + (trigger_validation.get('items', {}).get('volume', {}).get('active')|int)) / 4) * 100 if trigger_validation.get('items') else 0) }}%;"></span>
+        <span class="marketPulseTriggerProgressFill" id="marketPulseTriggerProgressFill" style="width: {{ '%.2f'|format((confirmed_count / 6) * 100) }}%;"></span>
       </div>
       <div class="marketPulseTriggerProgressMeta">
-        {% set trigger_complete_count = ((trigger_validation.get('items', {}).get('sweep', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reclaim', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reversal', {}).get('active')|int) + (trigger_validation.get('items', {}).get('volume', {}).get('active')|int)) %}
-        <strong id="marketPulseTriggerProgressLabel">{{ trigger_complete_count }}/4 complete</strong>
-        <span id="marketPulseTriggerProgressNext">{% if not trigger_validation.get('items', {}).get('sweep', {}).get('active') %}Next: Level touched{% elif not trigger_validation.get('items', {}).get('reclaim', {}).get('active') %}Next: Reclaim / rejection confirmed{% elif not trigger_validation.get('items', {}).get('reversal', {}).get('active') %}Next: Trigger candle printed{% elif not trigger_validation.get('items', {}).get('volume', {}).get('active') %}Next: Participation confirmed{% else %}Checklist complete{% endif %}</span>
+        <strong id="marketPulseTriggerProgressLabel">{{ confirmed_count }}/6 confirmed</strong>
+        <span id="marketPulseTriggerProgressNext">{{ strategy.get('missing_evidence') or 'Strategy evidence unavailable.' }}</span>
       </div>
     </div>
     <div class="marketPulseTriggerChecklist">
-      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('sweep', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerSweep" type="button" data-trigger-step="sweep" data-trigger-title="Level touched" aria-pressed="false">
-        <span class="marketPulseTriggerIndex" aria-hidden="true">1</span>
-        <div class="marketPulseTriggerCopy">
-          <span class="marketPulseTriggerStepState" id="marketPulseTriggerSweepState">{% if trigger_validation.get('items', {}).get('sweep', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
-          <strong>Level touched</strong>
-          <span id="marketPulseTriggerSweepLine">{{ trigger_validation.get('items', {}).get('sweep', {}).get('line') or 'Need sweep into the working level before entry is considered.' }}</span>
+      {% for key, label in strategy_steps %}
+        {% set step_status = strategy_checklist.get(key) or 'Unavailable' %}
+        <div class="marketPulseTriggerItem{% if step_status == 'Confirmed' %} is-active{% endif %}" data-trigger-step="{{ key }}" data-trigger-status="{{ step_status|lower }}">
+          <span class="marketPulseTriggerIndex" aria-hidden="true">{{ loop.index }}</span>
+          <div class="marketPulseTriggerCopy">
+            <span class="marketPulseTriggerStepState">{{ step_status }}</span>
+            <strong>{{ label }}</strong>
+          </div>
+          <span class="marketPulseTriggerDot" aria-hidden="true"></span>
         </div>
-        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
-      </button>
-      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reclaim', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReclaim" type="button" data-trigger-step="reclaim" data-trigger-title="Reclaim / rejection confirmed" aria-pressed="false">
-        <span class="marketPulseTriggerIndex" aria-hidden="true">2</span>
-        <div class="marketPulseTriggerCopy">
-          <span class="marketPulseTriggerStepState" id="marketPulseTriggerReclaimState">{% if trigger_validation.get('items', {}).get('reclaim', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
-          <strong>Reclaim / rejection confirmed</strong>
-          <span id="marketPulseTriggerReclaimLine">{{ trigger_validation.get('items', {}).get('reclaim', {}).get('line') or 'Wait for the level to prove itself after the interaction.' }}</span>
-        </div>
-        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
-      </button>
-      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reversal', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReversal" type="button" data-trigger-step="reversal" data-trigger-title="Trigger candle printed" aria-pressed="false">
-        <span class="marketPulseTriggerIndex" aria-hidden="true">3</span>
-        <div class="marketPulseTriggerCopy">
-          <span class="marketPulseTriggerStepState" id="marketPulseTriggerReversalState">{% if trigger_validation.get('items', {}).get('reversal', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
-          <strong>Trigger candle printed</strong>
-          <span id="marketPulseTriggerReversalLine">{{ trigger_validation.get('items', {}).get('reversal', {}).get('line') or 'A clean 5m reversal or continuation trigger still has to print.' }}</span>
-        </div>
-        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
-      </button>
-      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('volume', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerVolume" type="button" data-trigger-step="volume" data-trigger-title="Participation confirmed" aria-pressed="false">
-        <span class="marketPulseTriggerIndex" aria-hidden="true">4</span>
-        <div class="marketPulseTriggerCopy">
-          <span class="marketPulseTriggerStepState" id="marketPulseTriggerVolumeState">{% if trigger_validation.get('items', {}).get('volume', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
-          <strong>Participation confirmed</strong>
-          <span id="marketPulseTriggerVolumeLine">{{ trigger_validation.get('items', {}).get('volume', {}).get('line') or 'Require real participation before calling the move valid.' }}</span>
-        </div>
-        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
-      </button>
+      {% endfor %}
     </div>
     <div class="marketPulseTriggerFooter" id="marketPulseTriggerFooter">
-      <strong id="marketPulseTriggerStatus">{{ trigger_validation.get('status_line') or 'NO TRIGGER — NO TRADE' }}</strong>
-      <span id="marketPulseTriggerFooterLine">{{ trigger_validation.get('footer_line') or 'Awaiting market posture.' }}</span>
+      <strong id="marketPulseTriggerStatus">{{ strategy.get('rejection_acceptance_status') or 'Neither confirmed — wait' }}</strong>
+      <span id="marketPulseTriggerFooterLine">{{ strategy.get('gamma_interpretation') or 'Gamma regime unavailable.' }}</span>
     </div>
   </div>
 </section>
@@ -850,6 +1055,11 @@
   data-symbol="{{ ticker }}"
   data-default-dte="0"
   data-regime="mixed_gamma"
+  data-canonical-generation="{{ canonical_freshness.get('generation_id', '') }}"
+  data-canonical-gamma-generation="{{ canonical_freshness.get('gamma_generation_id', '') }}"
+  data-canonical-permission="{{ authoritative_action.get('permission') or verdict.get('permission') or 'locked' }}"
+  data-canonical-action-state="{{ authoritative_action_state }}"
+  data-canonical-execution-locked="{{ 'true' if canonical.get('execution_locked') else 'false' }}"
   aria-label="Dynamic gamma ladder"
 >
   <div class="toolbar gamma-ladder-toolbar">
@@ -858,7 +1068,7 @@
         <div class="gamma-ladder-commandBar__identity">
           <div class="gamma-ladder-kicker">
             <div class="pill">Gamma Ladder</div>
-            <span class="tiny muted gamma-ladder-header__sub">Live dealer positioning by symbol.</span>
+            <span class="tiny muted gamma-ladder-header__sub">Estimated dealer Gamma positioning.</span>
           </div>
           <div class="gamma-ladder-meta__headline">
             <strong data-gamma-symbol>{{ ticker }}</strong>
@@ -961,17 +1171,17 @@
                     aria-label="Gamma ladder days to expiration"
                     data-tooltip='{"title":"DTE","body":"DTE means Days To Expiration. Lower DTE usually has stronger intraday impact."}'
                   >
-                    {% for gamma_dte in ["0", "1", "3", "7", "all"] %}
+                    {% for gamma_dte in ["0", "1", "3", "7", "all", "prior"] %}
                       <button
                         class="gamma-dte-pill{% if gamma_dte == '0' %} active{% endif %}"
                         type="button"
                         role="tab"
                         aria-selected="{{ 'true' if gamma_dte == '0' else 'false' }}"
                         data-gamma-dte-pill="{{ gamma_dte }}"
-                      >{{ "All" if gamma_dte == "all" else gamma_dte ~ "DTE" }}</button>
+                      >{{ "All" if gamma_dte == "all" else "Prior" if gamma_dte == "prior" else gamma_dte ~ "DTE" }}</button>
                     {% endfor %}
                   </div>
-                  <div class="gamma-dte-limited">Only 3DTE data available</div>
+                  <div class="gamma-dte-limited">Unavailable choices do not have a valid snapshot.</div>
                 </div>
               </div>
             </div>
@@ -1002,47 +1212,43 @@
         </div>
       </div>
     </div>
-    <div class="gamma-ladder-keyLevels" id="gammaLadderKeyLevels" data-gamma-key-levels aria-live="polite">
-      <div class="gamma-ladder-keyLevel is-spot">
-        <span>Spot</span>
-        <strong data-gamma-key-spot>—</strong>
-        <small data-gamma-key-spot-note>Awaiting market</small>
+    <section class="gamma-execution-map" data-gamma-execution-map hidden aria-live="polite">
+      <div class="gamma-execution-map__header">
+        <div>
+          <span class="gamma-execution-map__session" data-gamma-map-session>Awaiting session context</span>
+          <strong data-gamma-map-regime>Gamma structure unavailable</strong>
+        </div>
+        <div class="gamma-execution-map__status">
+          <span class="gamma-execution-map__badge" data-gamma-scope>SPX execution</span>
+          <span class="gamma-execution-map__badge" data-gamma-lineage>Synchronizing</span>
+        </div>
       </div>
-      <div class="gamma-ladder-keyLevel is-regime">
-        <span>Gamma Regime</span>
-        <strong data-gamma-key-regime>Unavailable</strong>
-        <small>Dealer response environment</small>
+      <div class="gamma-command-sequence" data-gamma-command-sequence hidden>
+        <span class="is-now"><small>Now</small><strong data-gamma-command-now>Waiting for an accepted level</strong></span>
+        <span><small>Confirm</small><strong data-gamma-command-confirm>Confirmation unavailable</strong></span>
+        <span><small>Target</small><strong data-gamma-command-target>Target unavailable</strong></span>
+        <span class="is-fail"><small>Fail</small><strong data-gamma-command-fail>Failure level unavailable</strong></span>
       </div>
-      <div class="gamma-ladder-keyLevel is-freshness">
-        <span>Freshness</span>
-        <strong data-gamma-key-freshness>Unavailable</strong>
-        <small data-gamma-key-freshness-note>Awaiting accepted snapshot</small>
+      <div class="gamma-priority-strip" data-gamma-priority-strip hidden aria-label="Gamma levels ranked by immediate priority"></div>
+      <div class="gamma-execution-map__levels">
+        <span><small>Decision level</small><strong data-gamma-map-decision>—</strong></span>
+        <span><small>Upside magnet</small><strong data-gamma-map-upside>—</strong></span>
+        <span><small>Failure exposes</small><strong data-gamma-map-downside>—</strong></span>
+        <span><small>Expected range</small><strong data-gamma-map-range>—</strong></span>
       </div>
-      <div class="gamma-ladder-keyLevel is-strongest">
-        <span>Dominant Node</span>
-        <strong data-gamma-key-strongest>Unavailable</strong>
-        <small data-gamma-key-strongest-note>Strongest displayed GEX</small>
-      </div>
-      <div class="gamma-ladder-keyLevel is-flip">
-        <span>Gamma Flip</span>
-        <strong data-gamma-key-flip>Unavailable</strong>
-        <small>Regime transition strike</small>
-      </div>
-      <div class="gamma-ladder-keyLevel is-support">
-        <span>Nearest Support</span>
-        <strong data-gamma-key-support>Unavailable</strong>
-        <small data-gamma-key-support-note>Below spot</small>
-      </div>
-      <div class="gamma-ladder-keyLevel is-resistance">
-        <span>Nearest Resistance</span>
-        <strong data-gamma-key-resistance>Unavailable</strong>
-        <small data-gamma-key-resistance-note>Above spot</small>
-      </div>
-    </div>
-    <div class="gamma-decision-panels" data-gamma-decision-panels hidden>
-      <div class="gamma-structure-card" data-gamma-structure-summary></div>
-      <div class="gamma-top-levels" data-gamma-top-levels></div>
-    </div>
+      <p class="gamma-execution-map__evidence" data-gamma-map-evidence>Waiting for an accepted Gamma snapshot.</p>
+      <details class="gamma-execution-map__lineage">
+        <summary>Data timing and extended structure</summary>
+        <div>
+          <span><small>Quote</small><strong data-gamma-map-quote>—</strong></span>
+          <span><small>Chain</small><strong data-gamma-map-chain>—</strong></span>
+          <span><small>Expiration</small><strong data-gamma-map-expiration>—</strong></span>
+          <span><small>Local flip</small><strong data-gamma-map-flip>Not qualified</strong></span>
+          <span><small>Flip confidence</small><strong data-gamma-map-confidence>—</strong></span>
+          <span><small>Generation</small><strong data-gamma-map-generation>—</strong></span>
+        </div>
+      </details>
+    </section>
     <div class="gamma-ladder-stage" id="gammaLadderDepthBoard">
       <div class="gamma-ladder-shimmer" data-gamma-loading aria-hidden="true">
         {% for _ in range(5) %}
@@ -1062,7 +1268,11 @@
               <strong>Dealer positioning depth</strong>
               <small><b>PUT / NEG</b><i>ZERO AXIS</i><b>CALL / POS</b></small>
             </span>
-            <span>Net GEX</span>
+            <span class="gamma-ladder-board__actions">
+              <span>Net GEX</span>
+              <button type="button" data-gamma-depth-toggle aria-pressed="false">Show full ladder</button>
+              <small data-gamma-hidden-count></small>
+            </span>
           </div>
           <div class="gamma-ladder-rows" data-gamma-rows></div>
         </div>
@@ -1079,6 +1289,11 @@
         <span><small>Distance</small><strong data-gamma-selected-distance>—</strong></span>
         <span><small>Net Gamma</small><strong data-gamma-selected-net>—</strong></span>
         <span><small>State</small><strong data-gamma-selected-state>Inspection ready</strong></span>
+      </div>
+      <div class="gamma-ladder-selectedInspector__context">
+        <span><small>Expected behavior</small><strong data-gamma-selected-behavior>Select a strike to inspect expected behavior.</strong></span>
+        <span><small>Failure context</small><strong data-gamma-selected-failure>Failure context appears after selection.</strong></span>
+        <button class="gamma-ladder-selectedInspector__chart" type="button" data-gamma-selected-chart hidden>View on chart</button>
       </div>
     </div>
     <details class="gamma-ladder-guide" id="gammaLadderGuide">
@@ -1245,36 +1460,67 @@
 </section>
 </details>
 
-{% set watch_ns = namespace(leaders=[], laggard='—', laggard_move=None) %}
-{% for q in core_quotes %}
-  {% set q_pct = q.change_pct if q.change_pct is number else none %}
-  {% if q_pct is not none and q_pct > 0 and watch_ns.leaders|length < 3 %}
-    {% set watch_ns.leaders = watch_ns.leaders + [q.label] %}
-  {% endif %}
-  {% if q_pct is not none and (watch_ns.laggard_move is none or q_pct < watch_ns.laggard_move) %}
-    {% set watch_ns.laggard = q.label %}
-    {% set watch_ns.laggard_move = q_pct %}
-  {% endif %}
-{% endfor %}
+{% macro market_radar_card(q, compact=false) %}
+  {% set q_change = q.get('change') if q is mapping else none %}
+  {% set q_change_pct = q.get('change_pct') if q is mapping else none %}
+  {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
+  {% set q_timeframes = q.get('timeframes') if q is mapping else {} %}
+  {% set q_active_window = (q_timeframes or {}).get('1H') or q.get('last_hour') or {} %}
+  {% set q_active_tone = q_active_window.get('tone') or 'flat' %}
+  {% set freshness_label = (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Last quote ')|replace('Closed · last snapshot ', 'Last snapshot ') %}
+  {% set freshness_lower = freshness_label|lower %}
+  {% set freshness_tone = 'missing' if q.price is none or 'missing' in freshness_lower or 'unavailable' in freshness_lower else 'delayed' if 'critical' in freshness_lower or 'stale' in freshness_lower or 'delayed' in freshness_lower or 'cached' in freshness_lower or 'last quote' in freshness_lower else 'live' %}
+  <article class="stat marketPulseTapeCard marketRadarCard tone-{{ q.radar_tone }}{% if compact %} marketRadarCard--index{% endif %}"
+    data-symbol="{{ q.radar_symbol }}" data-radar-rank="{{ q.radar_rank or '' }}" data-timeframes='{{ (q_timeframes or {})|tojson }}'>
+    <div class="marketRadarCardHead">
+      <div>
+        <span class="marketRadarRank" data-role="radar-rank">{% if q.radar_rank %}#{{ q.radar_rank }}{% else %}INDEX{% endif %}</span>
+        <strong class="marketRadarSymbol">{{ q.radar_symbol }}</strong>
+      </div>
+      <span class="trendChip marketPulseWatchState tone-{{ q.radar_tone }}" data-role="state-chip" title="{{ q.watch_state_title or 'No clean tape edge yet.' }}">{{ q.watch_state or 'Mixed' }}</span>
+    </div>
+    <div class="marketRadarQuoteRow">
+      <strong data-role="price">{{ '%.2f'|format(q.price) if q.price is not none else '—' }}</strong>
+      <span class="marketRadarMove" data-role="change-line">{{ '%+.2f'|format(q_change_pct) ~ '%' if q_change_pct is number else '—' }}</span>
+    </div>
+    <div class="marketPulseTapeWindowModule is-{{ q_active_tone }}" data-role="timeframe-module">
+      <span class="srOnly" data-role="timeframe-label">{{ q_active_window.get('label') or '1H' }}</span>
+      <span class="srOnly" data-role="timeframe-change">{{ q_active_window.get('change_display') or '—' }}</span>
+      <div class="marketRadarChart" data-role="sparkline" data-role-chart="timeframe-chart">{{ (q_active_window.get('svg') or q.sparkline_svg)|safe }}</div>
+      <span class="srOnly" data-role="timeframe-pct">{{ q_active_window.get('pct_display') or '—' }}</span>
+    </div>
+    <div class="marketRadarRange" aria-label="Position in session range">
+      <span class="marketRadarRangeTrack"><i data-role="range-position" style="--range-position: {{ q.range_position or 0 }}%"></i></span>
+      <span data-role="range-position-label">{{ q.range_position_label }}</span>
+    </div>
+    <div class="marketRadarCardFoot">
+      <span data-role="range-line">{{ q.day_range_compact or q.range_display or q.day_range }}</span>
+      <span class="marketPulseFreshnessIndicator is-{{ freshness_tone }}" data-role="freshness" title="{{ freshness_label }}" aria-label="{{ freshness_label }}"><span aria-hidden="true">{{ '✓' if freshness_tone == 'live' else '◷' if freshness_tone == 'delayed' else '!' }}</span></span>
+    </div>
+    <span data-role="market-state" hidden>{{ q.market_state }}</span>
+    <span data-role="reason-line" hidden></span>
+    <span data-role="source-badge" hidden>{{ q.source_badge_label or q.source_label or source_label }}</span>
+  </article>
+{% endmacro %}
 
 <details class="marketPulseSupportFold marketPulseSection" id="marketPulseCoreTapeFold">
   <summary class="marketPulseSupportFoldSummary">
     <span>
-      <strong>Core Tape</strong>
-      <small>Breadth, leadership, selected-timeframe candles, and source freshness</small>
+      <strong>Market Radar</strong>
+      <small>Index pulse, ranked leadership, and session positioning</small>
     </span>
-    <span aria-hidden="true">Open tape</span>
+    <span aria-hidden="true">Open radar</span>
   </summary>
 <section class="card stack12 marketPulseTapeShell" id="marketPulseCoreTape">
   <div class="toolbar">
     <div class="pillRow marketPulseTapeTopline">
-      <span class="pill">Core Tape</span>
+      <span class="pill">Market Radar</span>
       <div class="marketPulseTapeWindowControl" data-market-pulse-tape-window-control>
         <button
           class="marketPulseTapeWindowButton"
           type="button"
           data-market-pulse-tape-window-toggle
-          aria-label="Change Core Tape chart timeframe"
+          aria-label="Change Market Radar chart timeframe"
           aria-haspopup="menu"
           aria-expanded="false"
         >
@@ -1299,97 +1545,51 @@
         class="notifRefreshBtn marketPulseTapeRefreshBtn"
         type="button"
         data-market-pulse-tape-refresh
-        aria-label="Refresh Core Tape"
-        title="Refresh Core Tape"
+        aria-label="Refresh Market Radar"
+        title="Refresh Market Radar"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
           <path d="M21 3v6h-6"></path>
         </svg>
       </button>
+      <details class="marketRadarHelp">
+        <summary aria-label="Explain Market Radar">?</summary>
+        <p>Card color shows tape state. Rank favors conviction, then move size. The range marker shows where price sits between today's low and high.</p>
+      </details>
     </div>
-    <div class="marketPulseWatchStrip">
+    <div class="marketPulseWatchStrip marketRadarSummaryStrip">
       <span class="marketPulseWatchStripItem">Breadth <strong><span id="marketPulseAdvancers">{{ stats.advancers }}</span>/<span id="marketPulseDecliners">{{ stats.decliners }}</span></strong></span>
-      <span class="marketPulseWatchStripItem">Risk <strong id="marketPulseRiskLabel">{{ context.leadership }}</strong></span>
-      <span class="marketPulseWatchStripItem">Leaders <strong id="marketPulseLeaders">{{ watch_ns.leaders|join(', ') if watch_ns.leaders else '—' }}</strong></span>
-      <span class="marketPulseWatchStripItem">Drag <strong id="marketPulseBiggestMove">{{ watch_ns.laggard }}{% if watch_ns.laggard_move is not none %} {{ '%+.2f'|format(watch_ns.laggard_move) }}%{% endif %}</strong></span>
+      <span class="marketPulseWatchStripItem">Regime <strong id="marketPulseRiskLabel">{{ context.leadership }}</strong></span>
+      <span class="marketPulseWatchStripItem">Leader <strong id="marketPulseLeaders">{{ market_radar.leaders[0].radar_symbol if market_radar.leaders else '—' }}</strong></span>
+      <span class="marketPulseWatchStripItem">Laggard <strong id="marketPulseBiggestMove">{{ market_radar.laggards[0].radar_symbol if market_radar.laggards else '—' }}</strong></span>
       <span class="marketPulseWatchStripItem"><strong id="marketPulseMissing">{{ stats.missing }}</strong> missing</span>
     </div>
-    <div class="marketPulseTapeLegend">
-      Selected timeframe candles · white bull · blue bear · cyan = positive tape · blue = negative tape
+
+    <section class="marketRadarSection" aria-labelledby="marketRadarIndexTitle">
+      <div class="marketRadarSectionHead"><h3 id="marketRadarIndexTitle">Index Pulse</h3><span>Market structure at a glance</span></div>
+      <div class="marketRadarIndexGrid" data-market-radar-index>
+        {% for q in market_radar.index_pulse %}{{ market_radar_card(q, true) }}{% endfor %}
+      </div>
+    </section>
+
+    <div class="marketRadarLeadershipDeck">
+      <section class="marketRadarLeaderPanel is-positive">
+        <div><span>Leading</span><strong>Relative strength</strong></div>
+        <ol id="marketRadarLeadersRanked">{% for q in market_radar.leaders %}<li><b>{{ q.radar_symbol }}</b><span>{{ '%+.2f'|format(q.radar_pct) }}%</span></li>{% else %}<li>None confirmed</li>{% endfor %}</ol>
+      </section>
+      <section class="marketRadarLeaderPanel is-negative">
+        <div><span>Dragging</span><strong>Relative weakness</strong></div>
+        <ol id="marketRadarLaggardsRanked">{% for q in market_radar.laggards %}<li><b>{{ q.radar_symbol }}</b><span>{{ '%+.2f'|format(q.radar_pct) }}%</span></li>{% else %}<li>None confirmed</li>{% endfor %}</ol>
+      </section>
     </div>
-    <div class="marketPulseTapeRail marketPulseWatchGrid" data-no-mobile-compact="1">
-      {% for q in core_quotes %}
-        {% set q_pct = q.change_pct if q.change_pct is number else none %}
-        {% set watch_state = q.watch_state or 'Mixed' %}
-        {% set watch_tone = q.watch_tone or 'neutral' %}
-        {% set watch_title = q.watch_state_title or 'No clean tape edge yet.' %}
-        {% set q_change = q.get('change') if q is mapping else none %}
-        {% set q_change_pct = q.get('change_pct') if q is mapping else none %}
-        {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
-        {% set watch_tone = 'positive' if delta_val is not none and delta_val > 0 else 'negative' if delta_val is not none and delta_val < 0 else 'neutral' %}
-        {% set spark_tone = 'pos' if delta_val is not none and delta_val > 0 else 'neg' if delta_val is not none and delta_val < 0 else 'flat' %}
-        {% set q_timeframes = q.get('timeframes') if q is mapping else {} %}
-        {% set q_active_window = (q_timeframes or {}).get('1H') or q.get('last_hour') or {} %}
-        {% set q_active_tone = q_active_window.get('tone') or 'flat' %}
-        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}" data-timeframes='{{ (q_timeframes or {})|tojson }}'>
-          <div class="marketPulseWatchCardTop">
-            <div class="k"><span class="marketPulseTapeTrendIcon marketPulseTapeTrendIcon--{{ 'up' if delta_val is not none and delta_val > 0 else 'down' if delta_val is not none and delta_val < 0 else 'mixed' }}">{{ mp_icon('up') if delta_val is not none and delta_val > 0 else mp_icon('down') if delta_val is not none and delta_val < 0 else mp_icon('activity') }}</span>{{ q.label }}</div>
-            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" data-state-label="{{ watch_state|upper }}" title="{{ watch_title }}">{{ watch_state }}</span>
-          </div>
-          <div class="marketPulseTapeWindowModule is-{{ q_active_tone }}" data-role="timeframe-module">
-            <div class="marketPulseTapeWindowHead">
-              <span class="marketPulseTapeWindowCardLabel" data-role="timeframe-label">{{ q_active_window.get('label') or '1H' }}</span>
-              <span class="marketPulseTapeWindowChange" data-role="timeframe-change">{{ q_active_window.get('change_display') or '—' }}</span>
-            </div>
-            <div class="marketPulseTapeWindowChartWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline" data-role-chart="timeframe-chart">{{ (q_active_window.get('svg') or q.sparkline_svg)|safe }}</div>
-            <div class="marketPulseTapeWindowFoot">
-              <span class="marketPulseTapeWindowPct" data-role="timeframe-pct">{{ q_active_window.get('pct_display') or '—' }}</span>
-            </div>
-          </div>
-          <div class="marketPulseWatchValueRow">
-            <div class="v" data-role="price">
-              {% if q.price is not none %}
-                {{ '%.2f'|format(q.price) }}
-              {% else %}
-                —
-              {% endif %}
-            </div>
-            <div class="tiny" data-role="change-line">
-              {% if q_change_pct is number %}
-                {{ '%+.2f'|format(q_change_pct) }}%
-              {% elif q_change is number %}
-                {{ '%+.2f'|format(q_change) }}
-              {% else %}
-                —
-              {% endif %}
-            </div>
-          </div>
-          <div class="tiny muted marketPulseWatchMetaRow">
-            <span data-role="market-state" hidden>{{ q.market_state }}</span>
-            {% set freshness_label = (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Last quote ')|replace('Closed · last snapshot ', 'Last snapshot ') %}
-            {% set freshness_lower = freshness_label|lower %}
-            {% set has_quote_price = q.price is not none %}
-            {% set freshness_tone = 'missing' if not has_quote_price or 'missing' in freshness_lower or 'unavailable' in freshness_lower or 'no tick' in freshness_lower or 'no live data' in freshness_lower else 'delayed' if 'critical' in freshness_lower or 'stale' in freshness_lower or 'closed' in freshness_lower or 'delayed' in freshness_lower or 'cached' in freshness_lower or 'wait' in freshness_lower or 'old' in freshness_lower or 'last quote' in freshness_lower or 'last snapshot' in freshness_lower else 'live' %}
-            {% set freshness_glyph = '✓' if freshness_tone == 'live' else '◷' if freshness_tone == 'delayed' else '!' %}
-            <span
-              class="marketPulseFreshnessIndicator is-{{ freshness_tone }}"
-              data-role="freshness"
-              data-freshness-label="{{ freshness_label }}"
-              data-freshness-tone="{{ freshness_tone }}"
-              title="{{ freshness_label }}"
-              aria-label="{{ freshness_label }}"
-            >
-              <span class="marketPulseFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
-              <span class="srOnly">{{ freshness_label }}</span>
-            </span>
-          </div>
-          <div class="tiny muted" data-role="reason-line" hidden></div>
-          <div class="tiny muted" data-role="source-badge" hidden>{{ q.source_badge_label or q.source_label or source_label }}</div>
-          <div class="tiny muted marketPulseWatchRange" data-role="range-line">{{ q.day_range_compact or q.range_display or q.day_range }}</div>
-        </div>
-      {% endfor %}
-    </div>
+
+    <section class="marketRadarSection" aria-labelledby="marketRadarWatchlistTitle">
+      <div class="marketRadarSectionHead"><h3 id="marketRadarWatchlistTitle">Ranked Watchlist</h3><span>Conviction first, move size second</span></div>
+      <div class="marketRadarWatchlistGrid" data-market-radar-watchlist data-no-mobile-compact="1">
+        {% for q in market_radar.watchlist %}{{ market_radar_card(q) }}{% endfor %}
+      </div>
+    </section>
   </div>
 </section>
 </details>
@@ -1669,7 +1869,7 @@
       </div>
       <div class="marketPulseModalStat">
         <span class="tiny muted">State</span>
-        <strong>{{ playbook.get('trade_state_label') or '—' }}</strong>
+        <strong>{{ mp_state_label(playbook.get('trade_state_label'), '—') }}</strong>
       </div>
       <div class="marketPulseModalStat">
         <span class="tiny muted">Edge</span>
@@ -1765,14 +1965,17 @@
      data-market-hours="{{ '1' if market_hours else '0' }}"
      hidden></div>
 
-<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': base_playbook_quote, 'spx_quote': base_spx_quote, 'vix_quote': base_vix_quote, 'gamma_snapshot': base_gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url, 'tape_api_url': market_pulse_tape_api_url}|tojson }}</script>
-<script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
-<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
+<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': base_playbook_quote, 'spx_quote': base_spx_quote, 'vix_quote': base_vix_quote, 'gamma_snapshot': base_gamma_snapshot, 'gamma_ladder': gamma_ladder, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'canonical_freshness': canonical, 'refresh_contract': market_pulse_refresh_contract, 'operational_health': ops_health, 'verdict': verdict, 'live_execution_guide': live_guide, 'live_setup_monitor': live_monitor, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'bootstrap_refresh_required': bootstrap_refresh_required, 'context_api_url': market_pulse_context_api_url, 'live_setup_ack_api_url': '/api/market-pulse/live-setup/ack', 'tape_api_url': market_pulse_tape_api_url, 'setup_replay_api_url': market_pulse_setup_replay_api_url}|tojson }}</script>
+<script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_refresh_coordinator.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_live_setup.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_micro_tape.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-ladder-20260810c"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}?v={{ market_now_iso|urlencode }}"></script>
 <script src="{{ url_for('static', filename='js/symbol_search_control.js') }}?v={{ static_v }}&rev=symbol-search-20260619a"></script>
 <script src="{{ url_for('static', filename='js/gamma_ladder_presentation.js') }}?v={{ static_v }}&rev=gamma-depth-map-20260714a"></script>
-<script src="{{ url_for('static', filename='js/gamma_ladder.js') }}?v={{ static_v }}&rev=gamma-ladder-20260521a"></script>
-<script src="{{ url_for('static', filename='js/market_pulse_gamma_workflow.js') }}?v={{ static_v }}&rev=gamma-chart-workflow-20260714b"></script>
+<script src="{{ url_for('static', filename='js/gamma_ladder.js') }}?v={{ static_v }}&rev=market-pulse-ladder-20260810c"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_gamma_workflow.js') }}?v={{ static_v }}&rev=sticky-summary-20260810a"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
@@ -1783,6 +1986,9 @@
   const streamFreshness = document.getElementById("marketPulseStreamFreshness");
   const guardMeta = document.getElementById("marketGuardrailMeta");
   const contextRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-context-refresh]"));
+  const contextRefreshFeedback = document.getElementById("marketPulseRefreshFeedback");
+  const diagnosticsSyncState = document.getElementById("marketPulseDiagnosticsSyncState");
+  const refreshCountdown = document.getElementById("marketPulseRefreshCountdown");
   const tapeRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
   const tapeShell = document.querySelector(".marketPulseTapeShell");
   const tickerSearchRoot = document.querySelector("[data-playbook-symbol-search-control]");
@@ -1810,6 +2016,32 @@
       // Mobile Safari private mode and strict contexts can throw here.
     }
   };
+  const REFRESH_FEEDBACK_KEY = "marketPulseRefreshFeedback.v1";
+  let refreshFeedbackTimer = null;
+  const setRefreshFeedback = (message, isError = false) => {
+    if (!contextRefreshFeedback) return;
+    if (refreshFeedbackTimer) {
+      window.clearTimeout(refreshFeedbackTimer);
+      refreshFeedbackTimer = null;
+    }
+    contextRefreshFeedback.textContent = message || "";
+    contextRefreshFeedback.classList.toggle("is-error", !!isError);
+  };
+  const setTransientRefreshFeedback = (message, isError = false, durationMs = 4500) => {
+    setRefreshFeedback(message, isError);
+    if (!message) return;
+    refreshFeedbackTimer = window.setTimeout(() => setRefreshFeedback(""), durationMs);
+  };
+  const setDiagnosticsSyncState = (message) => {
+    if (!diagnosticsSyncState) return;
+    diagnosticsSyncState.title = message || "Automatic refresh active";
+    diagnosticsSyncState.setAttribute("aria-label", message || "Automatic refresh active");
+    diagnosticsSyncState.classList.toggle("is-delayed", String(message || "").toLowerCase().includes("delayed"));
+  };
+  const completedRefreshAt = storageGet(REFRESH_FEEDBACK_KEY);
+  if (completedRefreshAt) {
+    storageSet(REFRESH_FEEDBACK_KEY, "");
+  }
   const marketHours = guardMeta.dataset.marketHours === "1";
   const storedMode = storageGet(MODE_KEY);
   let mode = storedMode || ((marketHours || mobileFoldQuery.matches) ? "execution" : "research");
@@ -1820,6 +2052,13 @@
   let coreReady = false;
   let pageLoaded = document.readyState === "complete";
   let contextRefreshPromise = null;
+  let canonicalRefreshTimer = null;
+  let refreshCountdownTimer = null;
+  let refreshWatchdogTimer = null;
+  let nextCanonicalCheckAt = 0;
+  let nextCanonicalCheckMode = "refresh";
+  let automaticFailureCount = 0;
+  const CANONICAL_REQUEST_TIMEOUT_MS = 25000;
   const basePayloadNode = document.getElementById("spxPriorityBasePayload");
   let basePayload = null;
   try {
@@ -1828,8 +2067,111 @@
     basePayload = null;
   }
   let currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
+  let currentGenerationId = String(
+    (basePayload && basePayload.canonical_freshness && basePayload.canonical_freshness.generation_id) || ""
+  );
+  let currentGenerationAtMs = Date.parse(
+    (basePayload && basePayload.canonical_freshness && basePayload.canonical_freshness.generated_at) || ""
+  );
+  let currentLiveSetupRevision = Number(basePayload?.live_setup_monitor?.primary?.revision || 0);
+  let currentLiveSetupId = String(basePayload?.live_setup_monitor?.primary?.setup_id || "");
+  const LIVE_SETUP_DELIVERIES_KEY = "marketPulseLiveSetupDeliveries.v1";
+  const LIVE_SETUP_MUTE_KEY = "marketPulseLiveSetupMuted.v1";
+  const liveSetupAckApiUrl = basePayload?.live_setup_ack_api_url || "/api/market-pulse/live-setup/ack";
+  let lastAutomaticCheckAt = Date.now();
+  let lastCanonicalResumeAt = 0;
+  const AUTO_REFRESH_INTERVAL_MS = 15000;
+  const CANONICAL_REFRESH_LANE = "market-pulse:canonical";
+  let automaticRefreshEnabled = basePayload?.refresh_contract?.automatic_refresh_enabled ?? marketHours;
+  let nextSessionOpenAt = String(basePayload?.refresh_contract?.next_session_open_at || "");
+  const renderRefreshCountdown = () => {
+    if (!refreshCountdown) return;
+    const countdownPill = refreshCountdown.closest(".marketPulsePollCountdown");
+    if (!automaticRefreshEnabled) {
+      refreshCountdown.textContent = "Paused";
+      if (countdownPill) countdownPill.dataset.state = "paused";
+      countdownPill?.setAttribute("title", "Market closed · automatic refresh paused");
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      refreshCountdown.textContent = "Away";
+      if (countdownPill) countdownPill.dataset.state = "away";
+      countdownPill?.setAttribute("title", "Page hidden · refresh resumes on return");
+      return;
+    }
+    const seconds = Math.max(0, Math.ceil((nextCanonicalCheckAt - Date.now()) / 1000));
+    const prefix = nextCanonicalCheckMode === "retry" ? "Retry" : "Refresh";
+    if (countdownPill) countdownPill.dataset.state = nextCanonicalCheckMode === "retry" ? "retry" : "active";
+    refreshCountdown.textContent = nextCanonicalCheckMode === "retry"
+      ? `Retry ${seconds}s`
+      : `${seconds}s`;
+    countdownPill?.setAttribute("title", `${prefix} in ${seconds} seconds`);
+  };
+  const pauseCanonicalRefresh = () => {
+    window.marketPulseRefreshCoordinator?.unregister(CANONICAL_REFRESH_LANE);
+    if (canonicalRefreshTimer) window.clearTimeout(canonicalRefreshTimer);
+    canonicalRefreshTimer = null;
+    nextCanonicalCheckAt = 0;
+    setDiagnosticsSyncState("Market closed · automatic updates paused · last valid session retained");
+    renderRefreshCountdown();
+    const wakeAt = Date.parse(nextSessionOpenAt);
+    if (!Number.isFinite(wakeAt)) return;
+    const delayMs = Math.max(1000, Math.min(wakeAt - Date.now(), 6 * 60 * 60 * 1000));
+    canonicalRefreshTimer = window.setTimeout(() => {
+      canonicalRefreshTimer = null;
+      if (Date.now() >= wakeAt) {
+        checkForCanonicalGeneration();
+      } else {
+        pauseCanonicalRefresh();
+      }
+    }, delayMs);
+  };
+  const suspendCanonicalRefresh = () => {
+    window.marketPulseRefreshCoordinator?.unregister(CANONICAL_REFRESH_LANE);
+    if (canonicalRefreshTimer) window.clearTimeout(canonicalRefreshTimer);
+    canonicalRefreshTimer = null;
+    nextCanonicalCheckAt = 0;
+    setDiagnosticsSyncState("Away · updates paused · validating on return");
+    renderRefreshCountdown();
+  };
+  const applyRefreshContract = (contract = {}) => {
+    if (!contract || typeof contract !== "object") return;
+    automaticRefreshEnabled = contract.automatic_refresh_enabled !== false;
+    nextSessionOpenAt = String(contract.next_session_open_at || "");
+    if (!automaticRefreshEnabled) pauseCanonicalRefresh();
+  };
+  const scheduleCanonicalCheck = (delaySeconds = 15, mode = "refresh", { jitter = false } = {}) => {
+    if (!automaticRefreshEnabled) {
+      pauseCanonicalRefresh();
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      suspendCanonicalRefresh();
+      return;
+    }
+    const baseDelayMs = Math.max(1000, Math.min(30000, Number(delaySeconds || 15) * 1000));
+    const jitterMs = jitter ? Math.floor(Math.random() * Math.min(1500, baseDelayMs * 0.1)) : 0;
+    const delayMs = baseDelayMs + jitterMs;
+    nextCanonicalCheckMode = mode === "retry" ? "retry" : "refresh";
+    nextCanonicalCheckAt = Date.now() + delayMs;
+    renderRefreshCountdown();
+    if (window.marketPulseRefreshCoordinator?.schedule(CANONICAL_REFRESH_LANE, delayMs)) {
+      canonicalRefreshTimer = null;
+      return;
+    }
+    if (canonicalRefreshTimer) window.clearTimeout(canonicalRefreshTimer);
+    canonicalRefreshTimer = window.setTimeout(() => {
+      canonicalRefreshTimer = null;
+      checkForCanonicalGeneration();
+    }, delayMs);
+  };
+  const scheduleCanonicalRetry = (delaySeconds = 3) => {
+    const boundedDelayMs = Math.max(1000, Math.min(30000, Number(delaySeconds || 3) * 1000));
+    scheduleCanonicalCheck(boundedDelayMs / 1000, "retry", { jitter: true });
+  };
   const contextApiUrl = (basePayload && basePayload.context_api_url) || "{{ market_pulse_context_api_url }}";
   const tapeApiUrl = (basePayload && basePayload.tape_api_url) || "{{ market_pulse_tape_api_url }}";
+  const setupReplayApiUrl = (basePayload && basePayload.setup_replay_api_url) || "{{ market_pulse_setup_replay_api_url }}";
   storageSet(TICKER_KEY, currentTicker);
 
   const showReloadOverlay = (title, detail) => {
@@ -1881,35 +2223,924 @@
     });
   };
 
-  const refreshMarketPulseContext = async (forceRefresh = false, showOverlay = false) => {
+  const setCanonicalText = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = String(value);
+  };
+
+  const humanizeMarketState = (value, fallback = "Pending") => {
+    const code = String(value || "").trim().toUpperCase();
+    const labels = {
+      LEVEL_BEING_TESTED: "Testing active level",
+      WAITING_FOR_LOCATION: "Waiting for price to reach level",
+      PLANNING_ONLY: "Planning only",
+      NO_TRADE: "No trade",
+      REVERSAL_READY: "Reversal setup ready",
+      CONTINUATION_ACTIVE: "Continuation active",
+      SETUP_READY: "Setup ready",
+      AFTER_HOURS_VALID: "After-hours planning",
+      LIVE_SESSION: "Live session",
+      STRONG_POSITIVE: "Strong Positive Gamma",
+      STRONG_NEGATIVE: "Strong Negative Gamma",
+      POSITIVE_GAMMA: "Positive Gamma",
+      NEGATIVE_GAMMA: "Negative Gamma",
+    };
+    if (!code) return fallback;
+    if (labels[code]) return labels[code];
+    const text = code.replace(/_/g, " ").toLowerCase();
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+
+  const gammaRegimeDisplayLabel = (value, fallback = "Regime unavailable") => {
+    const state = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (state.includes("positive")) {
+      return state.includes("strong") ? "Strong Positive Ⲅ" : "Positive Ⲅ";
+    }
+    if (state.includes("negative")) {
+      return state.includes("strong") ? "Strong Negative Ⲅ" : "Negative Ⲅ";
+    }
+    return fallback;
+  };
+
+  const canonicalGammaRegime = (payload = {}) => {
+    const playbook = payload.playbook_view || {};
+    const structure = payload.market_structure_snapshot || {};
+    const gamma = payload.gamma_snapshot || {};
+    const value = playbook.gamma_regime
+      || structure.gamma_regime
+      || gamma.regime
+      || gamma.regime_label
+      || playbook.gamma_regime_label
+      || structure.gamma_regime_label
+      || "";
+    const label = playbook.gamma_regime_label
+      || structure.gamma_regime_label
+      || gamma.regime_label
+      || value;
+    const subtitle = playbook.regime_reason_label
+      || structure.gamma_regime_reason_label
+      || structure.gamma_regime_subtitle
+      || gamma.regime_reason_label
+      || "Gamma snapshot unavailable";
+    const status = gamma.snapshot_status
+      || structure.gamma_data_status
+      || playbook.gamma_data_status
+      || "unavailable";
+    return {value: String(value), label: String(label), subtitle: String(subtitle), status};
+  };
+
+  const buildMarketPulseDecisionSequence = (strategy = {}) => {
+    const state = String(strategy.state || "").toUpperCase();
+    const path = String(strategy.path || "").toUpperCase();
+    const direction = String(strategy.direction || "").toLowerCase();
+    const interaction = String(strategy.interaction || "").toLowerCase();
+    const level = strategy.active_level || {};
+    const hasLevel = Number.isFinite(Number(level.value));
+    const levelName = level.label || "active level";
+    const levelText = hasLevel ? `${levelName} ${Number(level.value).toFixed(0)}` : levelName;
+    const ready = state === "REVERSAL_READY" || state === "CONTINUATION_ACTIVE";
+    const continuationDirection = interaction === "from_below" ? "bullish" : interaction === "from_above" ? "bearish" : "";
+    const actionDirection = direction || (path === "CONTINUATION" ? continuationDirection : "");
+
+    const wait = hasLevel ? `Watch ${levelText}` : "Waiting for a valid level";
+    let trigger = hasLevel
+      ? `At ${levelName}: wait for a completed 5-minute 2-1-2 or 2-2 Reversal`
+      : "Level and confirmation unavailable";
+    if (state === "REVERSAL_READY") trigger = `Rejection confirmed at ${levelText}`;
+    if (state === "CONTINUATION_ACTIVE") trigger = `Acceptance confirmed beyond ${levelText}`;
+
+    let act = "No entry until the trigger confirms";
+    if (ready && actionDirection === "bullish") act = state === "CONTINUATION_ACTIVE" ? "Buy confirmed acceptance" : "Buy the confirmed trigger";
+    if (ready && actionDirection === "bearish") act = state === "CONTINUATION_ACTIVE" ? "Sell confirmed acceptance" : "Sell the confirmed trigger";
+
+    const target = strategy.primary_target && Number.isFinite(Number(strategy.primary_target.value))
+      ? `${strategy.primary_target.label || "Target"} ${Number(strategy.primary_target.value).toFixed(0)}`
+      : "Set after direction confirms";
+    let cancel = "Stand down if confirmation fails";
+    if (hasLevel && interaction === "from_below") cancel = `Cancel if a completed 5-minute candle accepts above ${levelText}`;
+    if (hasLevel && interaction === "from_above") cancel = `Cancel if a completed 5-minute candle accepts below ${levelText}`;
+    const lead = ready
+      ? `Trigger confirmed at ${levelText}. Follow the defined action and risk plan.`
+      : hasLevel
+        ? `No entry yet. Watching ${levelText}; act only after confirmation.`
+        : "No entry yet. Waiting for a valid level and confirmation.";
+    return {wait, trigger, act, target, cancel, lead};
+  };
+
+  const canonicalScenarioPlan = (playbook = {}, strategy = {}) => {
+    const rankings = playbook.scenario_rankings || {};
+    const primary = playbook.primary_scenario || rankings.primary;
+    if (!primary || typeof primary !== "object" || !primary.plan) {
+      return {primary: null, sequence: buildMarketPulseDecisionSequence(strategy), rankings};
+    }
+    return {
+      primary,
+      rankings,
+      sequence: {
+        wait: primary.plan.wait || "Waiting for a valid level",
+        trigger: primary.plan.trigger || "Confirmation unavailable",
+        act: primary.plan.action || "No entry until the trigger confirms",
+        target: primary.plan.target || "Set after direction confirms",
+        cancel: primary.plan.cancel || "Stand down if confirmation fails",
+        lead: `${primary.family_label || "Scenario"} · ${primary.level?.label || "Level"} ${Number(primary.level?.value).toFixed(0)} · ${humanizeMarketState(primary.state)}`,
+      },
+    };
+  };
+
+  const renderConfluenceComponents = (primary) => {
+    const host = document.getElementById("marketPulseConfluenceComponents");
+    if (!host) return;
+    const fragment = document.createDocumentFragment();
+    (primary?.score_components || []).forEach((component) => {
+      const row = document.createElement("span");
+      row.className = `is-${component.status || "missing"}`;
+      const label = document.createTextNode(`${humanizeMarketState(component.key)} `);
+      const score = document.createElement("strong");
+      score.textContent = `${component.earned || 0}/${component.possible || 0}`;
+      row.append(label, score);
+      fragment.append(row);
+    });
+    host.replaceChildren(fragment);
+  };
+
+  const liveSetupStateLabel = (value) => String(value || "WATCHING")
+    .replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const readLiveSetupDeliveries = () => {
+    try {
+      const parsed = JSON.parse(storageGet(LIVE_SETUP_DELIVERIES_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_err) { return []; }
+  };
+  const deliverLiveSetupAlert = (monitor) => {
+    const event = monitor?.alert_event;
+    const delivered = readLiveSetupDeliveries();
+    if (!window.MarketPulseLiveSetup?.shouldDeliver(event, delivered)) return;
+    storageSet(LIVE_SETUP_DELIVERIES_KEY, JSON.stringify([event.id, ...delivered].slice(0, 100)));
+    window.dispatchEvent(new CustomEvent("market-pulse-app-notification", {detail: event}));
+    if (storageGet(LIVE_SETUP_MUTE_KEY) !== "0") return;
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(event.title || "SPX setup confirmed", {body: event.text || "Open Market Pulse."});
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const context = AudioContext ? new AudioContext() : null;
+        const oscillator = context?.createOscillator();
+        const gain = context?.createGain();
+        if (context && oscillator && gain) {
+          oscillator.frequency.value = 640;
+          gain.gain.setValueAtTime(0.05, context.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.18);
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start();
+          oscillator.stop(context.currentTime + 0.18);
+        }
+      } catch (_err) { /* Sound is optional. */ }
+    }
+  };
+  const renderLiveSetupMonitor = (monitor = {}) => {
+    const primary = monitor.primary || {};
+    const revision = Number(primary.revision || 0);
+    const setupId = String(primary.setup_id || "");
+    if (!window.MarketPulseLiveSetup?.shouldAcceptRevision(currentLiveSetupId, currentLiveSetupRevision, setupId, revision)) return;
+    if (setupId) { currentLiveSetupId = setupId; currentLiveSetupRevision = revision; }
+    const level = primary.level || {};
+    const levelValue = Number(level.value);
+    setCanonicalText("marketPulseLiveSetupHeadline", primary.setup_id
+      ? `${liveSetupStateLabel(primary.state)} · ${liveSetupStateLabel(primary.direction)} ${level.label || "level"}${Number.isFinite(levelValue) ? ` ${levelValue.toFixed(0)}` : ""}`
+      : "Watching for a qualified SPX setup");
+    setCanonicalText("marketPulseLiveSetupGrade", primary.grade || "—");
+    setCanonicalText("marketPulseLiveSetupAge", window.MarketPulseLiveSetup.formatElapsed(primary.state_age_seconds));
+    setCanonicalText("marketPulseLiveSetupFreshness", monitor.paused ? "Paused" : monitor.fresh ? "Fresh" : "Waiting");
+    setCanonicalText("marketPulseLiveSetupLocation", primary.location || "Waiting for a valid location");
+    setCanonicalText("marketPulseLiveSetupTrigger", primary.trigger || "Completed-candle confirmation required");
+    setCanonicalText("marketPulseLiveSetupAction", monitor.paused ? "Paused — no entry while required data is stale" : primary.action || "No entry until confirmation");
+    setCanonicalText("marketPulseLiveSetupInvalidation", primary.invalidation || "Stand down if confirmation fails");
+    setCanonicalText("marketPulseLiveSetupTarget", primary.target || "Set after confirmation");
+    setCanonicalText("marketPulseLiveSetupEvidence", `Evidence ${primary.evidence_at ? formatDiagnosticTime(primary.evidence_at) : "pending"}`);
+    setCanonicalText("marketPulseLiveSetupPersistence", monitor.persistence?.message || "Durable monitor ready");
+    const root = document.getElementById("marketPulseLiveSetupMonitor");
+    if (root) { root.dataset.setupState = String(primary.state || "WATCHING").toLowerCase(); root.classList.toggle("is-paused", !!monitor.paused); }
+    const ack = document.getElementById("marketPulseLiveSetupAck");
+    if (ack) { ack.disabled = !setupId || !!primary.acknowledged_at; ack.textContent = primary.acknowledged_at ? "Acknowledged" : "Acknowledge"; ack.dataset.setupId = setupId; }
+    const secondary = document.getElementById("marketPulseLiveSetupSecondaryList");
+    if (secondary) secondary.innerHTML = window.MarketPulseLiveSetup.rankSecondary(monitor.secondary || []).map((row) => `<span><b>${liveSetupStateLabel(row.state)}</b> · ${liveSetupStateLabel(row.direction)} ${row.level?.label || "level"} ${Number(row.level?.value || 0).toFixed(0)} · ${row.grade || "—"} ${row.score || 0}/100</span>`).join("") || "<span>No secondary watches.</span>";
+    const recent = document.getElementById("marketPulseLiveSetupRecent");
+    if (recent) recent.textContent = (monitor.recent || []).slice(0, 4).map((row) => `${liveSetupStateLabel(row.state)} · ${row.family_label || "Setup"}`).join("  |  ") || "No lifecycle changes yet.";
+    window.marketPulseLiveSetupNextEvaluationAt = Date.parse(monitor.next_evaluation_at || "");
+    window.marketPulseLiveSetupPollingPaused = Boolean(
+      monitor.paused || ["TARGET_REACHED", "INVALIDATED", "EXPIRED"].includes(String(primary.state || "").toUpperCase())
+    );
+    deliverLiveSetupAlert(monitor);
+  };
+
+  const stageCanonicalPayload = (payload) => {
+    if (!payload || typeof payload !== "object") throw new Error("Invalid canonical payload.");
+    const freshness = payload.canonical_freshness;
+    const verdict = payload.verdict;
+    const strategy = payload.playbook_view && payload.playbook_view.strategy;
+    const structure = payload.market_structure_snapshot;
+    const generationId = String((freshness && freshness.generation_id) || "").trim();
+    if (!freshness || !verdict || !strategy || !structure || !generationId) {
+      throw new Error("Incomplete canonical payload.");
+    }
+    if (String(freshness.symbol || payload.ticker || "").toUpperCase() !== currentTicker) {
+      throw new Error("Canonical payload belongs to another symbol.");
+    }
+    if (!String(freshness.session_id || "").trim()) {
+      throw new Error("Canonical session identity unavailable.");
+    }
+    const requiredComponents = ["spot", "bars", "gamma"];
+    if (requiredComponents.some((name) => !String(freshness.components?.[name]?.as_of || ""))) {
+      throw new Error("Canonical component timestamps are incomplete.");
+    }
+    const rankings = payload.playbook_view?.scenario_rankings;
+    if (!rankings || String(rankings.generation_id || "") !== generationId) {
+      throw new Error("Mixed-generation scenario payload.");
+    }
+    const actionState = freshness.authoritative_action_state;
+    const actionCode = String((actionState && actionState.action_state) || "").toUpperCase();
+    const permission = String((actionState && actionState.permission) || "").toLowerCase();
+    if (!actionState || !["ACTIVE", "WAIT", "LOCKED"].includes(actionCode)) {
+      throw new Error("Authoritative execution state unavailable.");
+    }
+    if (String(verdict.permission || "").toLowerCase() !== permission) {
+      throw new Error("Execution permission conflicts with canonical state.");
+    }
+    const liveMonitor = payload.live_setup_monitor || {};
+    if (liveMonitor.generation_id && String(liveMonitor.generation_id) !== generationId) {
+      throw new Error("Live setup monitor belongs to a different generation.");
+    }
+    if (liveMonitor.alert_event && (actionCode !== "ACTIVE" || freshness.execution_locked)) {
+      throw new Error("Live setup alert conflicts with canonical permission.");
+    }
+    const liveGuide = payload.live_execution_guide || payload.playbook_view?.live_execution_guide || {};
+    if (
+      String(liveGuide.generation_id || "") !== generationId
+      || String(liveGuide.permission || "").toLowerCase() !== permission
+      || String(liveGuide.action_state || "").toUpperCase() !== actionCode
+    ) {
+      throw new Error("Execution guide belongs to a different state generation.");
+    }
+    const primary = rankings.primary || {};
+    const strategyReady = ["REVERSAL_READY", "CONTINUATION_ACTIVE"].includes(
+      String(strategy.state || "").toUpperCase(),
+    );
+    if (
+      actionCode === "ACTIVE"
+      && (String(primary.state || "").toLowerCase() !== "confirmed" || !strategyReady)
+    ) {
+      throw new Error("Actionable state lacks required canonical confirmation.");
+    }
+    const quote = payload.playbook_quote || payload.spx_quote || {};
+    const spot = Number(quote.price);
+    const ladder = payload.gamma_ladder || {};
+    if (ladder.canonical_generation_id) {
+      if (String(ladder.canonical_generation_id) !== generationId) {
+        throw new Error("Gamma Ladder belongs to a different generation.");
+      }
+      const ladderSpot = Number(ladder.spot);
+      if (
+        !ladder.coherence_blocked
+        && Number.isFinite(spot)
+        && Number.isFinite(ladderSpot)
+        && Math.abs(spot - ladderSpot) > 5
+      ) {
+        throw new Error("Gamma Ladder spot diverged from the canonical SPX quote.");
+      }
+    }
+    const activeLevel = verdict.active_level || null;
+    const activeValue = Number(activeLevel && activeLevel.value);
+    const distance = Number(verdict.distance);
+    return {
+      payload,
+      generationId,
+      actionState,
+      actionCode,
+      decision: String(verdict.label || "Not actionable yet"),
+      detail: String(verdict.detail || "Confirmation required"),
+      activeLevel: activeLevel && Number.isFinite(activeValue)
+        ? `${activeLevel.label || "Level"} ${activeValue.toFixed(0)}`
+        : "Unavailable",
+      distance: Number.isFinite(distance) ? `${distance >= 0 ? "+" : ""}${distance.toFixed(1)} points from spot` : "Distance unavailable",
+      spot: Number.isFinite(spot) ? spot.toFixed(2) : "Unavailable",
+      nextEvidence: String(verdict.next_evidence || strategy.missing_evidence || "Confirmation required"),
+      invalidation: String(verdict.invalidation || structure.invalidation || "Wait for live structure"),
+    };
+  };
+
+  const diagnosticComponentLabels = {
+    spot: "Spot",
+    bars: "Completed Bars",
+    gamma: "Gamma",
+    options: "Options",
+    strategy: "Strategy",
+  };
+
+  const formatDiagnosticDuration = (value) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds)) return "—";
+    if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainder = Math.round(seconds % 60);
+    return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
+  };
+
+  const formatDiagnosticTime = (value) => {
+    const parsed = new Date(String(value || ""));
+    if (!Number.isFinite(parsed.getTime())) return "Unavailable";
+    return parsed.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "America/New_York",
+      timeZoneName: "short",
+    });
+  };
+
+  const diagnosticSourceFor = (componentName, payload) => {
+    const quote = payload.playbook_quote || payload.spx_quote || {};
+    const structure = payload.market_structure_snapshot || {};
+    const chart = payload.execution_chart || {};
+    const gamma = payload.gamma_snapshot || {};
+    const sources = {
+      spot: quote.source_badge_label || quote.provider || structure.spot_source_label || "Canonical quote cache",
+      bars: String(chart.replay_source || "").toLowerCase() === "provider"
+        ? "Provider completed-bar cache"
+        : chart.replay_source || "Completed bar cache",
+      gamma: gamma.source_label || gamma.provider || "Gamma snapshot cache",
+      options: gamma.options_source_label || gamma.provider || "Options snapshot cache",
+      strategy: "Completed candle evidence",
+    };
+    return String(sources[componentName] || "Canonical cache");
+  };
+
+  const applyCanonicalDiagnostics = (payload) => {
+    const freshness = payload.canonical_freshness || {};
+    const components = freshness.components || {};
+    const blockers = Array.isArray(freshness.stale_required_components)
+      ? freshness.stale_required_components
+      : [];
+    const blockerLabels = blockers.map((name) => diagnosticComponentLabels[name] || String(name));
+    setCanonicalText(
+      "marketPulseDiagnosticsHeading",
+      blockerLabels.length ? "Why execution is locked" : "Data health",
+    );
+    setCanonicalText(
+      "marketPulseDiagnosticsSummaryText",
+      blockerLabels.length ? `Locked · ${blockerLabels.join(", ")} blocking` : "Ready · required inputs current",
+    );
+    Object.entries(diagnosticComponentLabels).forEach(([name]) => {
+      const component = components[name] || {};
+      const status = String(component.status || "unavailable").toLowerCase();
+      const row = document.querySelector(`[data-diagnostic-component="${name}"]`);
+      if (!row) return;
+      row.dataset.diagnosticStatus = status;
+      row.classList.remove("is-current", "is-stale", "is-future", "is-unavailable");
+      row.classList.add(`is-${status}`);
+      const setRowText = (selector, value) => {
+        const node = row.querySelector(selector);
+        if (node) node.textContent = String(value);
+      };
+      setRowText("[data-diagnostic-role]", component.required ? "Required" : "Optional");
+      setRowText(
+        "[data-diagnostic-status-text]",
+        status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      );
+      setRowText("[data-diagnostic-age]", formatDiagnosticDuration(component.age_seconds));
+      setRowText("[data-diagnostic-threshold]", formatDiagnosticDuration(component.threshold_seconds));
+      setRowText("[data-diagnostic-as-of]", formatDiagnosticTime(component.as_of));
+      setRowText("[data-diagnostic-source]", diagnosticSourceFor(name, payload));
+    });
+    const interval = Number(freshness.sync_interval_seconds) || 15;
+    setCanonicalText("marketPulseDiagnosticsGeneratedAt", formatDiagnosticTime(freshness.generated_at));
+    setCanonicalText("marketPulseDiagnosticsRetry", `≤ ${interval}s while visible`);
+  };
+
+  const renderOperationalHealth = (health = {}) => {
+    const watchdog = document.getElementById("marketPulseOperationalHealth");
+    if (!watchdog) return;
+    const status = String(health.status || "warning").toLowerCase();
+    watchdog.classList.remove("is-healthy", "is-warning", "is-critical", "is-paused");
+    watchdog.classList.add(`is-${status}`);
+    setCanonicalText("marketPulseOperationalHealthState", status.replace(/^./, (c) => c.toUpperCase()));
+    setCanonicalText("marketPulseOperationalHealthSummary", health.summary || "Checking canonical pipeline");
+    setCanonicalText("marketPulseOperationalGeneration", health.generation_id || "Pending");
+    setCanonicalText("marketPulseOperationalPromotion", formatDiagnosticTime(health.last_successful_promotion));
+    setCanonicalText("marketPulseOperationalRetry", health.retry_deadline ? formatDiagnosticTime(health.retry_deadline) : "Paused");
+    const blockers = Array.isArray(health.blocking_components) ? health.blocking_components : [];
+    setCanonicalText("marketPulseOperationalBlocker", blockers.length ? blockers.join(", ") : "None");
+  };
+
+  if (basePayload) {
+    applyCanonicalDiagnostics(basePayload);
+    renderLiveSetupMonitor(basePayload.live_setup_monitor || {});
+    renderOperationalHealth(basePayload.operational_health || {});
+  }
+  let liveSetupCountdownTimer = null;
+  const renderLiveSetupCountdown = () => {
+    const node = document.getElementById("marketPulseLiveSetupCountdown");
+    if (!node) return;
+    if (window.marketPulseLiveSetupPollingPaused) {
+      node.textContent = "Checks paused";
+      return;
+    }
+    const target = Number(window.marketPulseLiveSetupNextEvaluationAt || 0);
+    const seconds = target ? window.MarketPulseLiveSetup.secondsUntil(new Date(target).toISOString()) : null;
+    node.textContent = seconds !== null ? `Next check ${seconds}s` : "Next check pending";
+  };
+  const armLiveSetupCountdown = () => {
+    if (liveSetupCountdownTimer) return;
+    renderLiveSetupCountdown();
+    liveSetupCountdownTimer = window.setInterval(renderLiveSetupCountdown, 1000);
+  };
+  armLiveSetupCountdown();
+  const liveSetupMuteButton = document.getElementById("marketPulseLiveSetupMute");
+  const renderLiveSetupMute = () => {
+    if (!liveSetupMuteButton) return;
+    const enabled = storageGet(LIVE_SETUP_MUTE_KEY) === "0";
+    liveSetupMuteButton.textContent = enabled ? "Browser alerts on" : "Alerts muted";
+  };
+  renderLiveSetupMute();
+  liveSetupMuteButton?.addEventListener("click", async () => {
+    const enable = storageGet(LIVE_SETUP_MUTE_KEY) !== "0";
+    if (enable && "Notification" in window && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+    storageSet(LIVE_SETUP_MUTE_KEY, enable ? "0" : "1");
+    renderLiveSetupMute();
+  });
+  document.getElementById("marketPulseLiveSetupAck")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const setupId = String(button.dataset.setupId || "");
+    if (!setupId || button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(liveSetupAckApiUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ticker: currentTicker, setup_id: setupId}),
+      });
+      if (!response.ok) throw new Error("Acknowledgement failed");
+      button.textContent = "Acknowledged";
+    } catch (_err) {
+      button.disabled = false;
+      button.textContent = "Try acknowledgement again";
+    }
+  });
+
+  const applyCanonicalMarketPulsePayload = (payload) => {
+    const staged = stageCanonicalPayload(payload);
+    const strategy = staged.payload.playbook_view.strategy;
+    const structure = staged.payload.market_structure_snapshot;
+    const gamma = staged.payload.gamma_snapshot || {};
+    const playbook = staged.payload.playbook_view || {};
+    const canonicalRegime = canonicalGammaRegime(staged.payload);
+    const canonicalRegimeKey = canonicalRegime.value.toLowerCase();
+    const canonicalRegimeLabel = gammaRegimeDisplayLabel(
+      canonicalRegime.value,
+      canonicalRegime.label || "Regime unavailable",
+    );
+    const refreshContract = staged.payload.refresh_contract || {};
+    const marketIsOpen = String(refreshContract.market_phase || "").toLowerCase() === "open"
+      && refreshContract.automatic_refresh_enabled !== false;
+    const updatedAt = structure.last_completed_candle_time_label || "—";
+    const levelValues = {
+      main_flip: Number(gamma.gamma_flip_combined_basket),
+      local_flip: Number(gamma.local_flip_aggregated_gamma),
+      call_wall: Number(gamma.call_wall_aggregated_gamma),
+      put_wall: Number(gamma.put_wall_aggregated_gamma),
+    };
+    const levelSelectors = {
+      main_flip: ".marketPulseStructureMapTrack .is-main strong",
+      local_flip: ".marketPulseStructureMapTrack .is-local strong",
+      call_wall: ".marketPulseStructureMapTrack .is-call strong",
+      put_wall: ".marketPulseStructureMapTrack .is-put strong",
+    };
+
+    applyCanonicalDiagnostics(staged.payload);
+    renderLiveSetupMonitor(staged.payload.live_setup_monitor || {});
+    renderOperationalHealth(staged.payload.operational_health || {});
+
+    setCanonicalText("marketPulseStatusSpot", staged.spot);
+    setCanonicalText("marketPulseHeaderSpot", staged.spot);
+    setCanonicalText("marketPulseGammaDeckSpot", staged.spot);
+    setCanonicalText("marketPulseStructurePrimarySpot", staged.spot);
+    setCanonicalText("marketPulseHeaderSnapshot", `Last candle · ${updatedAt}`);
+    setCanonicalText(
+      "marketPulseStatusSession",
+      marketIsOpen
+        ? (staged.actionCode === "LOCKED" ? "Locked" : "Live execution")
+        : "Planning",
+    );
+    setCanonicalText(
+      "marketPulseStatusRegime",
+      canonicalRegimeLabel,
+    );
+    setCanonicalText("marketPulseHeaderGammaLabel", canonicalRegimeLabel);
+    setCanonicalText("marketPulseHeaderGammaSub", canonicalRegime.subtitle);
+    const statusRegimeNode = document.getElementById("marketPulseStatusRegime");
+    const statusRegimeCard = statusRegimeNode?.closest(".marketPulseStatusMetric");
+    if (statusRegimeCard) {
+      statusRegimeCard.classList.toggle("is-regime-positive", canonicalRegimeKey.includes("positive"));
+      statusRegimeCard.classList.toggle("is-regime-negative", canonicalRegimeKey.includes("negative"));
+    }
+    const headerGammaCard = document.getElementById("marketPulseHeaderGammaCard");
+    if (headerGammaCard) {
+      const positive = canonicalRegimeKey.includes("positive");
+      const negative = canonicalRegimeKey.includes("negative");
+      headerGammaCard.dataset.gammaState = canonicalRegime.value;
+      headerGammaCard.classList.remove(
+        "is-positive",
+        "is-negative",
+        "is-neutral",
+        "gamma-card--positive",
+        "gamma-card--negative",
+        "gamma-card--neutral",
+        "gamma-card--unconfirmed",
+      );
+      headerGammaCard.classList.add(
+        positive ? "is-positive" : negative ? "is-negative" : "is-neutral",
+        positive
+          ? "gamma-card--positive"
+          : negative
+            ? "gamma-card--negative"
+            : "gamma-card--neutral",
+      );
+    }
+    setCanonicalText("marketPulseStatusDataState", humanizeMarketState(canonicalRegime.status, "Unavailable"));
+    setCanonicalText("marketPulseHeaderDecision", staged.decision);
+    setCanonicalText("marketPulseHeaderDecisionStatePill", staged.actionCode);
+    setCanonicalText("marketPulseHeaderBiasPrimary", playbook.bias_summary_label || structure.bias_context || "Wait for cleaner structure");
+    setCanonicalText("marketPulseHeaderBiasSecondary", playbook.bias_label || structure.current_read || "Awaiting structure");
+    setCanonicalText("marketPulseHeaderTradeability", playbook.tradeability_display_label || playbook.tradeability_label || "Trigger required");
+    setCanonicalText("marketPulseStructurePrimaryZone", structure.location?.zone || structure.current_zone || "Awaiting structure");
+    const scenarioDecision = canonicalScenarioPlan(playbook, strategy);
+    const decisionSequence = scenarioDecision.sequence;
+    const primaryScenario = scenarioDecision.primary;
+    const alternativeScenario = (scenarioDecision.rankings.alternatives || [])[0];
+    const actionLead = primaryScenario
+      ? `${primaryScenario.family_label || "Scenario"} · ${primaryScenario.level?.label || "Level"} ${Number(primaryScenario.level?.value).toFixed(0)} · ${humanizeMarketState(staged.actionCode)}`
+      : decisionSequence.lead;
+    setCanonicalText("marketPulseActionLead", actionLead);
+    setCanonicalText("marketPulseHeroTradeState", humanizeMarketState(staged.actionCode));
+    setCanonicalText("marketPulseHeroStateChip", staged.actionCode);
+    const liveGuide = staged.payload.live_execution_guide || playbook.live_execution_guide || {};
+    setCanonicalText("marketPulseDecisionWait", liveGuide.location || decisionSequence.wait);
+    setCanonicalText("marketPulseNeed", liveGuide.trigger || decisionSequence.trigger);
+    setCanonicalText("marketPulseBestLook", liveGuide.action || decisionSequence.act);
+    setCanonicalText("marketPulseExecutionStatus", liveGuide.target || decisionSequence.target);
+    setCanonicalText("marketPulseIfThen", liveGuide.invalidation || decisionSequence.cancel);
+    if (primaryScenario) {
+      setCanonicalText("marketPulseTradeabilityGrade", primaryScenario.grade || "—");
+      setCanonicalText("marketPulseTradeabilityScore", primaryScenario.score || 0);
+      const scoreBar = document.getElementById("marketPulseTradeabilityBarFill");
+      if (scoreBar) scoreBar.style.width = `${Math.max(0, Math.min(100, Number(primaryScenario.score) || 0))}%`;
+    }
+    setCanonicalText("marketPulseScoreMeaning", staged.actionCode === "ACTIVE"
+      ? "Trigger confirmed. Grade and score describe this scenario's supporting evidence."
+      : "Grade and score measure confluence—not permission. WAIT remains until the required trigger confirms.");
+    renderConfluenceComponents(primaryScenario);
+    setCanonicalText("marketPulseAlternativeTitle", alternativeScenario?.family_label || "No alternative armed");
+    setCanonicalText("marketPulseAlternativeTrigger", alternativeScenario?.plan?.trigger || "Waiting for a valid secondary scenario.");
+    setCanonicalText("marketPulseAlternativeScore", alternativeScenario ? `${alternativeScenario.score || 0}/100 confluence · not active` : "");
+    setCanonicalText("marketPulseDormantCount", `${(scenarioDecision.rankings.dormant || []).length} scenarios`);
+    setCanonicalText("marketPulseTriggerHeaderLine", humanizeMarketState(strategy.state));
+    setCanonicalText("marketPulseTriggerStatus", strategy.rejection_acceptance_status || "Neither confirmed — wait");
+    setCanonicalText("marketPulseTriggerFooterLine", strategy.gamma_interpretation || "Gamma regime unavailable.");
+    setCanonicalText("marketPulseTriggerProgressNext", strategy.missing_evidence || "Strategy evidence unavailable.");
+
+    Object.entries(levelValues).forEach(([key, value]) => {
+      const valid = Number.isFinite(value);
+      document.querySelectorAll(`[data-market-pulse-level-value="${key}"]`).forEach((node) => {
+        node.textContent = valid ? value.toFixed(2) : "Unavailable";
+      });
+      document.querySelectorAll(`[data-market-pulse-level-distance="${key}"]`).forEach((node) => {
+        node.textContent = valid && staged.spot !== "Unavailable"
+          ? `${value - Number(staged.spot) >= 0 ? "+" : ""}${(value - Number(staged.spot)).toFixed(1)} pts`
+          : "No valid distance";
+      });
+      const structureNode = document.querySelector(levelSelectors[key]);
+      if (structureNode) structureNode.textContent = valid ? value.toFixed(0) : "—";
+    });
+
+    const checklist = strategy.checklist || {};
+    const triggerItems = Array.from(document.querySelectorAll(".marketPulseTriggerItem[data-trigger-step]"));
+    triggerItems.forEach((item) => {
+      const status = String(checklist[item.dataset.triggerStep] || "Unavailable");
+      item.dataset.triggerStatus = status.toLowerCase();
+      item.classList.toggle("is-active", status === "Confirmed");
+      const statusNode = item.querySelector(".marketPulseTriggerStepState");
+      if (statusNode) statusNode.textContent = status;
+    });
+    const completed = triggerItems.filter((item) => item.classList.contains("is-active")).length;
+    const progressFill = document.getElementById("marketPulseTriggerProgressFill");
+    if (progressFill) progressFill.style.width = `${triggerItems.length ? (completed / triggerItems.length) * 100 : 0}%`;
+    setCanonicalText("marketPulseTriggerProgressLabel", `${completed}/${triggerItems.length || 6} confirmed`);
+
+    setCanonicalText("marketPulseCanonicalDecision", staged.decision);
+    setCanonicalText("marketPulseCanonicalDecisionDetail", staged.detail);
+    setCanonicalText("marketPulseCanonicalActiveLevel", staged.activeLevel);
+    setCanonicalText("marketPulseCanonicalDistance", staged.distance);
+    setCanonicalText("marketPulseCanonicalNextEvidence", staged.nextEvidence);
+    setCanonicalText("marketPulseCanonicalInvalidation", staged.invalidation);
+    window.dispatchEvent(new CustomEvent("market-pulse-canonical-update", {detail: {payload: staged.payload}}));
+    return staged.generationId;
+  };
+
+  const refreshMarketPulseContext = async (forceRefresh = false, showOverlay = false, automatic = false) => {
     if (contextRefreshPromise) return contextRefreshPromise;
-    setContextRefreshState(true);
+    if (!automatic) setContextRefreshState(true);
+    setDiagnosticsSyncState(automatic ? "Automatic check running…" : "Forced refresh running…");
     if (showOverlay) {
       showReloadOverlay("Market Pulse Sync", "Refreshing gamma, structure, and execution context…");
     }
     contextRefreshPromise = (async () => {
+      const controller = new AbortController();
+      const requestTimeout = window.setTimeout(() => controller.abort(), CANONICAL_REQUEST_TIMEOUT_MS);
       try {
         const url = new URL(contextApiUrl, window.location.origin);
         url.searchParams.set("ticker", currentTicker);
         if (forceRefresh) url.searchParams.set("refresh", "1");
+        if (automatic) url.searchParams.set("automatic", "1");
+        if (automatic && currentGenerationId) url.searchParams.set("generation", currentGenerationId);
         url.searchParams.set("_", String(Date.now()));
         const response = await fetch(url.toString(), {
           cache: "no-store",
           credentials: "same-origin",
+          headers: currentGenerationId && automatic ? {"If-None-Match": `"${currentGenerationId}"`} : {},
+          signal: controller.signal,
         });
-        const data = await response.json();
-        if (data && data.ok && data.payload && typeof window.applyMarketPulseContextPayload === "function") {
-          window.applyMarketPulseContextPayload(data.payload);
+        const advertisedNextSeconds = Math.max(
+          1,
+          Number(response.headers.get("X-Market-Pulse-Next-Check") || AUTO_REFRESH_INTERVAL_MS / 1000),
+        );
+        if (response.status === 304) {
+          if (String(response.headers.get("X-Market-Pulse-Phase") || "") === "closed") {
+            automaticRefreshEnabled = false;
+            const snapshotNode = document.getElementById("marketPulseHeaderSnapshot");
+            if (snapshotNode) {
+              snapshotNode.textContent = String(snapshotNode.textContent || "")
+                .replace(/^(Live|Last valid)\s*·\s*/i, "Last candle · ");
+            }
+            setCanonicalText("marketPulseStatusSession", "Planning");
+            setDiagnosticsSyncState("Market closed · last valid session retained");
+            pauseCanonicalRefresh();
+            return;
+          }
+          automaticFailureCount = 0;
+          lastAutomaticCheckAt = Date.now();
+          setRefreshFeedback("");
+          setDiagnosticsSyncState(`Live playbook current · next ≤${advertisedNextSeconds}s`);
+          scheduleCanonicalCheck(advertisedNextSeconds, "refresh", { jitter: true });
+          return;
         }
-      } catch (_err) {
+        const data = await response.json();
+        if (!response.ok || !data || !data.ok || !data.payload) {
+          throw new Error("Market Pulse refresh returned no valid payload.");
+        }
+        applyRefreshContract(data.payload.refresh_contract || {});
+        const refreshOutcome = data.refresh_outcome || {};
+        const outcomeStatus = String(refreshOutcome.status || "promoted").toLowerCase();
+        const blockers = Array.isArray(refreshOutcome.blocking_components)
+          ? refreshOutcome.blocking_components.join(", ")
+          : "";
+        if (outcomeStatus === "partial") {
+          const message = blockers
+            ? `Partial update · waiting for ${blockers}`
+            : "Partial update · canonical playbook retained";
+          if (automatic) setRefreshFeedback("");
+          else setTransientRefreshFeedback(message, true, 6000);
+          setDiagnosticsSyncState(`${message} · retry ≤${refreshOutcome.next_retry_seconds || 15}s`);
+          scheduleCanonicalRetry(refreshOutcome.next_retry_seconds || 15);
+          return;
+        }
+        if (outcomeStatus === "unchanged") {
+          if (automatic) setRefreshFeedback("");
+          else setTransientRefreshFeedback("Refresh in progress · current playbook retained");
+          setDiagnosticsSyncState(`Canonical refresh in progress · retry ≤${refreshOutcome.next_retry_seconds || 3}s`);
+          scheduleCanonicalRetry(refreshOutcome.next_retry_seconds || 3);
+          return;
+        }
+        const nextGenerationId = String(
+          (data.payload.canonical_freshness && data.payload.canonical_freshness.generation_id) || ""
+        );
+        const nextGenerationAtMs = Date.parse(
+          (data.payload.canonical_freshness && data.payload.canonical_freshness.generated_at) || ""
+        );
+        lastAutomaticCheckAt = Date.now();
+        if (automatic && nextGenerationId && nextGenerationId === currentGenerationId) {
+          automaticFailureCount = 0;
+          setRefreshFeedback("");
+          setDiagnosticsSyncState(`Last check current · next ≤${AUTO_REFRESH_INTERVAL_MS / 1000}s`);
+          scheduleCanonicalCheck(advertisedNextSeconds, "refresh", { jitter: true });
+          return;
+        }
+        if (
+          nextGenerationId
+          && nextGenerationId !== currentGenerationId
+          && Number.isFinite(currentGenerationAtMs)
+          && (!Number.isFinite(nextGenerationAtMs) || nextGenerationAtMs < currentGenerationAtMs)
+        ) {
+          setRefreshFeedback(automatic ? "" : "Already showing newer data");
+          setDiagnosticsSyncState(`Newer generation retained · next ≤${AUTO_REFRESH_INTERVAL_MS / 1000}s`);
+          window.setTimeout(() => setRefreshFeedback(""), 2000);
+          scheduleCanonicalCheck(advertisedNextSeconds, "refresh", { jitter: true });
+          return;
+        }
+        currentGenerationId = applyCanonicalMarketPulsePayload(data.payload);
+        currentGenerationAtMs = nextGenerationAtMs;
+        automaticFailureCount = 0;
+        if (automatic) setRefreshFeedback("");
+        else setTransientRefreshFeedback("Updated just now");
+        setDiagnosticsSyncState(`Live playbook synchronized · next ≤${AUTO_REFRESH_INTERVAL_MS / 1000}s`);
+        const contractSeconds = Number(data.payload?.refresh_contract?.next_check_seconds);
+        scheduleCanonicalCheck(
+          Number.isFinite(contractSeconds) ? contractSeconds : advertisedNextSeconds,
+          "refresh",
+          { jitter: automatic },
+        );
+      } catch (err) {
+        window.console.warn("Market Pulse canonical refresh failed.", err);
+        window.dispatchEvent(new CustomEvent("market-pulse-canonical-refresh-failed"));
+        const reason = String(err && err.message ? err.message : "Canonical validation failed.");
+        automaticFailureCount += 1;
+        if (automatic) setRefreshFeedback("");
+        else setTransientRefreshFeedback("Refresh delayed · showing last valid data", true, 6000);
+        setDiagnosticsSyncState(`Sync delayed · retry ≤${AUTO_REFRESH_INTERVAL_MS / 1000}s · Execution locked · ${reason}`);
+        const retrySeconds = Math.min(30, Math.max(3, 3 * (2 ** Math.min(3, automaticFailureCount - 1))));
+        scheduleCanonicalRetry(retrySeconds);
       } finally {
+        window.clearTimeout(requestTimeout);
         contextRefreshPromise = null;
-        setContextRefreshState(false);
+        lastAutomaticCheckAt = Date.now();
+        if (!automatic) setContextRefreshState(false);
         if (showOverlay) hideReloadOverlay();
       }
     })();
     return contextRefreshPromise;
   };
+
+  const replayRoot = document.getElementById("marketPulseSetupReplay");
+  const replaySummary = document.getElementById("marketPulseReplaySummary");
+  const replayList = document.getElementById("marketPulseReplayList");
+  const replayDirection = document.getElementById("marketPulseReplayDirection");
+  const replayFamily = document.getElementById("marketPulseReplayFamily");
+  const replayRejected = document.getElementById("marketPulseReplayRejected");
+  let replayPayload = null;
+  const REPLAY_REQUEST_TIMEOUT_MS = 10000;
+
+  const replayTime = (value) => {
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime())
+      ? parsed.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})
+      : "Time unavailable";
+  };
+
+  const renderSetupReplay = () => {
+    if (!replayList || !replayPayload) return;
+    const direction = replayDirection?.value || "all";
+    const family = replayFamily?.value || "all";
+    const setups = (replayPayload.setups || []).filter((row) =>
+      (direction === "all" || row.direction === direction)
+      && (family === "all" || row.family === family))
+      .sort((left, right) => {
+        const scoreDelta = Number(right.score || 0) - Number(left.score || 0);
+        if (scoreDelta) return scoreDelta;
+        const timeDelta = Date.parse(left.signal_time || "") - Date.parse(right.signal_time || "");
+        if (Number.isFinite(timeDelta) && timeDelta) return timeDelta;
+        return String(left.candidate_id || "").localeCompare(String(right.candidate_id || ""));
+      });
+    const fragment = document.createDocumentFragment();
+    if (!setups.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "No qualified point-in-time setup matched these filters.";
+      fragment.append(empty);
+    }
+    setups.forEach((row) => {
+      const article = document.createElement("article");
+      article.className = `marketPulseReplayCard is-${row.direction || "neutral"}`;
+      const head = document.createElement("div");
+      head.className = "marketPulseReplayCardHead";
+      const title = document.createElement("strong");
+      const patternCode = row.strat_pattern?.code || "Supported pattern";
+      title.textContent = `${replayTime(row.signal_time)} · ${patternCode} · ${row.family_label || row.family}`;
+      const badge = document.createElement("span");
+      badge.textContent = `${row.grade || "—"} · ${row.score || 0}/100`;
+      head.append(title, badge);
+      const known = document.createElement("div");
+      known.className = "marketPulseReplayColumns";
+      const signal = document.createElement("section");
+      const signalTitle = document.createElement("small");
+      signalTitle.textContent = "Known at signal";
+      const signalCopy = document.createElement("p");
+      signalCopy.textContent = `${patternCode} ${row.direction || ""} at ${row.level?.label || "level"} ${Number(row.level?.value || 0).toFixed(0)} · Entry ${Number(row.entry_zone || 0).toFixed(2)}. ${row.confirmation || ""}`;
+      const riskCopy = document.createElement("p");
+      const targetLabel = row.target
+        ? `${row.target.label || "Target"} ${Number(row.target.value || 0).toFixed(0)}`
+        : "No structural target available";
+      const gammaLabel = row.data_availability?.gamma_available_at_signal
+        ? `Gamma known as of ${replayTime(row.data_availability.gamma_as_of)}`
+        : "Gamma unavailable at signal";
+      riskCopy.className = "marketPulseReplayRisk";
+      riskCopy.textContent = `Invalidation: ${row.invalidation || "Not defined"} · Target: ${targetLabel} · ${gammaLabel}`;
+      signal.append(signalTitle, signalCopy, riskCopy);
+      const after = document.createElement("section");
+      const afterTitle = document.createElement("small");
+      afterTitle.textContent = "What happened next";
+      const afterCopy = document.createElement("p");
+      afterCopy.textContent = `${String(row.outcome?.state || "open").replace(/_/g, " ")} · MFE ${Number(row.outcome?.mfe || 0).toFixed(1)} pts · MAE ${Number(row.outcome?.mae || 0).toFixed(1)} pts`;
+      after.append(afterTitle, afterCopy);
+      known.append(signal, after);
+      article.append(head, known);
+      fragment.append(article);
+    });
+    if (replayRejected?.checked && (replayPayload.rejected || []).length) {
+      const diagnostic = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = `${replayPayload.rejected.length} rejected candidate checks`;
+      diagnostic.append(summary);
+      (replayPayload.rejected || []).slice(0, 20).forEach((row) => {
+        const line = document.createElement("p");
+        line.textContent = `${replayTime(row.signal_time)} · ${String(row.family || "").replace(/_/g, " ")} · ${row.reason || "Missing confirmation"}`;
+        diagnostic.append(line);
+      });
+      fragment.append(diagnostic);
+    }
+    replayList.replaceChildren(fragment);
+  };
+
+  const renderReplayUnavailable = () => {
+    if (!replayList) return;
+    const state = document.createElement("div");
+    state.className = "marketPulseReplayUnavailable";
+    const copy = document.createElement("span");
+    copy.textContent = "Earlier setup review is temporarily unavailable. Live guidance is unaffected.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "btn marketPulseReplayRetry";
+    retry.textContent = "Retry replay";
+    retry.addEventListener("click", loadSetupReplay);
+    state.append(copy, retry);
+    replayList.replaceChildren(state);
+  };
+
+  const loadSetupReplay = async () => {
+    if (!replayRoot || replayRoot.dataset.loading === "1") return;
+    replayRoot.dataset.loading = "1";
+    if (replaySummary) replaySummary.textContent = "Reviewing earlier setups…";
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REPLAY_REQUEST_TIMEOUT_MS);
+    try {
+      const url = new URL(setupReplayApiUrl, window.location.origin);
+      url.searchParams.set("ticker", currentTicker);
+      if (replayRejected?.checked) url.searchParams.set("include_rejected", "1");
+      url.searchParams.set("_", String(Date.now()));
+      const response = await fetch(url.toString(), {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.payload) throw new Error("Replay unavailable");
+      replayPayload = data.payload;
+      window.dispatchEvent(new CustomEvent("market-pulse-setup-replay-updated", {
+        detail: {
+          setups: (replayPayload.setups || []).map((row) => ({
+            time: row.signal_time,
+            direction: row.direction,
+            label: row.family_label || row.family || "Setup",
+          })),
+        },
+      }));
+      if (replaySummary) replaySummary.textContent = replayPayload.setup_count
+        ? `${replayPayload.setup_count} potential setup${replayPayload.setup_count === 1 ? "" : "s"} · latest ${replayTime(replayPayload.latest_signal_time)}`
+        : "No qualified setup earlier this session";
+      if (replayFamily) {
+        const families = [...new Set((replayPayload.setups || []).map((row) => row.family).filter(Boolean))];
+        const selected = replayFamily.value;
+        replayFamily.replaceChildren(new Option("All scenarios", "all"));
+        families.forEach((value) => replayFamily.add(new Option(String(value).replace(/_/g, " "), value)));
+        replayFamily.value = families.includes(selected) ? selected : "all";
+      }
+      renderSetupReplay();
+    } catch (_err) {
+      if (replaySummary) replaySummary.textContent = "Replay unavailable · live guide unaffected";
+      renderReplayUnavailable();
+    } finally {
+      window.clearTimeout(timeoutId);
+      replayRoot.dataset.loading = "0";
+    }
+  };
+  replayRoot?.addEventListener("toggle", () => { if (replayRoot.open) loadSetupReplay(); });
+  replayDirection?.addEventListener("change", renderSetupReplay);
+  replayFamily?.addEventListener("change", renderSetupReplay);
+  replayRejected?.addEventListener("change", loadSetupReplay);
+  window.addEventListener("market-pulse-canonical-update", () => { if (replayRoot?.open) loadSetupReplay(); });
+  window.setTimeout(loadSetupReplay, 250);
 
   const refreshMarketPulseTape = async () => {
     setTapeRefreshState(true);
@@ -2084,12 +3315,128 @@
   mobileFoldQuery.addEventListener("change", syncMobileFolds);
   applyMode(mode);
   activatePulseTab("data-health");
-
   contextRefreshButtons.forEach((button) => {
     button.addEventListener("click", (event) => {
       event.preventDefault();
-      refreshMarketPulseContext(true, true);
+      refreshMarketPulseContext(true, false);
     });
+  });
+
+  const checkForCanonicalGeneration = () => {
+    if (!automaticRefreshEnabled) {
+      const wakeAt = Date.parse(nextSessionOpenAt);
+      if (!Number.isFinite(wakeAt) || Date.now() < wakeAt) {
+        pauseCanonicalRefresh();
+        return;
+      }
+      automaticRefreshEnabled = true;
+    }
+    if (document.visibilityState === "hidden") {
+      suspendCanonicalRefresh();
+      return;
+    }
+    if (contextRefreshPromise) {
+      scheduleCanonicalCheck(1, "retry");
+      return;
+    }
+    refreshMarketPulseContext(false, false, true);
+  };
+  const registerCanonicalRefreshLane = () => {
+    window.marketPulseRefreshCoordinator?.register(CANONICAL_REFRESH_LANE, {
+      run: checkForCanonicalGeneration,
+      initialDelay: AUTO_REFRESH_INTERVAL_MS,
+      defaultDelay: AUTO_REFRESH_INTERVAL_MS,
+      autoSchedule: false,
+    });
+  };
+  const armRefreshCountdown = () => {
+    if (refreshCountdownTimer) return;
+    renderRefreshCountdown();
+    refreshCountdownTimer = window.setInterval(renderRefreshCountdown, 1000);
+  };
+  const armCanonicalRefreshWatchdog = () => {
+    if (refreshWatchdogTimer) return;
+    refreshWatchdogTimer = window.setInterval(() => {
+      if (!automaticRefreshEnabled || document.visibilityState === "hidden") return;
+      if (contextRefreshPromise) return;
+      const coordinatorDeadline = window.marketPulseRefreshCoordinator?.deadline(
+        CANONICAL_REFRESH_LANE,
+      );
+      const deadline = Number.isFinite(coordinatorDeadline)
+        ? coordinatorDeadline
+        : nextCanonicalCheckAt;
+      const now = Date.now();
+      if (!Number.isFinite(deadline) || deadline <= 0 || deadline < now - 2000) {
+        setDiagnosticsSyncState("Refresh schedule recovered · validating now…");
+        scheduleCanonicalCheck(1, "retry");
+        return;
+      }
+      if (deadline > now + 30000) {
+        setDiagnosticsSyncState("Refresh schedule shortened · next check ≤30s");
+        scheduleCanonicalCheck(30, "refresh");
+      }
+    }, 5000);
+  };
+  const resumeCanonicalRefresh = ({ force = false, reason = "Page active" } = {}) => {
+    if (document.visibilityState === "hidden") return;
+    registerCanonicalRefreshLane();
+    armRefreshCountdown();
+    armLiveSetupCountdown();
+    const now = Date.now();
+    const stale = (now - lastAutomaticCheckAt) >= AUTO_REFRESH_INTERVAL_MS;
+    if (!automaticRefreshEnabled || force || stale) {
+      if ((now - lastCanonicalResumeAt) < 1000) return;
+      lastCanonicalResumeAt = now;
+      setDiagnosticsSyncState(`${reason} · validating now…`);
+      checkForCanonicalGeneration();
+      return;
+    }
+    const remainingMs = Math.max(1000, AUTO_REFRESH_INTERVAL_MS - (now - lastAutomaticCheckAt));
+    scheduleCanonicalCheck(remainingMs / 1000, "refresh");
+  };
+  const bootstrapRefreshDelaySeconds = basePayload?.bootstrap_refresh_required ? 1 : AUTO_REFRESH_INTERVAL_MS / 1000;
+  registerCanonicalRefreshLane();
+  if (automaticRefreshEnabled) scheduleCanonicalCheck(bootstrapRefreshDelaySeconds, "refresh");
+  else pauseCanonicalRefresh();
+  armRefreshCountdown();
+  armCanonicalRefreshWatchdog();
+  window.addEventListener("market-pulse-component-updated", (event) => {
+    const component = String(event?.detail?.component || "");
+    if (!['bars', 'levels', 'gamma', 'permission'].includes(component)) return;
+    scheduleCanonicalCheck(component === 'bars' ? 1 : 2, "refresh");
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      suspendCanonicalRefresh();
+      return;
+    }
+    resumeCanonicalRefresh({ reason: "Tab active" });
+  });
+  window.addEventListener("online", () => {
+    resumeCanonicalRefresh({ force: true, reason: "Network restored" });
+  });
+  window.addEventListener("offline", () => {
+    setDiagnosticsSyncState("Network unavailable · last verified playbook retained");
+    scheduleCanonicalRetry(5);
+  });
+  window.addEventListener("focus", () => {
+    resumeCanonicalRefresh({ reason: "Window focused" });
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    resumeCanonicalRefresh({ force: true, reason: "Page restored" });
+  });
+  window.addEventListener("pagehide", () => {
+    window.marketPulseRefreshCoordinator?.unregister(CANONICAL_REFRESH_LANE);
+    if (canonicalRefreshTimer) window.clearTimeout(canonicalRefreshTimer);
+    canonicalRefreshTimer = null;
+    if (refreshCountdownTimer) window.clearInterval(refreshCountdownTimer);
+    refreshCountdownTimer = null;
+    if (refreshWatchdogTimer) window.clearInterval(refreshWatchdogTimer);
+    refreshWatchdogTimer = null;
+    if (refreshFeedbackTimer) window.clearTimeout(refreshFeedbackTimer);
+    if (liveSetupCountdownTimer) window.clearInterval(liveSetupCountdownTimer);
+    liveSetupCountdownTimer = null;
   });
 
   tapeRefreshButtons.forEach((button) => {
@@ -2602,6 +3949,16 @@
 </script>
 <script>
 (() => {
+  const marketPulseAutomaticRefreshAllowed = () => {
+    const payloadEl = document.getElementById("spxPriorityBasePayload");
+    if (!payloadEl) return false;
+    try {
+      const payload = JSON.parse(payloadEl.textContent || "{}");
+      return payload?.refresh_contract?.automatic_refresh_enabled !== false;
+    } catch (_err) {
+      return false;
+    }
+  };
   const asNum = (value) => {
     if (value === null || value === undefined || value === "") return null;
     const numeric = Number(value);
@@ -2932,7 +4289,9 @@
   window.applyMarketPulseTapePayload = applyPayload;
   renderAllCoreTapeTimeframes();
   window.setTimeout(() => {
-    window.refreshMarketPulseCoreTape({ showRefreshState: false });
+    if (marketPulseAutomaticRefreshAllowed()) {
+      window.refreshMarketPulseCoreTape({ showRefreshState: false });
+    }
   }, coreTapeHasRenderableValues() ? 220 : 650);
 })();
 </script>

@@ -166,6 +166,7 @@ def _static_version(static_root: str) -> str:
     ]
     app_css_path = os.path.join(static_root, "css", "app.css")
     market_pulse_css_path = os.path.join(static_root, "css", "market_pulse.css")
+    command_surfaces_css_path = os.path.join(static_root, "css", "command_surfaces.css")
     dashboard_command_js_path = os.path.join(static_root, "js", "dashboard_command_center.js")
     hero_chart_js_path = os.path.join(static_root, "js", "spx_hero_chart.js")
     market_pulse_gamma_js_path = os.path.join(static_root, "js", "market_pulse_gamma_context.js")
@@ -176,6 +177,7 @@ def _static_version(static_root: str) -> str:
                 *branding_paths,
                 app_css_path,
                 market_pulse_css_path,
+                command_surfaces_css_path,
                 dashboard_command_js_path,
                 hero_chart_js_path,
                 market_pulse_gamma_js_path,

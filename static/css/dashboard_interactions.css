@@ -2,6 +2,24 @@
   overflow: hidden;
 }
 
+/* Performance Dashboard composition. This late-loaded stylesheet deliberately
+   owns the stage layout so older theme grid rules cannot restore a side rail. */
+@media (min-width: 1101px) {
+  body.page-dashboard .dashboardStage.dashboardStage--singleColumn {
+    display: block !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body.page-dashboard [data-dashboard-full-canvas] {
+    display: grid !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+  }
+}
+
 /* The animated shell uses a 1280px drawing floor. Constrain its visual layer on
    tablet widths so it never turns the dashboard into a horizontally scrolling page. */
 .page-dashboard .shellStarfield,
@@ -26,6 +44,56 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.dashboardWorkflowActions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.dashboardWorkflowPin {
+  align-items: center;
+  background: rgba(7, 17, 31, .74);
+  border: 1px solid rgba(92, 143, 210, .24);
+  border-radius: 11px;
+  color: rgba(181, 199, 226, .72);
+  cursor: pointer;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
+}
+
+.dashboardWorkflowPin svg {
+  height: 17px;
+  transition: transform .18s ease;
+  width: 17px;
+}
+
+.dashboardWorkflowPin.is-active {
+  background: rgba(66, 221, 180, .11);
+  border-color: rgba(66, 221, 180, .42);
+  color: #6ee9cc;
+}
+
+.dashboardWorkflowPin:not(.is-active) svg {
+  transform: rotate(-35deg);
+}
+
+body.page-dashboard .dashboardWorkflowNav {
+  position: relative;
+  top: auto;
+}
+
+@media (min-width: 721px) {
+  body.page-dashboard .dashboardWorkflowNav.is-pinned {
+    position: sticky;
+    top: 10px;
+    z-index: 40;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .26);
+  }
 }
 
 .dashboardWorkflowNav a,
@@ -412,6 +480,11 @@ dialog.dashboardSurface:not([open]) {
   .dashboardWorkflowNavLinks {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboardWorkflowActions {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
   }
 
   .dashboardWorkflowNav a,

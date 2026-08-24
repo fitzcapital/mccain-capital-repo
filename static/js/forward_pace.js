@@ -1,186 +1,106 @@
 (function () {
   const app = document.getElementById("forwardPaceApp");
   if (!app) return;
-
   const form = document.getElementById("forwardPaceForm");
-  const pdfButton = document.getElementById("forwardPacePdfButton");
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  const submit = document.getElementById("forwardPaceSubmit");
+  const state = document.getElementById("forwardPaceUpdateState");
+  const pdf = document.getElementById("forwardPacePdfButton");
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
   let latestPayload = null;
-  let latestProjection = null;
-  let refreshTimer = 0;
 
-  const money = (value) => Number(value || 0).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const money = (value) => Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+  const setText = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = value; };
+  const readPayload = () => Object.fromEntries(new FormData(form).entries());
+  const formatDate = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not reached";
 
-  const setText = (id, value) => {
-    const node = document.getElementById(id);
-    if (node) node.textContent = value;
-  };
-
-  function readPayload() {
-    const data = new FormData(form);
-    return Object.fromEntries(data.entries());
+  function setState(kind, title, detail) {
+    state.dataset.state = kind;
+    state.querySelector("strong").textContent = title;
+    setText("forwardPaceUpdatedAt", detail);
   }
-
-  async function postJson(path, payload) {
-    const response = await fetch(path, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-      body: JSON.stringify(payload),
-    });
+  function syncPhase() {
+    const performance = form.querySelector('input[name="account_phase"]:checked')?.value === "performance";
+    document.getElementById("forwardLifecyclePerformance").classList.toggle("is-active", performance);
+  }
+  async function requestProjection(payload) {
+    const response = await fetch("/api/forward-pace/projection", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(payload) });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok || body.ok === false) throw new Error(body.error || "Forward pace request failed.");
-    return body;
+    if (!response.ok || body.ok === false) throw new Error(body.error || "Projection failed.");
+    return body.projection;
   }
-
-  function renderProjection(projection) {
-    latestProjection = projection;
-    const weeklyTax = Number(projection.weekly.federal_tax || 0) + Number(projection.weekly.state_tax || 0);
-    const totalNet = Number(projection.totals.net || 0);
-    const balanceTone = totalNet >= 0 ? "positive" : "negative";
-    const projectionEnd = projection.schedule?.length ? projection.schedule[projection.schedule.length - 1].end : projection.inputs.start_date;
-    setText("forwardPaceHeadline", `${money(projection.weekly.net)} / week`);
-    setText("forwardPaceWeeklyNetHero", money(projection.weekly.net));
-    setText("forwardPaceWeeklyNetSignal", money(projection.weekly.net));
-    setText("forwardPaceProjectedBalance", money(projection.totals.projected_balance));
-    setText("forwardPaceProjectedProfit", money(totalNet));
-    setText("forwardPaceProjectedBalanceMeta", `${money(projection.inputs.base_balance)} base + net pace projection.`);
-    setText("forwardPaceProjectedProfitMeta", `${projection.inputs.weeks} weeks of projected net after tax and buffer.`);
-    setText(
-      "forwardPaceProjectedMeta",
-      `${projection.inputs.weeks} weeks · ${projection.inputs.state} · ${projection.inputs.payouts_per_week} payouts/week`
-    );
-    setText("forwardPaceProjectionHorizon", `${projection.inputs.weeks} weeks`);
-    setText("forwardPaceRunwayLabel", `${projection.inputs.weeks} trading weeks`);
-    setText("forwardPaceProjectionEnd", projectionEnd || "--");
-    setText("forwardPaceProjectionEndSignal", projectionEnd || "--");
-    setText("forwardPaceTrajectoryEnd", money(projection.totals.projected_balance));
-    setText("forwardPaceWeeklyGross", money(projection.weekly.gross));
-    setText("forwardPaceWeeklyTax", money(weeklyTax));
-    setText("forwardPaceWeeklyBuffer", money(projection.weekly.buffer));
-    setText("forwardPaceWeeklyNet", money(projection.weekly.net));
-    setText("forwardPaceFederalTax", money(projection.tax.federal_annual));
-    setText("forwardPaceStateRate", `${Number(projection.tax.state_rate || 0).toFixed(2)}%`);
-    setText("forwardPaceEffectiveTax", `${Number(projection.tax.effective_tax_rate || 0).toFixed(2)}%`);
-    const profitMetric = document.getElementById("forwardPaceProfitMetric");
-    if (profitMetric) profitMetric.dataset.tone = balanceTone;
-    const balanceStage = document.getElementById("forwardPaceBalanceStage");
-    if (balanceStage) balanceStage.dataset.tone = balanceTone;
-    const commandBoard = document.getElementById("forwardPaceCommandBoard");
-    if (commandBoard) commandBoard.dataset.tone = balanceTone;
-    const trajectoryCard = document.getElementById("forwardPaceTrajectoryCard");
-    if (trajectoryCard) trajectoryCard.dataset.tone = balanceTone;
-
-    const schedule = document.getElementById("forwardPaceSchedule");
-    if (schedule) {
-      schedule.innerHTML = projection.schedule.map((row) => `
-      <div class="forwardPaceWeek">
-        <div>
-          <span>Week ${row.week}</span>
-          <strong>${row.start} → ${row.end}</strong>
-        </div>
-        <div><span>Gross</span><strong>${money(row.gross)}</strong></div>
-        <div><span>Tax</span><strong>${money(Number(row.federal_tax || 0) + Number(row.state_tax || 0))}</strong></div>
-        <div><span>Buffer</span><strong>${money(row.buffer)}</strong></div>
-        <div><span>Net</span><strong>${money(row.net)}</strong></div>
-        <div><span>Balance</span><strong>${money(row.projected_balance)}</strong></div>
-      </div>
-      `).join("");
-    }
-    renderTrajectory(projection.schedule || []);
-  }
-
-  function renderTrajectory(schedule) {
+  function renderTrajectory(projection) {
     const node = document.getElementById("forwardPaceTrajectory");
-    if (!node) return;
-    if (!Array.isArray(schedule) || !schedule.length) {
-      node.innerHTML = "";
-      return;
-    }
-    const balances = schedule.map((row) => Number(row.projected_balance || 0));
-    const min = Math.min(...balances);
-    const max = Math.max(...balances);
-    const span = Math.max(1, max - min);
-    const points = schedule.map((row, idx) => {
-      const x = schedule.length === 1 ? 50 : (idx / (schedule.length - 1)) * 100;
-      const y = 100 - ((Number(row.projected_balance || 0) - min) / span) * 100;
-      return { x, y, label: `W${row.week}`, balance: money(row.projected_balance) };
-    });
-    const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
-    node.innerHTML = `
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="forwardPaceTrajectoryFill" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="rgba(94,220,255,0.24)"></stop>
-            <stop offset="100%" stop-color="rgba(97,255,184,0.32)"></stop>
-          </linearGradient>
-          <linearGradient id="forwardPaceTrajectoryStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#63d7ff"></stop>
-            <stop offset="100%" stop-color="#7bffbf"></stop>
-          </linearGradient>
-        </defs>
-        <polyline class="forwardPaceTrajectoryLine" points="${polyline}"></polyline>
-      </svg>
-      <div class="forwardPaceTrajectoryDots">
-        ${points.map((point, idx) => `
-          <div class="forwardPaceTrajectoryDot${idx === points.length - 1 ? " is-final" : ""}" style="left:${point.x}%;" title="${point.label} · ${point.balance}">
-            <span>${point.label}</span>
-          </div>
-        `).join("")}
-      </div>
-    `;
+    const schedule = projection.schedule || [];
+    if (!schedule.length) { node.innerHTML = ""; return; }
+    const lifecycle = projection.lifecycle;
+    const values = [Number(projection.inputs.current_balance || 0), ...schedule.map(row => Number(row.projected_balance || 0))];
+    const levels = lifecycle.milestones.filter(row => Number(row.value) > 0);
+    const scale = [...values, ...levels.map(row => Number(row.value))];
+    const rawMin = Math.min(...scale), rawMax = Math.max(...scale), rawSpan = Math.max(1, rawMax - rawMin);
+    const min = rawMin - rawSpan * .08, max = rawMax + rawSpan * .08, span = max - min;
+    const x = index => values.length === 1 ? 50 : 5 + index / (values.length - 1) * 90;
+    const y = value => 8 + (max - value) / span * 78;
+    const points = values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+    const endDate = schedule.at(-1)?.end || projection.window.target_date;
+    node.innerHTML = `<div class="forwardLifecyclePlot"><div class="forwardLifecyclePlotY"><span>${money(rawMax)}</span><span>${money(rawMin)}</span></div><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${[8,34,60,86].map(gridY => `<line class="forwardLifecycleGrid" x1="5" y1="${gridY}" x2="95" y2="${gridY}"></line>`).join("")}${levels.map(row => `<line class="forwardLifecycleLevel is-${row.key}" x1="5" y1="${y(Number(row.value))}" x2="95" y2="${y(Number(row.value))}"></line>`).join("")}<polyline class="forwardLifecyclePlotLine" points="${points}"></polyline><circle class="forwardLifecyclePlotPoint is-start" cx="${x(0)}" cy="${y(values[0])}" r="1.4"></circle><circle class="forwardLifecyclePlotPoint is-end" cx="${x(values.length-1)}" cy="${y(values.at(-1))}" r="1.7"></circle></svg><div class="forwardLifecyclePlotX"><span>${formatDate(projection.window.start_date)}</span><span>${formatDate(endDate)}</span></div></div><div class="forwardLifecycleChartLegend">${levels.map(row => `<span class="is-${row.key}">${row.label} ${money(row.value)}</span>`).join("")}</div>`;
   }
-
-  async function refreshProjection() {
+  function render(projection) {
     latestPayload = readPayload();
-    const payload = await postJson("/api/forward-pace/projection", latestPayload);
-    renderProjection(payload.projection);
+    const l = projection.lifecycle;
+    const recommendation = l.recommendation;
+    setText("forwardLifecyclePhase", l.phase_label);
+    setText("forwardLifecycleNextLabel", l.next_label);
+    setText("forwardLifecycleNextAmount", money(l.next_milestone));
+    setText("forwardLifecycleNextText", `${money(l.next_remaining)} remaining at the current pace.`);
+    setText("forwardLifecycleNextDate", formatDate(l.next_date));
+    setText("forwardPaceDecisionEyebrow", recommendation.eyebrow);
+    setText("forwardPaceDecisionTitle", recommendation.title);
+    setText("forwardPaceDecisionDetail", recommendation.detail);
+    setText("forwardPaceDecisionBalance", money(recommendation.required_balance));
+    setText("forwardPaceDecisionProfit", money(recommendation.additional_profit));
+    setText("forwardPaceDecisionDate", formatDate(recommendation.ready_date));
+    setText("forwardPaceDecisionSessions", recommendation.sessions_to_ready ? `${recommendation.sessions_to_ready} trading days` : "Ready now");
+    setText("forwardPaceDecisionAfter", l.phase === "performance" && recommendation.decision_amount > 0 ? money(recommendation.post_action_balance) : "--");
+    setText("forwardPaceProjectedStatus", recommendation.projected_status);
+    document.getElementById("forwardLifecycleNext").dataset.status = recommendation.action;
+    setText("forwardLifecycleCurrent", money(projection.inputs.current_balance));
+    setText("forwardLifecycleProjected", money(projection.totals.projected_balance));
+    setText("forwardLifecycleDaily", money(projection.inputs.daily_profit));
+    setText("forwardLifecycleWeekly", money(projection.weekly.net));
+    setText("forwardPaceTrajectoryEnd", money(projection.totals.projected_balance));
+    setText("forwardLifecycleTheoretical", l.phase === "performance" ? money(l.theoretical_capacity) : "--");
+    setText("forwardLifecycleProtected", l.phase === "performance" ? money(l.protected_capacity) : "--");
+    setText("forwardLifecyclePostBalance", l.phase === "performance" ? money(l.post_payout_balance) : "--");
+    setText("forwardLifecyclePostCushion", l.phase === "performance" ? money(l.post_payout_cushion) : "--");
+    setText("forwardLifecycleLossState", l.phase === "performance" ? l.loss_limit_state : "Evaluation rules");
+    setText("forwardLifecycleLossLimit", l.phase === "performance" ? money(l.applicable_loss_limit) : "--");
+    setText("forwardLifecycleProtectedFloor", l.phase === "performance" ? `Protected floor ${money(l.protected_floor)}` : "Loss rules still apply during evaluation");
+    setText("forwardLifecycleRuleSource", l.rule_source);
+    const safety = document.getElementById("forwardLifecycleSafety");
+    safety.dataset.status = l.phase === "performance" ? (l.payout_safe ? "safe" : l.proposed_payout > 0 ? "unsafe" : "neutral") : "neutral";
+    setText("forwardLifecyclePayoutStatus", l.phase !== "performance" ? "Available after performance buffer" : l.proposed_payout <= 0 ? "Enter a proposed payout" : l.payout_safe ? "Within protected plan" : "Outside protected plan");
+    setText("forwardLifecycleSafetyText", l.phase !== "performance" ? "Pass the evaluation, then use Performance mode to protect the loss limit before withdrawing." : l.buffer_reached ? `Loss limit fixed. ${money(l.protected_capacity)} is available above your selected cushion.` : "Buffer not reached. A payout reduces balance while the loss limit is still current/trailing.");
+    document.getElementById("forwardLifecyclePerformanceOutput").hidden = l.phase !== "performance";
+    const decisionSteps = [
+      {label:"Current balance", value:money(projection.inputs.current_balance), state:"complete"},
+      {label:`At ${money(projection.inputs.daily_profit)}/day`, value:money(projection.totals.projected_balance), state:"active"},
+      {label:recommendation.action === "withdraw" ? "Strategic payout" : "Next unlock", value:recommendation.action === "withdraw" ? money(recommendation.decision_amount) : money(recommendation.required_balance), state:"next"}
+    ];
+    document.getElementById("forwardLifecycleLadder").innerHTML = decisionSteps.map((row, index) => `<article class="forwardLifecycleStep is-${row.state}"><i>${row.state === "complete" ? "✓" : index + 1}</i><div><span>${row.label}</span><strong>${row.value}</strong></div><small>${index === 0 ? "Now" : index === 1 ? formatDate(projection.window.target_date) : recommendation.action === "withdraw" ? "Available now" : formatDate(recommendation.ready_date)}</small></article>`).join("");
+    document.getElementById("forwardPaceScenarioGrid").innerHTML = l.scenarios.map(row => `<article class="forwardPaceScenario is-${row.key}"><div><span>${row.label}</span><strong>${Math.round(row.multiplier*100)}% pace</strong></div><strong>${money(row.daily_profit)}/day</strong><small>${l.phase === "evaluation" ? `Pass ${formatDate(row.evaluation_date)}` : `Buffer ${formatDate(row.buffer_date)} · Protected payout ${formatDate(row.protected_payout_date)}`}</small></article>`).join("");
+    const schedule = document.getElementById("forwardPaceSchedule");
+    schedule.innerHTML = projection.schedule.map(row => `<div class="forwardPaceWeek"><div><span>Period ${row.week}${row.partial ? " · Partial" : ""}</span><strong>${row.start} → ${row.end} · ${row.sessions} days</strong></div><div><span>Trading Profit</span><strong>${money(row.net)}</strong></div><div><span>Projected Balance</span><strong>${money(row.projected_balance)}</strong></div></div>`).join("");
+    setText("forwardPaceScheduleSummary", `View all ${projection.schedule.length} periods`);
+    renderTrajectory(projection);
+    setState("success", "Lifecycle updated", `Updated ${new Date().toLocaleTimeString("en-US")}`);
+    submit.disabled = true;
   }
-
-  function scheduleRefresh() {
-    window.clearTimeout(refreshTimer);
-    refreshTimer = window.setTimeout(() => {
-      refreshProjection().catch((error) => {
-        setText("forwardPaceProjectedMeta", error.message || "Projection unavailable.");
-      });
-    }, 120);
-  }
-
-  form?.addEventListener("input", scheduleRefresh);
-  form?.addEventListener("change", scheduleRefresh);
-
-  pdfButton?.addEventListener("click", async () => {
-    const payload = latestPayload || readPayload();
-    pdfButton.disabled = true;
-    try {
-      if (!latestProjection) await refreshProjection();
-      const response = await fetch("/forward-pace/pdf", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error("PDF export failed.");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "forward-pace-projection.pdf";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      setText("forwardPaceProjectedMeta", error.message || "Could not download PDF.");
-    } finally {
-      pdfButton.disabled = false;
-    }
-  });
-
-  refreshProjection().catch(() => {});
+  function showError(error) { setState("error", "Update failed", "Review the inputs and try again"); submit.disabled = false; const node = document.getElementById("forwardPaceError"); node.textContent = error.message; node.hidden = false; }
+  async function update() { setState("updating", "Updating lifecycle", "Recalculating milestones and payout protection"); submit.disabled = true; try { render(await requestProjection(readPayload())); } catch (error) { showError(error); } }
+  form.addEventListener("input", () => { setState("dirty", "Changes not applied", "Update the lifecycle to use these inputs"); submit.disabled = false; });
+  form.addEventListener("change", event => { if (event.target.name === "account_phase") syncPhase(); setState("dirty", "Changes not applied", "Update the lifecycle to use these inputs"); submit.disabled = false; });
+  form.addEventListener("submit", event => { event.preventDefault(); update(); });
+  pdf.addEventListener("click", async () => { const response = await fetch("/forward-pace/pdf", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(latestPayload || readPayload()) }); if (!response.ok) return; const url = URL.createObjectURL(await response.blob()); const link = document.createElement("a"); link.href = url; link.download = "account-lifecycle-projection.pdf"; link.click(); URL.revokeObjectURL(url); });
+  const end = new Date(`${app.dataset.today}T12:00:00`); end.setDate(end.getDate() + 83); form.elements.target_date.value = end.toISOString().slice(0,10);
+  syncPhase(); update();
 })();

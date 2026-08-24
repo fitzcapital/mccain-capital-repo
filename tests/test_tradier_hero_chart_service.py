@@ -295,4 +295,8 @@ def test_stream_session_payload_uses_interval_aware_polling_contract():
     assert payload["hidden_quote_interval_ms"] == 15000
     assert payload["hidden_levels_interval_ms"] == 300000
     assert payload["bar_boundary_grace_ms"] == 3000
+    assert payload["micro_tape_interval_seconds"] == 5
+    assert payload["micro_tape_gap_seconds"] == 15
+    assert payload["micro_tape_max_points"] == 72
+    assert payload["micro_tape_authoritative"] is False
     assert payload["session_phase"] in {"pre", "open", "afterhours", "closed"}

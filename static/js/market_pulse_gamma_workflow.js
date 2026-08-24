@@ -30,9 +30,13 @@
       body.classList.toggle("is-playbook-pinned", pinned);
       toggle.setAttribute("aria-pressed", pinned ? "true" : "false");
       toggle.title = pinned
-        ? "Let the Playbook header scroll with the page"
-        : "Keep the Playbook header visible while scrolling";
-      if (label) label.textContent = pinned ? "Unpin header" : "Pin header";
+        ? "Let the execution summary scroll with the page"
+        : "Keep the execution summary visible while scrolling";
+      toggle.setAttribute(
+        "aria-label",
+        pinned ? "Disable sticky summary" : "Enable sticky summary",
+      );
+      if (label) label.textContent = `Sticky summary: ${pinned ? "On" : "Off"}`;
     };
     toggle.addEventListener("click", () => {
       pinned = !pinned;

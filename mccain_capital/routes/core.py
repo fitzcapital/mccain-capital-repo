@@ -83,9 +83,21 @@ def register(app):
         methods=["GET"],
     )
     app.add_url_rule(
+        "/api/market-pulse/live-setup/ack",
+        endpoint="market_pulse_live_setup_ack_api",
+        view_func=h.market_pulse_live_setup_ack_api,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/api/gamma-ladder",
         endpoint="gamma_ladder_api",
         view_func=h.gamma_ladder_api,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/market-pulse/setup-replay",
+        endpoint="market_pulse_setup_replay_api",
+        view_func=h.market_pulse_setup_replay_api,
         methods=["GET"],
     )
     app.add_url_rule(

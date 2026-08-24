@@ -144,6 +144,26 @@ def _float_or_none(value: Any) -> Optional[float]:
         return None
 
 
+def has_meaningful_ohlc(rows: List[Dict[str, Any]], *, minimum_rows: int = 2) -> bool:
+    """Return true only when rows form a real, moving OHLC candle series.
+
+    Quote fallbacks can manufacture two identical OHLC points. Those points are
+    useful for displaying a price, but they are not candles and must not prevent
+    the Dashboard from loading the last completed session.
+    """
+    usable: List[Dict[str, float]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        values = {field: _float_or_none(row.get(field)) for field in ("open", "high", "low", "close")}
+        if all(value is not None for value in values.values()):
+            usable.append({field: float(value) for field, value in values.items() if value is not None})
+    if len(usable) < minimum_rows:
+        return False
+    prices = [value for row in usable for value in row.values()]
+    return max(prices) - min(prices) > 0.01
+
+
 def _parse_row_time(row: Dict[str, Any]) -> Optional[datetime]:
     raw = (
         row.get("ts")

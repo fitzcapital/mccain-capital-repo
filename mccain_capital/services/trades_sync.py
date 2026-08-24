@@ -282,6 +282,9 @@ def _canonical_live_sync_state(
     success_at = str(last_success.get("updated_at") or "").strip()
     attempted_today = _parse_et_date(attempt_at) == today
     import_completed_today = _parse_et_date(success_at) == today
+    display_outcome = outcome
+    if outcome in {"completed", "no_new_trades"} and not import_completed_today:
+        display_outcome = "ready"
     labels = {
         "ready": ("READY", "Ready for today's import", "ready"),
         "running": ("SYNC RUNNING", "Live broker import in progress", "running"),
@@ -300,21 +303,22 @@ def _canonical_live_sync_state(
             "warning",
         ),
     }
-    state_label, current_label, tone = labels[outcome]
-    if outcome == "ready" and not preflight.get("can_run"):
+    state_label, current_label, tone = labels[display_outcome]
+    if display_outcome == "ready" and not preflight.get("can_run"):
         current_label = str(preflight.get("disabled_reason") or "Sync setup is incomplete.")
         tone = "warning"
     message = str(effective.get("message") or last_status.get("message") or "").strip()
-    if outcome == "running":
+    if display_outcome == "running":
         detail = message or "Running now. Controls unlock when complete."
     elif import_completed_today:
         detail = "Today's broker import is complete."
-    elif outcome in {"cancelled", "failed", "needs_recovery", "diagnostic_only"}:
+    elif display_outcome in {"cancelled", "failed", "needs_recovery", "diagnostic_only"}:
         detail = message or current_label
     else:
         detail = "Today's broker import is pending."
     return {
-        "outcome": outcome,
+        "outcome": display_outcome,
+        "last_outcome": outcome,
         "status": str(effective.get("status") or "idle").strip().lower() or "idle",
         "stage": str(effective.get("stage") or "").strip().lower(),
         "state_label": state_label,
@@ -330,19 +334,19 @@ def _canonical_live_sync_state(
         "last_successful_import_at_et": _format_last_sync_at_et(success_at),
         "today_status": (
             "running"
-            if outcome == "running"
+            if display_outcome == "running"
             else (
                 "completed"
                 if import_completed_today
                 else (
                     "failed"
-                    if attempted_today and outcome in {"failed", "needs_recovery"}
+                    if attempted_today and display_outcome in {"failed", "needs_recovery"}
                     else (
                         "cancelled"
-                        if attempted_today and outcome == "cancelled"
+                        if attempted_today and display_outcome == "cancelled"
                         else (
                             "diagnostic"
-                            if attempted_today and outcome == "diagnostic_only"
+                            if attempted_today and display_outcome == "diagnostic_only"
                             else "pending"
                         )
                     )
@@ -351,13 +355,13 @@ def _canonical_live_sync_state(
         ),
         "recommended_next_action": (
             "Wait for the active sync to finish."
-            if outcome == "running"
+            if display_outcome == "running"
             else (
                 "No manual sync is needed today."
                 if import_completed_today
                 else (
                     "Review recovery guidance before retrying."
-                    if outcome == "needs_recovery"
+                    if display_outcome == "needs_recovery"
                     else "Run today's normal import when ready."
                 )
             )

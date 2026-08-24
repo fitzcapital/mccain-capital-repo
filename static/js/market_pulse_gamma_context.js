@@ -9,6 +9,24 @@
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const LOCAL_FLIP_NONE_LABEL = "No local flip in band";
+  const humanizeMarketState = (value, fallback = "Pending") => {
+    const code = String(value || "").trim().toUpperCase();
+    const labels = {
+      LEVEL_BEING_TESTED: "Testing active level",
+      WAITING_FOR_LOCATION: "Waiting for price to reach level",
+      PLANNING_ONLY: "Planning only",
+      NO_TRADE: "No trade",
+      REVERSAL_READY: "Reversal setup ready",
+      CONTINUATION_ACTIVE: "Continuation active",
+      SETUP_READY: "Setup ready",
+      AFTER_HOURS_VALID: "After-hours planning",
+      LIVE_SESSION: "Live session",
+    };
+    if (!code) return fallback;
+    if (labels[code]) return labels[code];
+    const text = code.replace(/_/g, " ").toLowerCase();
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
   const abs = (value) => {
     const n = asNum(value);
     return n === null ? null : Math.abs(n);
@@ -396,7 +414,6 @@
     const trapZoneState = classifyTrapZone(spot, gammaFlip, callWall, putWall);
 
     const nearMajorWall = (abs(distanceToCallWall) || 999) <= 10 || (abs(distanceToPutWall) || 999) <= 10;
-    const nearVWAP = spot !== null && asNum(input.vwap) !== null && Math.abs(spot - asNum(input.vwap)) <= 6;
     const nearPDH = spot !== null && asNum(input.priorDayHigh) !== null && Math.abs(spot - asNum(input.priorDayHigh)) <= 8;
     const nearPDL = spot !== null && asNum(input.priorDayLow) !== null && Math.abs(spot - asNum(input.priorDayLow)) <= 8;
 
@@ -423,7 +440,6 @@
       aboveOrBelowLocalFlip: distanceToLocalFlip === null ? "unavailable" : (distanceToLocalFlip > 0 ? "above" : distanceToLocalFlip < 0 ? "below" : "at"),
       insideExpectedMove,
       nearMajorWall,
-      nearVWAP,
       nearPDH,
       nearPDL,
       sessionWindowState,
@@ -558,7 +574,6 @@
       { label: "Next Call", value: nextCallWall, distance: spot !== null && nextCallWall !== null ? spot - nextCallWall : null },
       { label: "Next Put", value: nextPutWall, distance: spot !== null && nextPutWall !== null ? spot - nextPutWall : null },
       { label: "Day Open", value: asNum(input.dayOpen), distance: spot !== null && asNum(input.dayOpen) !== null ? spot - asNum(input.dayOpen) : null },
-      { label: "VWAP", value: asNum(input.vwap), distance: spot !== null && asNum(input.vwap) !== null ? spot - asNum(input.vwap) : null },
     ];
 
     if (derived.noTradeCenter) {
@@ -596,7 +611,7 @@
         bias: "Responsive short bias",
         biasLine: "Only trade the fade if price rejects the wall and loses micro structure.",
         trigger: "5m bearish Strat",
-        triggerLine: "Wait for a 2-1-2 down or 3-1-2 reversal back under the wall.",
+        triggerLine: "Wait for a completed 2-1-2 down or bearish 2-2 Reversal at the wall.",
         target: gammaFlip !== null ? `Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Back to the flip",
         targetLine: buildLiquidityPath(spot, [
           { label: "Call Wall", value: callWall },
@@ -625,7 +640,7 @@
         bias: "Responsive long bias",
         biasLine: "Only trade the bounce if support holds and price reclaims the level cleanly.",
         trigger: "5m bullish Strat",
-        triggerLine: "Wait for a 2-1-2 up or 3-1-2 reversal off the wall.",
+        triggerLine: "Wait for a completed 2-1-2 up or bullish 2-2 Reversal off the wall.",
         target: gammaFlip !== null ? `Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Back to the flip",
         targetLine: buildLiquidityPath(spot, [
           { label: "Put Wall", value: putWall },
@@ -659,7 +674,7 @@
             : "Positive gamma is supportive, but local reclaim still matters.",
         trigger: aboveLocalFlip ? "5m bullish Strat" : "Reclaim local flip first",
         triggerLine: aboveLocalFlip
-          ? "Wait for a 2-1-2 up / 3-1-2 continuation after hold or reclaim above the flip."
+          ? "Wait for a completed 2-1-2 up or bullish 2-2 Reversal at the flip."
           : "Wait for price to hold back above local flip before treating dips as cleaner longs.",
         target: callWall !== null && (spot === null || spot < callWall) ? `Call Wall ${formatNumber(callWall, 0)}` : `Next Call ${formatNumber(nextCallWall, 0)}`,
         targetLine: buildLiquidityPath(spot, [
@@ -694,7 +709,7 @@
             : "Below the main flip, but local reclaim can still create responsive long bounces.",
         trigger: belowLocalFlip ? "5m bearish Strat" : "Watch local reclaim first",
         triggerLine: belowLocalFlip
-          ? "Wait for a 2-1-2 down / 3-1-2 continuation after failure under the flip."
+          ? "Wait for a completed 2-1-2 down or bearish 2-2 Reversal at the flip."
           : "If price reclaims local flip while staying below main flip, treat it as bounce risk first.",
         target: putWall !== null && (spot === null || spot > putWall) ? `Put Wall ${formatNumber(putWall, 0)}` : `Next Put ${formatNumber(nextPutWall, 0)}`,
         targetLine: buildLiquidityPath(spot, [
@@ -864,7 +879,8 @@
     if (headerSpotValue) {
       headerSpotValue.textContent = formatNumber(liveSpot, 2);
     }
-    setText("marketPulseHeaderSnapshot", `Live Session ${formatEtLabel(asOf || new Date().toISOString())}`);
+    const snapshot = headerSnapshotPresentation(current, asOf);
+    setText("marketPulseHeaderSnapshot", `${snapshot.label} · ${snapshot.timestamp}`);
   };
 
   const renderSimpleBadges = (id, labels) => {
@@ -1062,8 +1078,6 @@
       if (tickPrice !== null) nextPlaybookQuote.price = tickPrice;
       const tickPct = asNum(playbookTick.pct_change);
       if (tickPct !== null) nextPlaybookQuote.change_pct = tickPct;
-      const tickVwap = asNum(playbookTick.vwap);
-      if (tickVwap !== null) nextPlaybookQuote.vwap = tickVwap;
       if (typeof playbookTick.as_of === "string" && playbookTick.as_of) nextPlaybookQuote.as_of = playbookTick.as_of;
       if (typeof playbookTick.as_of === "string" && playbookTick.as_of) nextPlaybookQuote.asof = playbookTick.as_of;
       if (typeof playbookTick.provider === "string") nextPlaybookQuote.provider = playbookTick.provider;
@@ -1252,6 +1266,17 @@
     if (mins >= 240 && mins < 570) return "premarket";
     if (mins >= 960 && mins < 1200) return "afterhours";
     return "closed";
+  };
+
+  const headerSnapshotPresentation = (payload, observationAt = null) => {
+    const basePayload = payload && typeof payload === "object" ? payload : {};
+    const structure = basePayload.market_structure_snapshot || {};
+    return {
+      label: "Last candle",
+      timestamp: structure.last_completed_candle_time_label
+        || formatEtLabel(structure.last_completed_candle_time)
+        || "—",
+    };
   };
 
   const formatRange = (points) => {
@@ -2226,9 +2251,10 @@
     setText("marketPulseHeroRailFootState", mapSummary.currentRead);
     setText("marketPulseHeroPullbackLevel", mapSummary.pullbackLevel);
     setText("marketPulseHeroDestinationInline", mapSummary.nextDestination);
-    setText("marketPulseHeroStateContext", hero.state);
-    setText("marketPulseHeroStateChip", hero.state);
-    setText("marketPulseHeroTradeState", hero.state);
+    const heroStateLabel = humanizeMarketState(hero.state, "Wait");
+    setText("marketPulseHeroStateContext", heroStateLabel);
+    setText("marketPulseHeroStateChip", heroStateLabel);
+    setText("marketPulseHeroTradeState", heroStateLabel);
     setText("marketPulseHeroBestLook", hero.bestLook);
     setText("marketPulseHeroInvalidation", hero.invalidation);
     setText("marketPulseHeroRequiredTrigger", hero.trigger);
@@ -2244,52 +2270,19 @@
     updateHeroRail(input, derived);
   };
 
-  const updateTriggerValidation = (heroState, derived, triggerValidation = null) => {
-    const backendItems = (triggerValidation && triggerValidation.items) || {};
-    const nearLong = derived.aboveOrBelowLocalFlip === "above";
-    const nearShort = derived.aboveOrBelowLocalFlip === "below";
-    const setItem = (id, lineId, text, active = false) => {
-      const node = document.getElementById(id);
-      if (node) node.classList.toggle("is-active", Boolean(active));
-      setText(lineId, text);
-      const stateNode = document.getElementById(`${id}State`);
-      if (stateNode) stateNode.textContent = active ? "Ready" : "Pending";
-    };
-
-    setItem(
-      "marketPulseTriggerSweep",
-      "marketPulseTriggerSweepLine",
-      String(backendItems.sweep?.line || (nearLong ? "Need sweep into support or Local Flip before the long exists." : nearShort ? "Need pop into resistance or Local Flip before the short exists." : "Need sweep into the working level before entry is considered.")),
-      Boolean(backendItems.sweep?.active)
-    );
-    setItem(
-      "marketPulseTriggerReclaim",
-      "marketPulseTriggerReclaimLine",
-      String(backendItems.reclaim?.line || (nearLong ? "Need reclaim back above the working level after the sweep." : nearShort ? "Need failed reclaim back under the working level after the pop." : "Wait for the level to prove itself after the interaction.")),
-      Boolean(backendItems.reclaim?.active)
-    );
-    setItem(
-      "marketPulseTriggerReversal",
-      "marketPulseTriggerReversalLine",
-      String(backendItems.reversal?.line || (nearLong ? "Need 5m 2-2 up / 3-1-2 continuation before the long is valid." : nearShort ? "Need 5m 2-2 down / 3-1-2 continuation before the short is valid." : "A clean 5m reversal or continuation trigger still has to print.")),
-      Boolean(backendItems.reversal?.active)
-    );
-    setItem(
-      "marketPulseTriggerVolume",
-      "marketPulseTriggerVolumeLine",
-      String(backendItems.volume?.line || (String(derived.dealerRegime || "").toLowerCase().includes("negative") ? "Fast tape is active. Volume confirmation is mandatory." : "Require real participation before calling the move valid.")),
-      Boolean(backendItems.volume?.active)
-    );
-
-    setText(
-      "marketPulseTriggerHeaderLine",
-      String(triggerValidation?.header_line || (heroState.state === "READY" ? "Ready location, but still trigger-gated." : heroState.state === "BLOCKED" ? "Blocked until a real edge appears." : "No trigger = no trade."))
-    );
-    setText(
-      "marketPulseTriggerStatus",
-      String(triggerValidation?.status_line || (heroState.state === "BLOCKED" ? "BLOCKED — WAIT FOR EDGE" : heroState.state === "READY" ? "READY LOCATION — TRIGGER STILL REQUIRED" : "NO TRIGGER — NO TRADE"))
-    );
-    setText("marketPulseTriggerFooterLine", String(triggerValidation?.footer_line || heroState.note));
+  const updateTriggerValidation = (strategy = null) => {
+    const checklist = (strategy && strategy.checklist) || {};
+    triggerChecklistItems.forEach((item) => {
+      const status = String(checklist[item.dataset.triggerStep] || item.dataset.triggerStatus || "Unavailable");
+      item.dataset.triggerStatus = status.toLowerCase();
+      item.classList.toggle("is-active", status === "Confirmed");
+      const stateNode = item.querySelector(".marketPulseTriggerStepState");
+      if (stateNode) stateNode.textContent = status;
+    });
+    setText("marketPulseTriggerHeaderLine", humanizeMarketState(strategy?.state, "Waiting for price to reach level"));
+    setText("marketPulseTriggerStatus", String(strategy?.rejection_acceptance_status || "Neither confirmed — wait"));
+    setText("marketPulseTriggerFooterLine", String(strategy?.gamma_interpretation || "Gamma regime unavailable."));
+    setText("marketPulseTriggerProgressNext", String(strategy?.missing_evidence || "Strategy evidence unavailable."));
     syncTriggerChecklistUi();
   };
 
@@ -2320,9 +2313,9 @@
       triggerProgressLabel.textContent = `${completeCount}/${triggerChecklistItems.length} complete`;
     }
     if (triggerProgressNext) {
-      triggerProgressNext.textContent = nextItem
-        ? `Next: ${String(nextItem.dataset.triggerTitle || "Checklist step")}`
-        : "Checklist complete";
+      if (!triggerProgressNext.textContent) {
+        triggerProgressNext.textContent = nextItem ? "Next strategy evidence required" : "Checklist complete";
+      }
     }
     const validSelected = triggerChecklistItems.some((item) => item.dataset.triggerStep === selectedTriggerStep);
     if (!validSelected) {
@@ -2386,6 +2379,21 @@
       if (!symbol) return;
       applyTapeCardUpdate(card, quotes[symbol] || {}, series[symbol] || []);
     });
+    const watchlist = document.querySelector("[data-market-radar-watchlist]");
+    if (watchlist && Array.isArray(tapeMeta.order)) {
+      const cardsBySymbol = new Map(
+        Array.from(watchlist.querySelectorAll("[data-symbol]")).map((card) => [
+          String(card.dataset.symbol || "").toUpperCase(), card,
+        ])
+      );
+      tapeMeta.order.forEach((symbol, index) => {
+        const card = cardsBySymbol.get(String(symbol || "").toUpperCase());
+        if (!card) return;
+        card.dataset.radarRank = String(index + 1);
+        updateTextNode(card.querySelector('[data-role="radar-rank"]'), `#${index + 1}`);
+        watchlist.appendChild(card);
+      });
+    }
     updateTapeSummary(quotes, tapeMeta);
   };
 
@@ -2467,11 +2475,13 @@
       updateTextNode(reasonNode, "");
     }
 
-    card.classList.toggle("glow-green", (pct || 0) > 0);
-    card.classList.toggle("glow-red", (pct || 0) < 0);
-    card.classList.toggle("tone-positive", pct !== null && pct > 0);
-    card.classList.toggle("tone-negative", pct !== null && pct < 0);
-    card.classList.toggle("tone-neutral", pct === null || pct === 0);
+    const radarTone = String(quote.radar_tone || watchState.tone || "neutral");
+    card.classList.remove("tone-positive", "tone-negative", "tone-neutral", "tone-caution", "tone-unavailable", "glow-green", "glow-red");
+    card.classList.add(`tone-${radarTone}`);
+    const rangePosition = asNum(quote.range_position);
+    const rangeMarker = card.querySelector('[data-role="range-position"]');
+    if (rangeMarker) rangeMarker.style.setProperty("--range-position", `${Math.max(0, Math.min(100, rangePosition ?? 0))}%`);
+    updateTextNode(card.querySelector('[data-role="range-position-label"]'), rangePosition === null ? "Unavailable" : `${rangePosition.toFixed(0)}%`);
   };
 
   const adaptInput = (base) => {
@@ -2510,7 +2520,6 @@
       sessionLow,
       priorDayHigh: asNum(quote.prior_day_high), // TODO(api): wire prior_day_high in quote payload when available.
       priorDayLow: asNum(quote.prior_day_low), // TODO(api): wire prior_day_low in quote payload when available.
-      vwap: asNum(quote.vwap), // TODO(api): wire session VWAP from provider stream when available.
       localFlip: localFlipFromSnapshot(gamma),
       localFlipFound: gamma.local_flip_found === true,
       localFlipMissingInBand: localFlipMissingInBand(gamma),
@@ -2554,6 +2563,7 @@
       (structureSnapshot || {}).trigger_validation
       || (base && base.trigger_validation)
       || null;
+    const strategy = (structureSnapshot || {}).strategy || ((base && base.playbook_view) || {}).strategy || null;
     const modelTone = String(structureSnapshot.context_tone || modelPlaybook.tone || "");
     const modelStatus = String(structureSnapshot.context_status || modelPlaybook.status || "");
     const triggerState = buildTriggerState(executionPlan.trigger, executionPlan.tone);
@@ -2623,19 +2633,19 @@
     const toneClass = modelTone === "positive" ? "tone-positive" : modelTone === "negative" ? "tone-negative" : "tone-warn";
     const bestLook = String(structureSnapshot.best_look || modelPlaybook.best_look || "Wait for cleaner structure");
     const whyLine = String(modelPlaybook.why || structureSnapshot.plan_note || (model && model.posture_summary) || "Context is mixed.");
-    const executionStatusLine = String(backendTriggerValidation?.manual_label || backendTriggerValidation?.header_line || "Waiting for manual confirmation");
-    const needLine = String(structureSnapshot.required_trigger || modelPlaybook.need || "Need confirmation");
-    const ifThenLine = String(structureSnapshot.invalidation || modelPlaybook.avoid || buildIfThenLine(input, derived));
+    const executionStatusLine = String(strategy?.primary_target?.label || "Awaiting confirmed direction");
+    const needLine = String(strategy?.interaction_label || "Unavailable");
+    const ifThenLine = String(strategy?.rejection_acceptance_status || "Neither confirmed — wait");
     const heroState = computeHeroState(input, derived, executionPlan);
 
     updateStructureZoneBar(input, derived, model);
     updateExecutionHero(input, derived, executionPlan, model);
-    updateTriggerValidation(heroState, derived, backendTriggerValidation);
+    updateTriggerValidation(strategy);
 
     setText("marketPulseTradeabilityScore", `${tradeabilityScore100}`);
     setText("marketPulseTradeabilityGrade", String(structureSnapshot.context_grade || modelPlaybook.grade || gradeTradeability(tradeabilityScore100)));
     setText("marketPulseActionLead", whyLine);
-    setText("marketPulseBestLook", bestLook);
+    setText("marketPulseBestLook", String(strategy?.active_level?.label || bestLook));
     setText("marketPulseEnvironment", whyLine);
     setText("marketPulseExecutionStatus", executionStatusLine);
     setText("marketPulseNeed", needLine);
@@ -2653,7 +2663,7 @@
       card.classList.add(modelTone === "positive" ? "tradeRead-tradeable" : modelStatus === "CAUTION" || modelStatus === "WATCH" ? "tradeRead-conditional" : "tradeRead-stand-down");
     }
     if (chip) {
-      const statusBadge = String(backendTriggerValidation?.status_badge || modelStatus || "WATCH");
+      const statusBadge = humanizeMarketState(strategy?.state || backendTriggerValidation?.status_badge || modelStatus || "WATCH", "Watch");
       chip.textContent = statusBadge;
       chip.classList.remove("tone-positive", "tone-warn", "tone-negative");
       chip.classList.add(
@@ -2698,7 +2708,6 @@
         ? `${formatNumber(input.sessionLow, 2)} - ${formatNumber(input.sessionHigh, 2)}`
         : "—"
     );
-    setText("spxPriorityVWAP", asNum(input.vwap) === null ? "—" : formatNumber(input.vwap, 2));
     setText(
       "spxPriorityPriorRange",
       asNum(input.priorDayHigh) !== null && asNum(input.priorDayLow) !== null
@@ -2726,9 +2735,10 @@
     setText("spxPriorityFooterMeta", String((model && model.posture_summary) || `${footerLabel} • ${formatNumber(input.spot, 2)} • ${footerTime}`));
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), quotePoints, sparkTone(playbookQuote.change_pct));
     applyGlowState([shell, spotPanel], playbookQuote.change_pct);
-    const renderedAtLabel = formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso);
+    const headerSnapshot = headerSnapshotPresentation(base, tickTimeRaw);
+    const renderedAtLabel = headerSnapshot.timestamp;
     setText("marketPulseFetchedAt", renderedAtLabel);
-    setText("marketPulseHeaderSnapshot", `${panelMode === "live" ? "Live Session" : footerLabel} ${renderedAtLabel}`);
+    setText("marketPulseHeaderSnapshot", `${headerSnapshot.label} · ${renderedAtLabel}`);
     renderHeaderLevels([
       { label: "Spot", icon: "activity", value: formatNumber(input.spot, 2) },
       { label: "Main", icon: "orbit", value: formatNumber(input.gammaFlip, 0) },
@@ -2845,6 +2855,9 @@
 
   const base = getJson("spxPriorityBasePayload") || {};
   let current = JSON.parse(JSON.stringify(base));
+  const automaticRefreshAllowed = () => (
+    current?.refresh_contract?.automatic_refresh_enabled !== false
+  );
   render(current);
   const mergePayload = (incoming) => {
     if (!incoming || typeof incoming !== "object") return current;
@@ -2935,6 +2948,10 @@
   const connectStream = () => {
     closeStream();
     if (!pageVisible) return;
+    if (!automaticRefreshAllowed()) {
+      dispatchStreamStatus("Market closed", "Live stream paused · last valid session retained");
+      return;
+    }
     const streamUrl = new URL("/stream/market", window.location.origin);
     streamUrl.searchParams.set("ticker", String((state.base && state.base.ticker) || "SPY").toUpperCase());
     stream = new EventSource(streamUrl.toString());
@@ -2978,8 +2995,12 @@
       pendingStreamPayload = null;
       applyStreamPayload(nextPayload);
     }
-    dispatchStreamStatus("Live stream connecting", "Restoring live feed…");
-    connectStream();
+    if (automaticRefreshAllowed()) {
+      dispatchStreamStatus("Live stream connecting", "Restoring live feed…");
+      connectStream();
+    } else {
+      dispatchStreamStatus("Market closed", "Live stream paused · last valid session retained");
+    }
   });
   window.addEventListener("pagehide", closeStream);
   window.addEventListener("beforeunload", closeStream);

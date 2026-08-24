@@ -220,18 +220,28 @@
 </section>
 <nav class="dashboardWorkflowNav" aria-label="Dashboard workflow layers">
   <div class="dashboardWorkflowNavLinks">
-    <a href="#dashboardCommandDeckWrap">Command</a>
-    <a href="#dashboardTodayLayer">Today</a>
-    <a href="#dashboardPlanningSection">Decision Tools</a>
+    <a href="#dashboardCommandDeckWrap">Performance</a>
+    <a href="#dashboardQualityLayer">Quality</a>
+    <a href="#dashboardTrendsLayer">Trends</a>
     <a href="#dashboardReviewLayer">Review</a>
   </div>
-  <button
-    type="button"
-    class="dashboardCommandPaletteTrigger"
-    data-dashboard-surface-open="dashboardCommandPalette"
-    aria-haspopup="dialog"
-    aria-controls="dashboardCommandPalette"
-  >Quick actions <kbd>⌘K</kbd></button>
+  <div class="dashboardWorkflowActions">
+    <button
+      type="button"
+      class="dashboardWorkflowPin"
+      data-dashboard-workflow-pin
+      aria-label="Unpin section navigation"
+      aria-pressed="true"
+      title="Unpin section navigation"
+    ><span aria-hidden="true">{{ dashboard_icon('pin') }}</span></button>
+    <button
+      type="button"
+      class="dashboardCommandPaletteTrigger"
+      data-dashboard-surface-open="dashboardCommandPalette"
+      aria-haspopup="dialog"
+      aria-controls="dashboardCommandPalette"
+    >Quick actions <kbd>⌘K</kbd></button>
+  </div>
 </nav>
 <div
   class="dashboardOperationStatus"
@@ -251,59 +261,192 @@
   data-behavior-endpoint="{{ url_for('dashboard_behavior_update') }}"
   data-behavior-day="{{ dashboard_reflection.day }}"
 >
-<section class="dashboardCommandDeck" id="dashboardCommandDeck" aria-label="Session command deck">
-  <article class="dashboardCommandCard dashboardCommandCard-session" id="dashboardCommandCardSession" data-command-tone="info">
-    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('state') }}</span><span>State</span><span class="srOnly">Operating State</span></span>
-    <strong class="dashboardCommandCardValue" id="dashboardCommandStateValue">Planning Only</strong>
-    <span class="dashboardCommandCardMeta" id="dashboardCommandStateMeta">Alignment before risk. Let the brief lead.</span>
-  </article>
-  <article class="dashboardCommandCard" id="dashboardCommandCardPermission" data-command-tone="info">
-    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('gate') }}</span><span>Gate</span><span class="srOnly">Permission</span></span>
-    <strong class="dashboardCommandCardValue" id="dashboardCommandPermissionValue">No Trade</strong>
-    <span class="dashboardCommandCardMeta" id="dashboardCommandPermissionMeta">Finish the gate before adding risk.</span>
-  </article>
-  <article class="dashboardCommandCard" id="dashboardCommandCardAlignment" data-command-tone="info">
-    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('align') }}</span><span>Align</span><span class="srOnly">Alignment</span></span>
-    <strong class="dashboardCommandCardValue" id="dashboardCommandAlignmentValue">Foundation live</strong>
-    <span class="dashboardCommandCardMeta" id="dashboardCommandAlignmentMeta">Routine 0/16. Intention not set yet.</span>
-  </article>
-  <article class="dashboardCommandCard" id="dashboardCommandCardNext" data-command-tone="info">
-    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('next') }}</span><span>Next</span><span class="srOnly">Next Step</span></span>
-    <strong class="dashboardCommandCardValue" id="dashboardCommandNextValue">{{ focus_cta }}</strong>
-    <span class="dashboardCommandCardMeta" id="dashboardCommandNextMeta">{{ focus_body }}</span>
-  </article>
+<section class="dashboardPerformanceHub" id="dashboardCommandDeck" aria-label="Monthly trading performance">
+  <header class="dashboardPerformanceHead">
+    <div>
+      <span class="dashboardPerformanceEyebrow">{{ performance_hub.period_label }} Performance</span>
+      <h1>Trading Business Dashboard</h1>
+      <p>{{ performance_hub.source_label }} · realized trade P&amp;L</p>
+    </div>
+    <div class="dashboardPerformanceHeadActions">
+      <details class="dashboardAccountSwitcher" id="dashboard-account-switcher">
+        <summary aria-label="Switch dashboard account">
+          <span class="dashboardAccountSwitcherIcon">{{ dashboard_icon('wallet') }}</span>
+          <span class="dashboardAccountSwitcherCurrent">
+            <small>Account</small>
+            <strong>{{ selected_account.account_name if selected_account else 'All accounts' }}</strong>
+          </span>
+          <span class="dashboardAccountSwitcherChevron">⌄</span>
+        </summary>
+        <div class="dashboardAccountSwitcherMenu" role="menu" aria-label="Dashboard accounts">
+          {% for account in accounts %}
+            <a href="/dashboard?y={{ dashboard_year }}&amp;m={{ dashboard_month }}&amp;scope=active&amp;account_id={{ account.id }}&amp;ticker={{ selected_ticker }}&amp;pace_tf={{ pace_timeframe.key }}{% if performance_range.active %}&amp;range_start={{ performance_range.start_iso }}&amp;range_end={{ performance_range.end_iso }}{% endif %}" class="{% if selected_account and account.id == selected_account.id %}is-selected{% endif %}" role="menuitem">
+              <span><strong>{{ account.account_name }}</strong><small>{{ account.display_broker_account_id or account.prop_firm }}</small></span>
+              {% if selected_account and account.id == selected_account.id %}<b>✓</b>{% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      </details>
+      <span class="dashboardPerformanceStatus">{% if performance_hub.trade_count %}{{ performance_hub.status }}{% else %}No {{ performance_hub.period_label.split(' ')[0] }} sample{% endif %}</span>
+    </div>
+  </header>
+  <div class="dashboardPerformanceOutcome">
+    <span class="dashboardIconLabel">{{ dashboard_icon('wallet') }}<span>Net earned</span></span>
+    <strong class="{% if performance_hub.net > 0 %}is-positive{% elif performance_hub.net < 0 %}is-negative{% else %}is-neutral{% endif %}">{{ money(performance_hub.net) }}</strong>
+    <small>{{ performance_hub.trade_count }} closed trades</small>
+  </div>
+  <div class="dashboardGoalCard" id="dashboardGoalCard">
+    <div><span class="dashboardIconLabel">{{ dashboard_icon('target') }}<span>Goal</span></span><strong>{% if performance_hub.goal is not none %}{{ money(performance_hub.goal) }}{% else %}Not set{% endif %}</strong></div>
+    <div class="dashboardGoalProgress" style="--goal-progress: {{ performance_hub.progress_pct or 0 }}%"><i></i></div>
+    <div class="dashboardGoalMeta">
+      <span>{% if performance_hub.progress_pct is not none %}{{ '%.1f'|format(performance_hub.progress_pct) }}% complete{% else %}Set a monthly profit milestone{% endif %}</span>
+      <span>{% if performance_hub.remaining is not none %}{{ money(performance_hub.remaining) }} remaining{% endif %}</span>
+    </div>
+  </div>
+  <div class="dashboardPaceCard">
+    <div><span class="dashboardIconLabel">{{ dashboard_icon('calendar') }}<span>Sessions</span></span><strong>{{ performance_hub.remaining_days }}</strong></div>
+    <div><span class="dashboardIconLabel">{{ dashboard_icon('pace') }}<span>Daily pace</span></span><strong>{% if performance_hub.required_pace is not none %}{{ money(performance_hub.required_pace) }}{% else %}—{% endif %}</strong></div>
+    <div><span class="dashboardIconLabel">{{ dashboard_icon('chart') }}<span>Projection</span></span><strong>{% if performance_hub.projection is not none %}{{ money(performance_hub.projection) }}{% else %}—{% endif %}</strong></div>
+    <small>{{ performance_hub.projection_basis if performance_hub.projection is not none else 'Starts after first closed day' }}</small>
+  </div>
+  <div class="dashboardRiskStrip">
+    <div title="Opening balance plus recorded net realized trade P&amp;L"><span>Account balance</span><strong>{% if selected_account_broker_metrics.account_balance is not none %}{{ money(selected_account_broker_metrics.account_balance) }}{% else %}Unavailable{% endif %}</strong><small>{{ selected_account_broker_metrics.account_balance_source_label }}</small></div>
+    <div><span>Drawdown cushion</span><strong>{% if selected_account_broker_metrics.display_remaining_drawdown is not none %}{{ money(selected_account_broker_metrics.display_remaining_drawdown) }}{% else %}Unavailable{% endif %}</strong><small>{{ selected_account_broker_metrics.display_remaining_drawdown_source_label }}</small></div>
+    <a href="{{ market_pulse_href }}" title="Open the full execution workspace"><span class="dashboardIconLabel">{{ dashboard_icon('tape') }}<span>Workspace</span></span><strong>Market Pulse →</strong></a>
+  </div>
+  {% set consistency_pct = (consistency.ratio * 100) if consistency.ratio is not none else none %}
+  {% set consistency_recovery_total = (consistency.biggest / cons_threshold) if consistency.ratio is not none and consistency.ratio > cons_threshold else none %}
+  {% set consistency_recovery_needed = ([consistency_recovery_total - consistency.denom, 0]|max) if consistency_recovery_total is not none else none %}
+  <section class="dashboardTargetConsistency" id="dashboardTargetConsistency" aria-label="Target, projection, and consistency">
+    <header>
+      <div><span class="dashboardIconLabel">{{ dashboard_icon('target') }}<span>Target health</span></span><strong>Goal · projection · 30% consistency</strong></div>
+      <div class="dashboardTargetActions">
+        <details class="dashboardProjectionWindow{% if performance_range.active %} is-active{% endif %}">
+          <summary class="btn" aria-label="Set projection window" title="Set projection window">{{ dashboard_icon('calendar') }} <span>{% if performance_range.active %}{{ performance_range.title }}{% else %}Dates{% endif %}</span></summary>
+          <form method="get" action="/dashboard">
+            <input type="hidden" name="y" value="{{ dashboard_year }}"><input type="hidden" name="m" value="{{ dashboard_month }}"><input type="hidden" name="scope" value="{{ scope_mode }}"><input type="hidden" name="ticker" value="{{ selected_ticker }}"><input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}">{% if selected_account %}<input type="hidden" name="account_id" value="{{ selected_account.id }}">{% endif %}
+            <label><span>Start</span><input type="date" name="range_start" value="{{ performance_range.start_iso }}" required></label>
+            <label><span>End</span><input type="date" name="range_end" value="{{ performance_range.end_iso }}" required></label>
+            <div><button class="btn primary" type="submit">Apply range</button>{% if performance_range.active %}<a class="btn" href="/dashboard?y={{ dashboard_year }}&amp;m={{ dashboard_month }}&amp;scope={{ scope_mode }}&amp;ticker={{ selected_ticker }}&amp;pace_tf={{ pace_timeframe.key }}{% if selected_account %}&amp;account_id={{ selected_account.id }}{% endif %}">Clear</a>{% endif %}</div>
+          </form>
+        </details>
+        <span class="dashboardConsistencyBadge {% if consistency_pct is none %}is-neutral{% elif consistency_pct <= 20 %}is-healthy{% elif consistency_pct <= 30 %}is-watch{% else %}is-danger{% endif %}">
+          {% if consistency_pct is none %}Not measurable{% elif consistency_pct <= 20 %}Healthy{% elif consistency_pct <= 30 %}Within limit{% else %}Over 30% limit{% endif %}
+        </span>
+        <button type="button" class="btn dashboardTargetEditToggle" data-target-editor-toggle aria-expanded="false" aria-controls="dashboardTargetEditor" aria-label="Edit target and projection" title="Edit target and projection">✎ <span>Edit</span></button>
+      </div>
+    </header>
+    <div class="dashboardTargetConsistencyGrid">
+      <article class="dashboardTargetMilestone">
+        <span>Monthly milestone</span>
+        <strong>{{ money(performance_hub.net) }} <small>of {{ money(performance_hub.goal) if performance_hub.goal is not none else 'No target' }}</small></strong>
+        <div class="dashboardTargetTrack" style="--target-progress:{{ performance_hub.progress_pct or 0 }}%"><i></i></div>
+        <div><span>{{ '%.1f'|format(performance_hub.progress_pct) ~ '% complete' if performance_hub.progress_pct is not none else 'Set a target' }}</span><span>{{ money(performance_hub.remaining) ~ ' remaining' if performance_hub.remaining is not none else '—' }}</span></div>
+      </article>
+      <article class="dashboardTargetProjection">
+        <span>Current-month projection</span>
+        <strong>{{ money(performance_hub.projection) if performance_hub.projection is not none else 'Waiting for sample' }}</strong>
+        <small>{% if performance_hub.projection is not none %}{{ money(milestone.avg_daily_profit) }}/day · ETA {{ milestone.projected_completion_label or 'pending' }}{% else %}Starts after first closed day.{% endif %}</small>
+        <div><span>Required pace</span><strong>{{ money(performance_hub.required_pace) ~ '/day' if performance_hub.required_pace is not none else '—' }}</strong><span>{{ performance_hub.remaining_days }} sessions left</span></div>
+      </article>
+      <article class="dashboardTargetConsistencyMetric {% if consistency_pct is not none and consistency_pct > 30 %}is-danger{% endif %}">
+        <span>Consistency</span>
+        <strong>{{ '%.1f'|format(consistency_pct) ~ '%' if consistency_pct is not none else '—' }} <small>≤30%</small></strong>
+        <div class="dashboardConsistencyTrack" style="--consistency-position:{{ ([consistency_pct or 0, 45]|min / 45 * 100) }}%"><i></i><b></b></div>
+        {% if consistency_pct is none %}
+          <small>Needs positive net profit and a winning trade.</small>
+        {% elif consistency_pct <= 30 %}
+          <small>Largest winner {{ money(consistency.biggest) }} of {{ money(consistency.denom) }} net profit. Next winner ceiling: {{ money(consistency.next_win_cap) }}.</small>
+        {% else %}
+          <small>Largest winner {{ money(consistency.biggest) }}. Add {{ money(consistency_recovery_needed) }} net profit without exceeding that winner to return to 30%.</small>
+        {% endif %}
+      </article>
+    </div>
+    <div class="dashboardTargetEditor" id="dashboardTargetEditor" hidden>
+      <form method="post" action="/dashboard/milestone">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="y" value="{{ dashboard_year }}"><input type="hidden" name="m" value="{{ dashboard_month }}"><input type="hidden" name="scope" value="{{ scope_mode }}"><input type="hidden" name="ticker" value="{{ selected_ticker }}"><input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}"><input type="hidden" name="milestone_name" value="{{ milestone.name }}"><input type="hidden" name="milestone_profit_source" value="mtd"><input type="hidden" name="milestone_target_balance" value="{{ '%.2f'|format(milestone.target_balance) }}">
+        {% if performance_range.active %}<input type="hidden" name="range_start" value="{{ performance_range.start_iso }}"><input type="hidden" name="range_end" value="{{ performance_range.end_iso }}">{% endif %}
+        <label><span>Monthly profit goal</span><input name="milestone_profit_goal" type="number" min="0" step="100" inputmode="decimal" value="{{ '%.2f'|format(milestone.profit_goal) }}"></label>
+        <button class="btn primary" type="submit">Save goal</button>
+      </form>
+      <form method="post" action="/dashboard/pace">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="y" value="{{ dashboard_year }}"><input type="hidden" name="m" value="{{ dashboard_month }}"><input type="hidden" name="scope" value="{{ scope_mode }}"><input type="hidden" name="ticker" value="{{ selected_ticker }}"><input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}">
+        {% if performance_range.active %}<input type="hidden" name="range_start" value="{{ performance_range.start_iso }}"><input type="hidden" name="range_end" value="{{ performance_range.end_iso }}">{% endif %}
+        <label><span>Projection pace per trading day</span><input name="dashboard_pace_daily" type="number" min="0" step="25" inputmode="decimal" value="{{ '%.2f'|format(milestone.avg_daily_profit) if milestone.avg_daily_profit > 0 else '' }}" placeholder="Use live average"></label>
+        <button class="btn primary" type="submit">Save pace</button><button class="btn" type="submit" name="pace_reset" value="1">Use live pace</button>
+      </form>
+    </div>
+  </section>
+  <section class="dashboardQualityGrid{% if not performance_hub.trade_count %} is-empty{% endif %}" id="dashboardQualityLayer" aria-label="Trading quality">
+    {% if not performance_hub.trade_count %}<p class="dashboardQualityEmpty">Trading statistics activate after the first closed trade this month.</p>{% endif %}
+    <div><span>Win rate</span><strong>{% if performance_hub.win_rate is not none %}{{ '%.1f'|format(performance_hub.win_rate) }}%{% else %}—{% endif %}</strong></div>
+    <div><span>Profit factor</span><strong>{% if performance_hub.profit_factor is not none %}{{ '%.2f'|format(performance_hub.profit_factor) }}{% else %}—{% endif %}</strong></div>
+    <div><span>Expectancy</span><strong>{% if performance_hub.expectancy is not none %}{{ money(performance_hub.expectancy) }}{% else %}—{% endif %}</strong></div>
+    <div><span>Average winner</span><strong>{% if performance_hub.avg_win is not none %}{{ money(performance_hub.avg_win) }}{% else %}—{% endif %}</strong></div>
+    <div><span>Average loser</span><strong>{% if performance_hub.avg_loss is not none %}{{ money(performance_hub.avg_loss) }}{% else %}—{% endif %}</strong></div>
+    <div><span>Best / worst trade</span><strong>{% if performance_hub.best_trade is not none %}{{ money(performance_hub.best_trade) }} / {{ money(performance_hub.worst_trade) }}{% else %}—{% endif %}</strong></div>
+  </section>
+  <section class="dashboardPerformanceTrend{% if not performance_days %} is-empty{% endif %}" id="dashboardTrendsLayer" aria-label="Recent daily performance">
+    <div class="dashboardPerformanceTrendHead">
+      <div><span class="dashboardIconLabel">{{ dashboard_icon('chart') }}<span>Performance</span></span><strong>Daily realized P&amp;L</strong><small>Closed-trade result by day</small></div>
+      <a href="/calendar" title="Open P&amp;L calendar">{{ dashboard_icon('calendar') }}<span>Calendar →</span></a>
+    </div>
+    <div class="dashboardPerformanceDayBars">
+      {% for day in performance_days[-10:] %}
+        <a class="{% if day.net > 0 %}is-positive{% elif day.net < 0 %}is-negative{% else %}is-flat{% endif %}" href="/trades?d={{ day.iso }}" title="{{ day.label_short }} · {{ money(day.net) }} realized">
+          <strong>{{ money(day.net) }}</strong>
+          <i style="--day-scale: {{ ([((day.net|float)|abs / 1000 * 100), 100]|min) if day.net else 4 }}%"></i>
+          <span>{{ day.label_short }}</span>
+        </a>
+      {% else %}
+        <p>No closed trading days in this period yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+  <div class="dashboardPerformanceInsights" id="dashboardReviewLayerSummary">
+    <details><summary>{{ dashboard_icon('chart') }}<span>Setups</span></summary><p>{{ setup_focus }}</p><a href="/analytics?tab=performance">Open analytics →</a></details>
+    <details><summary>{{ dashboard_icon('review') }}<span>Process</span></summary><p>{{ pattern_watch }}</p><a href="/analytics/replay">Open replay →</a></details>
+    <details><summary>{{ dashboard_icon('calendar') }}<span>Month</span></summary><p>{{ calendar_state.green_days }} green · {{ calendar_state.red_days }} red · {{ calendar_state.flat_days }} flat days</p><a href="/calendar">Open review →</a></details>
+  </div>
+  <section class="dashboardUpdateChecklist" id="dashboardUpdatesLayer" aria-label="Today's required updates">
+    <header>
+      <div><span class="dashboardIconLabel">{{ dashboard_icon('review') }}<span>Tasks</span></span><strong>Today</strong></div>
+    </header>
+    <div class="dashboardUpdateChecklistGrid">
+      <a href="/trades/upload/statement?ws=live{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">
+        <span class="dashboardTaskIcon">{{ dashboard_icon('sync') }}</span><strong>Import trades</strong><span class="dashboardUpdateState {% if dashboard_live_sync.sync_status_today == 'completed' %}is-complete{% else %}is-due{% endif %}">{{ 'Complete' if dashboard_live_sync.sync_status_today == 'completed' else 'Due' }}</span>
+      </a>
+      <a href="/journal">
+        <span class="dashboardTaskIcon">{{ dashboard_icon('brief') }}</span><strong>Journal session</strong><span class="dashboardUpdateState is-due">Review</span>
+      </a>
+      <a href="/trades">
+        <span class="dashboardTaskIcon">{{ dashboard_icon('align') }}</span><strong>Verify trades</strong><span class="dashboardUpdateState {% if performance_hub.trade_count %}is-complete{% else %}is-due{% endif %}">{{ 'Recorded' if performance_hub.trade_count else 'Check' }}</span>
+      </a>
+      <a href="/dashboard#dashboardGoalCard">
+        <span class="dashboardTaskIcon">{{ dashboard_icon('target') }}</span><strong>Review target</strong><span class="dashboardUpdateState {% if performance_hub.goal is not none %}is-complete{% else %}is-missing{% endif %}">{{ 'Set' if performance_hub.goal is not none else 'Missing' }}</span>
+      </a>
+    </div>
+  </section>
+  <div class="srOnly" aria-hidden="true">
+    <span id="dashboardCommandStateValue">Performance</span><span id="dashboardCommandStateMeta">Monthly business review</span>
+    <span id="dashboardCommandPermissionValue">Market Pulse</span><span id="dashboardCommandPermissionMeta">Execution details delegated</span>
+    <span id="dashboardCommandAlignmentValue">{{ performance_hub.status }}</span><span id="dashboardCommandAlignmentMeta">Goal pace</span>
+    <span id="dashboardCommandNextValue">Open Market Pulse</span><span id="dashboardCommandNextMeta">Use the execution workspace</span>
+  </div>
 </section>
-<div class="dashboardDecisionContext" id="dashboardDecisionContext" aria-label="Immediate decision context">
-  <div class="dashboardDecisionContextItem dashboardDecisionContextItem-risk">
-    <span>Account Risk</span>
-    <strong>
-      {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
-        {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }} remaining
-      {% elif selected_account %}
-        Drawdown unavailable
-      {% else %}
-        Ledger-only view
-      {% endif %}
-    </strong>
-    <small>
-      {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
-        {{ selected_account_broker_metrics.remaining_drawdown_source_label or 'Manual metric' }}
-      {% else %}
-        Confirm account metrics before adding risk
-      {% endif %}
-    </small>
-  </div>
-  <div class="dashboardDecisionContextItem dashboardDecisionContextItem-market">
-    <span>Market Context</span>
-    <strong>{{ selected_ticker }} · {{ tape_status_label }}</strong>
-    <small>SPX {{ dashboard_spx_state }} · VIX {{ dashboard_vix_state }}</small>
-  </div>
-  <div class="dashboardDecisionContextItem dashboardDecisionContextItem-action">
-    <span>Primary Action</span>
-    <strong>{{ focus_cta }}</strong>
-    <small>{{ focus_body }}</small>
-  </div>
-</div>
+<script>
+document.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-target-editor-toggle]");
+  if (!trigger) return;
+  const editor = document.getElementById("dashboardTargetEditor");
+  if (!editor) return;
+  const willOpen = editor.hidden;
+  editor.hidden = !willOpen;
+  trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  const label = trigger.querySelector("span");
+  if (label) label.textContent = willOpen ? "Close" : "Edit";
+});
+</script>
 <details class="dashboardBehaviorTrendCard dashboardBehaviorTrendFold{% if dashboard_behavior_trend.aligned_days == 0 and dashboard_behavior_trend.doer_streak == 0 and dashboard_behavior_trend.urgency_total == 0 %} is-empty{% endif %}" id="dashboardBehaviorTrendCard" aria-label="Recent behavior trend">
   <summary class="dashboardBehaviorTrendSummary">
     <div class="dashboardBehaviorTrendHead">
@@ -435,18 +578,18 @@
   {% endfor %}
 </div>
 
-<div class="dashboardStage">
+<div class="dashboardStage dashboardStage--singleColumn">
   <div class="dashboardStageColumn dashboardStageLead">
   <div class="dashboardPrimaryBand">
-  <section class="dashboardStageSection dashboardStageCommand dashboardPrimarySection">
+  <section class="dashboardStageSection dashboardStageCommand dashboardPrimarySection" id="dashboardPrepareSection">
     <div class="dashboardStepLabel">Prepare</div>
     <div class="dashboardHero card pageHero heroCard{% if hero_is_protect %} dashboardHero-protect{% endif %}{% if hero_is_prime %} dashboardHero-prime{% endif %}{% if hero_is_focus %} dashboardHero-focus{% endif %}">
       <div class="toolbar">
         <div class="dashboardHeroHead">
           <div>
             <div class="dashboardPrimaryBandHeader">
-              <span class="dashboardPrimaryBandEyebrow">Operating Zone</span>
-              <span class="dashboardPrimaryBandSubhead">Decision first. Brief and checklist support it.</span>
+              <span class="dashboardPrimaryBandEyebrow">Session Readiness</span>
+              <span class="dashboardPrimaryBandSubhead">Blockers, priority, and next action.</span>
             </div>
             <div class="playbookTickerRow dashboardTickerRow">
               <div class="dashboardTickerTitleBlock{% if hero_is_protect %} dashboardTickerTitleBlock-protect{% endif %}{% if hero_is_prime %} dashboardTickerTitleBlock-prime{% endif %}{% if hero_is_focus %} dashboardTickerTitleBlock-focus{% endif %}">
@@ -470,6 +613,11 @@
                 {% endfor %}
               </div>
             </div>
+            <details class="dashboardPreparationGuide" data-dashboard-optional="preparation-guide">
+              <summary>
+                <span>Preparation rules</span>
+                <span class="tiny muted">Mission, invalidators, and urgency response</span>
+              </summary>
             <div class="dashboardBehaviorStrip" aria-label="Behavioral operating guide">
               <div class="dashboardBehaviorItem">
                 <span class="dashboardBehaviorLabel">Today's Mission</span>
@@ -484,7 +632,8 @@
                 <strong>If I feel urgency, I step back and re-check the gate.</strong>
               </div>
             </div>
-            <div class="dashboardLead stack8">{{ hero_lead }}</div>
+              <div class="dashboardLead stack8">{{ hero_lead }}</div>
+            </details>
             <div
               class="dashboardReadinessBarCard"
               data-dashboard-readiness
@@ -541,9 +690,9 @@
                 <a class="btn" href="#daily-brief-card"><span class="dashboardButtonIcon">{{ dashboard_icon('brief') }}</span><span>Brief</span></a>
               </div>
             </div>
-            <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
-              <summary aria-label="Permission to trade controls">
-                <span>Permission to trade</span>
+            <details class="dashboardCommandFold">
+              <summary aria-label="Readiness checklist and import controls">
+                <span>Checklist &amp; import</span>
                 <span class="tiny muted" data-readiness-command-summary>{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
               </summary>
               <div class="dashboardCommandBody">
@@ -554,6 +703,7 @@
                       href="{{ item.href }}"
                       title="{{ item.detail }}"
                       data-readiness-item
+                      {% if item.readiness_key %}data-readiness-key="{{ item.readiness_key }}"{% endif %}
                       {% if item.label == 'Mindset anchored' %}data-readiness-key="mindset-anchored"{% endif %}
                     >
                       <span class="dashboardChecklistEyebrow" data-readiness-item-status>{{ item.status }}</span>
@@ -627,14 +777,14 @@
 
   <section id="dashboardPlanningSection" class="dashboardStageSection dashboardStagePlan dashboardPrimarySection">
     <div class="dashboardPriorityGrid">
-      <div class="dashboardStepLabel">Plan</div>
+      <div class="dashboardStepLabel">Execute</div>
       <div
         class="card primaryCard dashboardPriorityCard dashboardDecisionCard{% if (decision_panel.status or '')|lower == 'loading' %} is-hydrating{% endif %}"
         data-refresh-endpoint="{{ url_for('dashboard_planning_refresh_api') }}"
       ><div class="toolbar">
         <div class="dashboardDecisionHead">
           <div>
-            <div class="pill">Today's Decision</div>
+            <div class="pill">Execution Plan</div>
           </div>
           <div class="dashboardDecisionHeadActions">
             <button
@@ -663,10 +813,6 @@
             <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="risk" aria-pressed="false">Risk accepted</button>
           </div>
           <div class="dashboardTradeGateNote" id="dashboardTradeGateNote">No trade until structure, trigger, and risk all agree.</div>
-          <div class="dashboardTradeGateMeta">
-            <span class="trendChip">Alignment before risk</span>
-            <span class="trendChip">Obedience protects capital</span>
-          </div>
         </div>
         <div id="dashboardDecisionLead" class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
         <div class="dashboardDecisionGrid">
@@ -767,9 +913,14 @@
         </div>
       </div></div>
       <div id="dashboardBriefCardShell">
-        <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard is-hydrating"><div class="toolbar">
+        <details id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard dashboardPlanContext is-hydrating">
+          <summary class="dashboardPlanContextSummary">
+            <span>Plan context</span>
+            <span class="trendChip">Syncing</span>
+          </summary>
+          <div class="toolbar">
           <div class="pillRow dashboardBriefSignalRow">
-            <div class="pill">Daily Brief</div>
+            <div class="pill">Structure &amp; Context</div>
             <span class="trendChip">Syncing</span>
             <span class="dashboardBriefSignalText">Building the next-session brief from live structure and macro context.</span>
           </div>
@@ -796,7 +947,7 @@
                 <div class="dashboardBriefQuickText">Will resolve once the brief engine finishes.</div>
               </div>
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
-                <div class="dashboardBriefStructuredLabel">Do Not Do</div>
+                <div class="dashboardBriefStructuredLabel">Invalidation</div>
                 <div class="dashboardBriefQuickText">Will resolve once the brief engine finishes.</div>
               </div>
             </div>
@@ -807,7 +958,8 @@
               </div>
             </details>
           </div>
-        </div></div>
+          </div>
+        </details>
       </div>
     </div>
   </section>
@@ -816,46 +968,19 @@
   </div>
   </div>
 
-  <div class="dashboardStageColumn dashboardStageSide">
+</div>
+
+  <div class="dashboardStageColumn dashboardStageSide" data-dashboard-full-canvas>
   <section class="dashboardStageSection dashboardStageMonitor">
-    <div class="dashboardStepLabel">Monitor</div>
 	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist dashboardCoreTapeCard" data-refresh-endpoint="{{ url_for('dashboard_tape_refresh_api', ticker=selected_ticker) }}"><div class="toolbar">
       <div class="dashboardTapeHeader">
           <div class="dashboardTapeHeaderBrand">
-          <div class="dashboardTapeSectionLabel"><span class="dashboardLabelIcon dashboardLabelIcon--accent">{{ dashboard_icon('tape') }}</span><span>Market Tape</span></div>
+          <div class="dashboardTapeSectionLabel"><span class="dashboardLabelIcon dashboardLabelIcon--accent">{{ dashboard_icon('tape') }}</span><span>SPX Session Snapshot</span></div>
           <div class="dashboardTapeHeaderSubline">
-            <div class="dashboardTapeWindowPicker" data-tape-window-picker>
-              <button
-                class="dashboardTapeWindowButton"
-                type="button"
-                data-role="tape-window-toggle"
-                aria-haspopup="menu"
-                aria-expanded="false"
-                aria-label="Market tape timeframe"
-                title="Market tape timeframe"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8.5"></circle>
-                  <path d="M12 7.5v5l3.25 2"></path>
-                </svg>
-                <span data-role="tape-window-label">1H</span>
-              </button>
-              <div class="dashboardTapeWindowMenu" data-role="tape-window-menu" role="menu" hidden>
-                {% for tape_window in ['15M', '30M', '1H', '6H', '24H'] %}
-                <button
-                  class="dashboardTapeWindowOption"
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked="{{ 'true' if tape_window == '1H' else 'false' }}"
-                  data-tape-window="{{ tape_window }}"
-                >{{ tape_window }}</button>
-                {% endfor %}
-              </div>
-            </div>
             <details class="inlineHelp dashboardTapeHelper">
-              <summary aria-label="Market tape legend">?</summary>
+              <summary aria-label="SPX session snapshot legend">?</summary>
               <div class="helpPopover">
-                The clock window controls each card's point move, percent move, and micro chart. Candles use real OHLC bars when available; close-only data falls back to a calm line.
+                This Dashboard card describes where SPX is within today's session. Other indexes are context only and do not validate an SPX setup. Open Market Pulse for execution analysis.
               </div>
             </details>
           </div>
@@ -880,84 +1005,64 @@
           <span class="dashboardTapeUpdatedLabel" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or 'Awaiting feed' }}</span>
         </div>
       </div>
-      <div class="liveTapeWatchTableShell dashboardTapeCardStackShell dashboardTapeDualShell marketPulseTapeShell">
-        <div class="liveTapeWatchTable dashboardTapeCardStack dashboardTapeDualStack" aria-label="Live tape chart lanes">
-        {% for lane_id, lane_label, lane_default in [('top', 'Top', 'SPX'), ('bottom', 'Bottom', 'VIX')] %}
-        {% set lane_matches = dashboard_tape_rows|selectattr('symbol', 'equalto', lane_default)|list %}
-        {% set row = lane_matches[0] if lane_matches else (dashboard_tape_rows[0] if dashboard_tape_rows else {}) %}
-        {% set lane_symbol = row.symbol|default(lane_default, true) %}
-        {% set lane_state = row.state_label|default('MIXED', true) %}
-        {% set lane_row_tone = row.row_tone|default('flat', true) %}
-        {% set tape_tone = row.tape_tone|default('positive' if lane_state in ['RISK-ON', 'STRONG'] else 'negative' if lane_state in ['RISK-OFF', 'WEAK'] else 'neutral' if lane_state == 'MIXED' else 'positive' if lane_row_tone == 'up' else 'negative' if lane_row_tone == 'down' else 'neutral', true) %}
-        {% set visual_row_tone = lane_row_tone if lane_row_tone in ['up', 'down'] else 'flat' %}
-        {% set timeframes = row.timeframes|default({}, true) %}
-        {% set last_hour = timeframes.get('1H') or row.last_hour|default({}, true) %}
-        {% set freshness_tone = row.freshness_tone|default('delayed', true) %}
-        {% set freshness_glyph = '✓' if freshness_tone == 'live' else '◷' if freshness_tone == 'delayed' else '!' %}
-        <article class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardCoreTapeRow dashboardTapeAssetCard dashboardTapeChartLane tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ lane_symbol }}" data-tape-lane="{{ lane_id }}" data-default-symbol="{{ lane_default }}" data-tape-tone="{{ tape_tone }}" aria-label="{{ lane_label }} market tape chart">
-          <div class="dashboardTapeChartLaneTop">
-            <div class="k liveTapeWatchSymbol">
-              <span class="dashboardTapeRowTrend dashboardTapeRowTrend--{{ visual_row_tone }}">{{ dashboard_icon('signal-up') if visual_row_tone == 'up' else dashboard_icon('signal-down') if visual_row_tone == 'down' else dashboard_icon('tape') }}</span>
-              <span data-role="lane-symbol">{{ lane_symbol }}</span>
-              <button class="dashboardTapeSymbolSearchToggle" type="button" data-role="tape-symbol-toggle" aria-expanded="false" aria-label="Change {{ lane_label }} ticker" title="Change ticker">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6.5"></circle>
-                  <path d="m16 16 4 4"></path>
-                </svg>
-              </button>
+      {% set spx_matches = dashboard_tape_rows|selectattr('symbol', 'equalto', 'SPX')|list %}
+      {% set spx_snapshot = spx_matches[0] if spx_matches else {} %}
+      <section class="dashboardSpxSnapshot" id="dashboardSpxSnapshot" data-watch-symbol="SPX" aria-label="SPX session snapshot">
+        <div class="dashboardSpxSnapshotLead">
+          <span class="dashboardSpxEyebrow">SPX now</span>
+          <strong id="dashboardSpxSpot">{{ spx_snapshot.price_display|default('—', true) }}</strong>
+          <span id="dashboardSpxChange">{{ spx_snapshot.pct_change_display|default('Awaiting session change', true) }}</span>
+          <div class="dashboardSpxCharacter" data-tone="neutral">
+            <span>Session character</span>
+            <strong id="dashboardSpxCharacter">Calculating</strong>
+          </div>
+        </div>
+        <div class="dashboardSpxLocation" id="dashboardSpxLocation" data-available="false">
+          <div class="dashboardSpxLocationHead">
+            <div>
+              <span>Last hour · 5-minute candles</span>
+              <strong id="dashboardSpxRangePosition">Awaiting session range</strong>
             </div>
-            <div class="dashboardTapeSymbolSearchPopover" data-role="tape-symbol-popover" hidden>
-              <form class="dashboardTapeSymbolSearch" data-role="tape-symbol-form" aria-label="{{ lane_label }} ticker search">
-                <label for="dashboard-tape-symbol-{{ lane_id }}">{{ lane_label }}</label>
-                <input id="dashboard-tape-symbol-{{ lane_id }}" data-role="tape-symbol-input" value="{{ lane_symbol }}" autocomplete="off" spellcheck="false" inputmode="latin" maxlength="8">
-                <button type="submit">Apply</button>
-              </form>
-            </div>
-            {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
-            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" data-state-label="{{ lane_state }}" title="{{ row.state_title|default('No clean tape edge yet.', true) }}">{{ lane_state }}</span>
+            <a class="dashboardSpxMarketPulseLink" href="{{ market_pulse_href }}">Open Market Pulse <span aria-hidden="true">→</span></a>
           </div>
           <div
-            class="dashboardTapeHourModule tone-{{ tape_tone }} is-{{ last_hour.tone|default('flat', true) }}"
-            data-role="last-hour"
-            data-hour-status="{{ last_hour.status|default('missing', true) }}"
-            data-timeframes='{{ timeframes|tojson }}'
+            class="dashboardSpxMiniChart"
+            id="dashboardSpxMiniChart"
+            data-initial-payload="{{ spx_snapshot.last_hour|default({}, true)|tojson|forceescape }}"
+            aria-label="SPX price movement over the last hour"
           >
-            <div class="dashboardTapeHourHead">
-              <span class="dashboardTapeHourLabel" data-role="last-hour-label" aria-hidden="true">{{ last_hour.label|default('1H', true) }}</span>
-              <span class="dashboardTapeHourChange" data-role="last-hour-change">{{ last_hour.change_display|default('—', true) }}</span>
-            </div>
-            <div class="dashboardTapeHourChartWrap" data-role="last-hour-chart">{{ last_hour.svg|safe }}</div>
-            <div class="dashboardTapeHourFoot">
-              <span class="dashboardTapeHourPct" data-role="last-hour-pct">{{ last_hour.pct_display|default('—', true) }}</span>
+            <div class="dashboardSpxMiniChartCanvas" id="dashboardSpxMiniChartCanvas">
+              <div class="dashboardTapeHourEmpty">Loading recent candles</div>
             </div>
           </div>
-          <div class="dashboardTapeChartLaneBottom">
-            <div class="dashboardTapeAssetMetric dashboardTapeAssetMetric--price">
-              <span class="dashboardTapeMetricLabel">Price</span>
-              <span class="v liveTapeWatchCell-last dashboardCoreTapeStat dashboardTapeAssetPrice" data-role="last">{{ row.price_display|default('Standby', true) }}</span>
-            </div>
-            <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
-              <span class="dashboardTapeAssetStatus is-{{ freshness_tone }}" data-role="market-state">{{ row.market_state_display|default('Wait', true) }}</span>
-              <span
-                class="dashboardTapeAssetFreshness is-{{ freshness_tone }}"
-                data-role="row-live"
-                data-freshness-label="{{ row.freshness_display|default('Awaiting Tick', true) }}"
-                data-freshness-tone="{{ freshness_tone }}"
-                title="{{ row.freshness_display|default('Awaiting Tick', true) }}"
-                aria-label="{{ row.freshness_display|default('Awaiting Tick', true) }}"
-              >
-                <span class="dashboardTapeFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
-                <span class="srOnly">{{ row.freshness_display|default('Awaiting Tick', true) }}</span>
-              </span>
-            </div>
-            <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
-              <span class="dashboardTapeRangeLabel">Range</span>
-              <span class="dashboardTapeRangeValue">{{ row.range_display|default('—', true) }}</span>
-            </div>
+          <div class="dashboardSpxRangeLabels">
+            <span><small>Low</small><strong id="dashboardSpxLow">—</strong></span>
+            <span class="dashboardSpxRangeSpot"><small>Spot</small><strong id="dashboardSpxRangeSpot">—</strong></span>
+            <span><small>High</small><strong id="dashboardSpxHigh">—</strong></span>
           </div>
+          <div class="dashboardSpxStats" aria-label="SPX session statistics">
+            <article><span>From open</span><strong id="dashboardSpxFromOpen">—</strong></article>
+            <article><span>Day range</span><strong id="dashboardSpxRangeValue">—</strong></article>
+            <article><span>Range position</span><strong id="dashboardSpxRangeStat">—</strong></article>
+          </div>
+        </div>
+      </section>
+      <div class="dashboardSpxWhatChanged" id="dashboardMarketCanvasRead" data-tone="neutral">
+        <span>What changed</span>
+        <strong id="dashboardMarketCanvasHeadline">Waiting for current SPX session data</strong>
+        <small id="dashboardMarketCanvasDetail">The Dashboard describes location only. Use Market Pulse for execution.</small>
+      </div>
+      <div class="dashboardMarketComparisons" aria-label="Secondary market context">
+        {% for compare_symbol in ['SPY', 'QQQ', 'IWM', 'VIX'] %}
+        {% set compare_matches = dashboard_tape_rows|selectattr('symbol', 'equalto', compare_symbol)|list %}
+        {% set compare = compare_matches[0] if compare_matches else {} %}
+        <article class="dashboardMarketComparison" data-comparison-symbol="{{ compare_symbol }}">
+          <span>{{ compare_symbol }}</span>
+          <strong data-role="comparison-price">{{ compare.price_display|default('—', true) }}</strong>
+          <em data-role="comparison-move">{{ compare.pct_change_display|default('—', true) }}</em>
         </article>
         {% endfor %}
-        </div>
+        <p class="dashboardMarketContextNote">Context only — these symbols do not validate an SPX setup.</p>
       </div>
 	    </div></div>
   </section>
@@ -1479,7 +1584,6 @@
 	      </div>
 	    </details>
 	  </section>
-  </div>
   </div>
 
   <dialog

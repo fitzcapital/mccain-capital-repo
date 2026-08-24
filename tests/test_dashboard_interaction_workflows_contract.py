@@ -103,6 +103,29 @@ def test_command_palette_reuses_dashboard_actions_and_ignores_editable_shortcuts
     assert 'event.key === "Enter"' in script
 
 
+def test_spx_session_snapshot_refreshes_from_existing_tape_payload():
+    script = (ROOT / "static/js/dashboard_command_center.js").read_text(encoding="utf-8")
+
+    for anchor in (
+        'document.getElementById("dashboardSpxSpot")',
+        'document.getElementById("dashboardSpxRangePosition")',
+        'document.getElementById("dashboardSpxCharacter")',
+        'document.getElementById("dashboardSpxMiniChart")',
+        'document.getElementById("dashboardSpxMiniChartCanvas")',
+        "renderSpxMiniChart(timeframePayload.SPX?.[\"1H\"] || hourPayload.SPX || {})",
+        'Recent candles unavailable',
+        'const hasData = Array.isArray(payload.candles) && payload.candles.length >= 2',
+        'const rangePosition = hasRange',
+        "sessionQuote.day_high = Math.max",
+        "sessionQuote.day_low = Math.min",
+        '"Range unavailable"',
+        'const symbols = ["SPX"]',
+    ):
+        assert anchor in script
+    assert "SPX clears range + SPY / QQQ confirm" not in script
+    assert "Require SPY, QQQ, or IWM participation" not in script
+
+
 def test_surface_controller_covers_focus_lifecycle_and_lazy_rebinding():
     script = (ROOT / "static/js/dashboard_interactions.js").read_text(encoding="utf-8")
 

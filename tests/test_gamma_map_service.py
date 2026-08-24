@@ -180,6 +180,7 @@ def test_normalize_gamma_ladder_dte_defaults_to_zero_dte():
     assert svc.normalize_gamma_ladder_dte("3dte") == "3"
     assert svc.normalize_gamma_ladder_dte("7dte") == "7"
     assert svc.normalize_gamma_ladder_dte("all") == "all"
+    assert svc.normalize_gamma_ladder_dte("prior") == "prior"
     assert svc.normalize_gamma_ladder_dte("") == "0"
     assert svc.normalize_gamma_ladder_dte("bad") == "0"
 
@@ -876,3 +877,140 @@ def test_maybe_emit_eod_gamma_notification_sends_once_per_target(monkeypatch):
 
     assert len(sent) == 1
     assert state["last_target_expiry"] == "2026-03-18"
+
+
+def test_qualified_local_flip_requires_real_sign_transition():
+    frame = pd.DataFrame(
+        [
+            {"strike": 7740, "net_gex": 40_000_000},
+            {"strike": 7750, "net_gex": 120_000_000},
+            {"strike": 7760, "net_gex": -80_000_000},
+            {"strike": 7940, "net_gex": 0},
+        ]
+    )
+
+    result = svc.compute_qualified_local_gamma_flip(frame, 7753.0)
+
+    assert result["found"] is True
+    assert 7750 < result["value"] < 7760
+    assert result["lower_strike"] == 7750
+    assert result["upper_strike"] == 7760
+
+
+def test_distant_zero_is_not_a_qualified_local_flip():
+    frame = pd.DataFrame(
+        [
+            {"strike": 7750, "net_gex": 120_000_000},
+            {"strike": 7775, "net_gex": 80_000_000},
+            {"strike": 7940, "net_gex": 0},
+        ]
+    )
+
+    result = svc.compute_qualified_local_gamma_flip(frame, 7753.0)
+
+    assert result["found"] is False
+    assert result["value"] is None
+
+
+def test_gamma_execution_model_limits_relevant_rows_and_is_planning_only():
+    rows = [{"strike": 7700 + index * 5, "net_gex": (index + 1) * 1_000_000} for index in range(19)]
+    model = svc.build_gamma_ladder_execution_model(
+        rows,
+        spot=7753.0,
+        regime="positive_gamma",
+        session_context={"display_label": "After-hours planning"},
+    )
+
+    assert len(model["relevant_rows"]) == 9
+    assert model["execution_map"]["permission"] == "planning_only"
+    assert model["execution_map"]["session_label"] == "After-hours planning"
+
+
+def test_gamma_session_context_distinguishes_live_after_hours_and_expired():
+    live = svc.gamma_ladder_session_context(
+        ["2026-08-10"],
+        now_et=datetime(2026, 8, 10, 10, 0, tzinfo=svc.app_runtime.TZ),
+    )
+    after_hours = svc.gamma_ladder_session_context(
+        ["2026-08-11"],
+        now_et=datetime(2026, 8, 10, 17, 0, tzinfo=svc.app_runtime.TZ),
+    )
+    expired = svc.gamma_ladder_session_context(
+        ["2026-08-07"],
+        now_et=datetime(2026, 8, 10, 17, 0, tzinfo=svc.app_runtime.TZ),
+    )
+    holiday = svc.gamma_ladder_session_context(
+        ["2026-12-28"],
+        now_et=datetime(2026, 12, 25, 10, 0, tzinfo=svc.app_runtime.TZ),
+    )
+    unavailable = svc.gamma_ladder_session_context(
+        [],
+        now_et=datetime(2026, 8, 10, 17, 0, tzinfo=svc.app_runtime.TZ),
+    )
+
+    assert live["market_phase"] == "rth"
+    assert live["display_state"] == "live"
+    assert after_hours["expiration_lifecycle"] == "next_session"
+    assert after_hours["display_state"] == "after_hours_planning"
+    assert expired["display_state"] == "expired_stale"
+    assert holiday["market_phase"] == "holiday"
+    assert unavailable["display_state"] == "unavailable"
+
+
+def test_after_hours_zero_dte_defaults_to_next_listed_expiration(monkeypatch):
+    monkeypatch.setattr(
+        svc.app_runtime,
+        "now_et",
+        lambda: datetime(2026, 8, 10, 17, 0, tzinfo=svc.app_runtime.TZ),
+    )
+
+    expirations, preset = svc._select_gamma_ladder_expirations(
+        "SPX", "0", ["2026-08-10", "2026-08-11", "2026-08-12"]
+    )
+
+    assert expirations == ["2026-08-11"]
+    assert preset == "next"
+
+    prior_expirations, prior_preset = svc._select_gamma_ladder_expirations(
+        "SPX", "prior", ["2026-08-10", "2026-08-11"]
+    )
+    assert prior_expirations == ["2026-08-10"]
+    assert prior_preset == "prior"
+
+    fallback_expirations, fallback_preset = svc._select_gamma_ladder_expirations(
+        "SPX", "0", ["2026-08-10"]
+    )
+    assert fallback_expirations == ["2026-08-10"]
+    assert fallback_preset == "0"
+
+
+def test_gamma_source_freshness_keeps_quote_chain_and_compute_independent():
+    now = datetime(2026, 8, 10, 10, 0, tzinfo=svc.app_runtime.TZ)
+    context = svc.gamma_ladder_session_context(["2026-08-10"], now_et=now)
+    freshness = svc.gamma_ladder_source_freshness(
+        quote_as_of="2026-08-10T09:59:30-04:00",
+        chain_as_of="2026-08-10T09:30:00-04:00",
+        computed_at="2026-08-10T09:59:45-04:00",
+        session_context=context,
+        now_et=now,
+    )
+
+    assert freshness["sources"]["quote"]["status"] == "current"
+    assert freshness["sources"]["chain"]["status"] == "stale"
+    assert freshness["sources"]["compute"]["status"] == "current"
+    assert freshness["overall"] == "degraded"
+
+
+def test_gamma_source_freshness_marks_missing_source_unavailable():
+    now = datetime(2026, 8, 10, 17, 0, tzinfo=svc.app_runtime.TZ)
+    context = svc.gamma_ladder_session_context(["2026-08-11"], now_et=now)
+    freshness = svc.gamma_ladder_source_freshness(
+        quote_as_of="",
+        chain_as_of=now.isoformat(),
+        computed_at=now.isoformat(),
+        session_context=context,
+        now_et=now,
+    )
+
+    assert freshness["sources"]["quote"]["status"] == "unavailable"
+    assert freshness["overall"] == "unavailable"

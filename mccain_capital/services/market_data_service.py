@@ -882,6 +882,9 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
     tradier_rows = _tradier_intraday_rows(symbol)
     if tradier_rows:
         return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
+    stream_rows = _stream_intraday_rows_for_date(symbol, app_runtime.now_et().date())
+    if stream_rows:
+        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, stream_rows)
     return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, [])
 
 

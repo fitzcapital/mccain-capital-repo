@@ -1,7 +1,92 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from mccain_capital.services import core
+
+
+def test_structured_invalidation_resolves_only_validated_named_level():
+    levels = {"local_flip": 6815.0, "call_wall": 6900.0}
+
+    assert core._market_pulse_structured_level_from_label("Lose Local Flip 6815", levels) == {
+        "key": "local_flip",
+        "label": "Local Flip",
+        "value": 6815.0,
+    }
+    assert core._market_pulse_structured_level_from_label("Lose Local Flip", levels) is None
+    assert core._market_pulse_structured_level_from_label("Lose Local Flip 6800", levels) is None
+    assert core._market_pulse_structured_level_from_label("No live trigger yet", levels) is None
+
+
+def test_canonical_strategy_withholds_cached_pending_target():
+    pending = core._market_pulse_canonical_strategy_targets(
+        {
+            "state": "LEVEL_BEING_TESTED",
+            "path": "pending",
+            "primary_target": {"label": "Call Wall", "value": 7750},
+            "expansion_targets": [{"label": "Put Wall", "value": 7745}],
+        }
+    )
+    ready = core._market_pulse_canonical_strategy_targets(
+        {
+            "state": "REVERSAL_READY",
+            "path": "reversal",
+            "primary_target": {"label": "Call Wall", "value": 7750},
+        }
+    )
+
+    assert pending["primary_target"] is None
+    assert pending["expansion_targets"] == []
+    assert ready["primary_target"] == {"label": "Call Wall", "value": 7750}
+
+
+def test_cached_snapshot_target_gate_updates_all_consumers_and_generation():
+    target = {"label": "Call Wall", "value": 7750}
+    verdict = {"state": "LEVEL_BEING_TESTED", "path": "pending", "primary_target": target}
+    snapshot = {
+        "canonical_freshness": {"generation_id": "old-generation"},
+        "verdict": verdict,
+        "playbook_view": {"verdict": verdict},
+        "market_structure_snapshot": {
+            "strategy": {**verdict, "expansion_targets": [target]},
+            "verdict": verdict,
+        },
+    }
+
+    sanitized = core._market_pulse_sanitize_cached_snapshot_targets(snapshot)
+
+    assert sanitized["verdict"]["primary_target"] is None
+    assert sanitized["playbook_view"]["verdict"]["primary_target"] is None
+    assert sanitized["market_structure_snapshot"]["verdict"]["primary_target"] is None
+    assert sanitized["market_structure_snapshot"]["strategy"]["primary_target"] is None
+    assert sanitized["market_structure_snapshot"]["strategy"]["expansion_targets"] == []
+    assert sanitized["canonical_freshness"]["generation_id"] != "old-generation"
+
+
+def test_cached_snapshot_removes_legacy_vwap_and_rebuilds_score_contract():
+    snapshot = {
+        "canonical_freshness": {"generation_id": "legacy-generation"},
+        "playbook_quote": {"price": 7751, "vwap": 7748, "day_low": 7745},
+        "execution_chart": {"strategy_bars_5m": [], "vwap": {"value": 7748}},
+        "market_structure_snapshot": {
+            "spot": 7751,
+            "local_flip": 7750,
+            "gamma_regime": "positive_gamma",
+            "strategy": {},
+            "vwap": {"value": 7748},
+            "scenario_rankings": {"score_weights": {"vwap": 10}},
+        },
+        "playbook_view": {"vwap": {"value": 7748}},
+    }
+
+    sanitized = core._market_pulse_sanitize_cached_snapshot_targets(snapshot)
+
+    assert "vwap" not in sanitized["playbook_quote"]
+    assert "vwap" not in sanitized["execution_chart"]
+    assert "vwap" not in sanitized["market_structure_snapshot"]
+    assert "vwap" not in sanitized["playbook_view"]
+    primary = sanitized["playbook_view"]["scenario_rankings"]["primary"]
+    assert sum(row["possible"] for row in primary["score_components"]) == 100
+    assert all(row["key"] != "vwap" for row in primary["score_components"])
 
 
 def _cached_snapshot(
@@ -29,6 +114,31 @@ def _cached_snapshot(
             },
         }
     }
+
+
+def test_cached_playbook_prefers_newer_disk_generation_across_workers(monkeypatch):
+    now = datetime.fromisoformat("2026-04-07T16:00:00-04:00")
+    older = _cached_snapshot(spot=6600.0)
+    newer = _cached_snapshot(spot=6612.25)
+    core._market_pulse_playbook_cache.update(
+        {
+            "generated_at": now - timedelta(seconds=30),
+            "payload": older,
+        }
+    )
+    monkeypatch.setattr(
+        core,
+        "_load_market_pulse_playbook_disk_cache",
+        lambda: {
+            "generated_at": (now - timedelta(seconds=5)).isoformat(),
+            "payload": newer,
+        },
+    )
+
+    resolved = core._market_pulse_cached_playbook_snapshot(now)
+
+    assert resolved["market_structure_snapshot"]["spot"] == 6612.25
+    assert core._market_pulse_playbook_cache["payload"] == newer
 
 
 def _execution_model(
@@ -403,6 +513,53 @@ def test_canonical_playbook_view_uses_explicit_unavailable_copy():
     )
 
 
+def test_strategy_pending_overrides_legacy_ready_copy():
+    playbook = core._build_playbook_view_model(
+        market_structure_snapshot={
+            "spot": 7750.0,
+            "main_flip": 7700.0,
+            "local_flip": 7725.0,
+            "call_wall": 7775.0,
+            "put_wall": 7675.0,
+            "session_mode": "regular",
+            "levels_source": "live_session_snapshot",
+            "gamma_data_status": "fresh_valid",
+            "gamma_regime": "positive",
+            "regime_confidence": "high",
+            "trade_state": "READY",
+            "strategy": {
+                "state": "LEVEL_BEING_TESTED",
+                "missing_evidence": "Wait for a liquidity sweep.",
+            },
+        },
+        execution_model={"playbook": {"status": "GO", "score": 90}},
+    )
+    assert playbook["decision_label"] == "Not actionable yet"
+    assert playbook["decision_detail"] == "Wait for a liquidity sweep."
+
+
+def test_strategy_ready_allows_actionable_copy_with_valid_data():
+    playbook = core._build_playbook_view_model(
+        market_structure_snapshot={
+            "spot": 7750.0,
+            "main_flip": 7700.0,
+            "local_flip": 7725.0,
+            "call_wall": 7775.0,
+            "put_wall": 7675.0,
+            "session_mode": "regular",
+            "levels_source": "live_session_snapshot",
+            "gamma_data_status": "fresh_valid",
+            "gamma_regime": "positive",
+            "regime_confidence": "high",
+            "trade_state": "WAIT",
+            "strategy": {"state": "REVERSAL_READY"},
+        },
+        execution_model={"playbook": {"status": "WATCH", "score": 70}},
+    )
+    assert playbook["decision_label"] == "Actionable"
+    assert playbook["decision_detail"] == "Ordered reversal trigger confirmed"
+
+
 def test_execution_chart_reuses_last_valid_session_bars_after_close():
     chart = core._market_pulse_execution_chart_viewmodel(
         spx_quote={
@@ -576,6 +733,7 @@ def test_cached_playbook_kept_when_live_quote_matches_spot():
 def test_live_worker_quote_overlays_stale_spx_quote(monkeypatch):
     from mccain_capital.services import market_worker
 
+    monkeypatch.setattr(core, "_market_pulse_market_hours", lambda _now: False)
     monkeypatch.setattr(
         market_worker,
         "get_market_snapshot",
@@ -584,13 +742,72 @@ def test_live_worker_quote_overlays_stale_spx_quote(monkeypatch):
             "prices": {"SPX": {"price": 7601.1, "pct_change": 0.42, "provider": "tradier"}},
         },
     )
-    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7542.32, "series": [7542.32]}]
+    quotes = [
+        {
+            "symbol": "SPX",
+            "label": "SPX",
+            "price": 7542.32,
+            "asof": "2026-05-29T16:00:00-04:00",
+            "as_of": "2026-05-29T16:00:00-04:00",
+            "series": [7542.32],
+        }
+    ]
 
     merged = core._market_pulse_overlay_live_worker_quotes(quotes, "SPX")
 
     assert merged[0]["price"] == 7601.1
     assert merged[0]["series"] == [7542.32]
     assert merged[0]["as_of"] == "2026-06-01T13:31:00-04:00"
+    assert merged[0]["asof"] == "2026-06-01T13:31:00-04:00"
+    assert merged[0]["asof_epoch"] == 1780335060
+
+
+def test_live_overlay_refreshes_complete_guardrail_watchlist_from_tradier(monkeypatch):
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(core, "_market_pulse_market_hours", lambda _now: True)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "updated_at": "2026-08-06T16:00:00-04:00",
+            "prices": {
+                "SPX": {"price": 7655.58, "as_of": "2026-08-06T16:00:00-04:00"},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        core.market_data_service,
+        "get_watchlist_tradier",
+        lambda symbols: {
+            symbol: {
+                "price": {"SPX": 7730.83, "SPY": 770.70, "QQQ": 718.72}[symbol],
+                "pct_change": 0.25,
+                "as_of": "2026-08-07T10:17:29-04:00",
+                "provider": "tradier",
+                "reason": "tradier_live",
+            }
+            for symbol in symbols
+        },
+    )
+    quotes = [
+        {
+            "symbol": symbol,
+            "label": symbol,
+            "price": old_price,
+            "as_of": "2026-08-06T16:00:00-04:00",
+        }
+        for symbol, old_price in (("SPX", 7655.58), ("SPY", 763.0), ("QQQ", 710.0))
+    ]
+
+    merged = core._market_pulse_overlay_live_worker_quotes(quotes, "SPX")
+
+    assert {row["symbol"]: row["price"] for row in merged} == {
+        "SPX": 7730.83,
+        "SPY": 770.70,
+        "QQQ": 718.72,
+    }
+    assert all(row["reason"] == "tradier_live" for row in merged)
 
 
 def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
