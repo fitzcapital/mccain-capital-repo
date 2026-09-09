@@ -1,4 +1,5 @@
 from datetime import datetime
+import threading
 
 import pandas as pd
 import pytest
@@ -523,6 +524,7 @@ def test_complete_basket_snapshot_is_healthy(monkeypatch):
         spot_source_timestamp="2026-03-19T12:00:00+00:00",
         contracts_seen=5,
     )
+    snapshot = svc._boundary_snapshot(snapshot)
 
     assert snapshot["warning_state"]["snapshot_status"] == SnapshotStatus.HEALTHY.value
     assert snapshot["source_metadata"]["included_expiries"] == ["2026-03-19", "2026-03-20"]
@@ -652,6 +654,100 @@ def test_snapshot_atomicity_keeps_last_good_snapshot_on_bad_recompute(monkeypatc
     assert after["gamma_flip"] == good["gamma_flip"]
     assert after["call_wall"] == good["call_wall"]
     assert after["put_wall"] == good["put_wall"]
+
+
+def test_coordinated_refresh_reuses_current_shared_snapshot(monkeypatch, tmp_path):
+    _stub_snapshot_io(monkeypatch)
+    monkeypatch.setattr(svc, "_now_iso", lambda: "2026-03-19T16:01:00+00:00")
+    monkeypatch.setattr(
+        svc.app_runtime,
+        "upload_path",
+        lambda *parts: str(tmp_path.joinpath(*parts)),
+    )
+    monkeypatch.setattr(
+        svc.app_runtime,
+        "now_et",
+        lambda: datetime(2026, 3, 19, 12, 1, tzinfo=app_runtime.TZ),
+    )
+    snapshot = svc.assemble_market_pulse_snapshot(
+        raw=_raw_basket_df(),
+        requested_expiries=["2026-03-19", "2026-03-20"],
+        source_timestamp="2026-03-19T16:00:00+00:00",
+        source_file_path="",
+        spot_price=5120.0,
+        spot_source_name="tradier",
+        spot_source_timestamp="2026-03-19T16:00:00+00:00",
+        contracts_seen=5,
+    )
+    assert svc._write_shared_gamma_snapshot(snapshot) is True
+    monkeypatch.setattr(
+        svc,
+        "run_gamma_refresh_once",
+        lambda: pytest.fail("current shared snapshot should prevent a duplicate provider fetch"),
+    )
+    monkeypatch.setattr(svc, "_CACHE", {})
+
+    coordinated = svc.run_coordinated_gamma_refresh_once()
+
+    assert coordinated["gamma_flip_combined_basket"] == snapshot["gamma_flip_combined_basket"]
+    assert coordinated["last_successful_compute"] == snapshot["last_successful_compute"]
+    assert svc._RUNTIME_STATE["cache_status"] == "shared"
+
+
+def test_shared_snapshot_round_trip_accepts_boundary_compatibility_fields(monkeypatch, tmp_path):
+    _stub_snapshot_io(monkeypatch)
+    monkeypatch.setattr(
+        svc.app_runtime,
+        "upload_path",
+        lambda *parts: str(tmp_path.joinpath(*parts)),
+    )
+    snapshot = svc.assemble_market_pulse_snapshot(
+        raw=_raw_basket_df(),
+        requested_expiries=["2026-03-19", "2026-03-20"],
+        source_timestamp="2026-03-19T16:00:00+00:00",
+        source_file_path="",
+        spot_price=5120.0,
+        spot_source_name="tradier",
+        spot_source_timestamp="2026-03-19T16:00:00+00:00",
+        contracts_seen=5,
+    )
+    assert svc._write_shared_gamma_snapshot(svc._boundary_snapshot(snapshot)) is True
+    restored = svc._read_shared_gamma_snapshot()
+    assert restored["warning_state"]["snapshot_status"] == SnapshotStatus.HEALTHY.value
+    assert "requested_expiries" not in restored
+
+
+def test_process_local_refresh_singleflight_returns_in_progress(monkeypatch):
+    marker = {"diagnostics": {"refresh_in_progress": True}}
+    monkeypatch.setattr(svc, "_refresh_in_progress_snapshot", lambda: marker)
+    assert svc._REFRESH_GATE.acquire(blocking=False)
+    try:
+        result = svc.run_coordinated_gamma_refresh_once()
+    finally:
+        svc._REFRESH_GATE.release()
+    assert result is marker
+
+
+def test_tradier_expiry_fetch_is_serial_and_ordered(monkeypatch):
+    calls = []
+    monkeypatch.setattr(svc, "_tradier_api_key", lambda: "token")
+
+    def fake_json(_path, params):
+        calls.append(params["expiration"])
+        return {"options": {"option": []}}
+
+    monkeypatch.setattr(svc, "_tradier_json", fake_json)
+    svc._fetch_chain_from_tradier("SPX", {"2026-03-20", "2026-03-19"})
+    assert calls == ["2026-03-19", "2026-03-20"]
+
+
+def test_repeated_tradier_fetches_do_not_grow_threads(monkeypatch):
+    monkeypatch.setattr(svc, "_tradier_api_key", lambda: "token")
+    monkeypatch.setattr(svc, "_tradier_json", lambda _path, _params: {"options": {"option": []}})
+    baseline = threading.active_count()
+    for _ in range(25):
+        svc._fetch_chain_from_tradier("SPX", {"2026-03-19", "2026-03-20"})
+    assert threading.active_count() == baseline
 
 
 def test_stale_source_without_last_good_returns_invalid_snapshot(monkeypatch):

@@ -129,6 +129,7 @@
     sidePanel: root.querySelector("[data-exec-side-panel]"),
     priorities: root.querySelector("[data-exec-priorities]"),
     adjustmentList: root.querySelector("[data-exec-adjustment-list]"),
+    openingCurrentLabel: root.querySelector("[data-exec-opening-current-label]"),
   };
   const inputNodes = Array.from(root.querySelectorAll("[data-exec-input]"));
   const adjustmentNodes = Array.from(root.querySelectorAll("[data-exec-adjustment]"));
@@ -274,6 +275,14 @@
     };
   };
 
+  const fundingCycleNumber = (entry) => {
+    const timing = String(entry.timing || "").toLowerCase();
+    const description = String(entry.description || "").toLowerCase();
+    if (timing.includes("paycheck 1") || timing.includes("first half") || description.includes("paycheck 1")) return 1;
+    if (timing.includes("paycheck 2") || timing.includes("second half") || description.includes("paycheck 2")) return 2;
+    return null;
+  };
+
   const monthForDate = (date) => monthById.get(dateKey(date).slice(0, 7));
   const entriesInDateRange = (start, end) => months.flatMap((month) => {
     const [year, monthNumber] = month.id.split("-").map(Number);
@@ -370,15 +379,19 @@
     const cycle = activeFundingCycle(month);
     const [year, monthNumber] = month.id.split("-").map(Number);
     const entryDate = new Date(year, monthNumber - 1, dueDay);
-    const cycleSettled = Boolean(entry.cycleManaged)
+    const baselineExpenseCycleSettled = isOutflow(entry) && (month.baselineSettledExpenseCycles || [])
+      .map(Number)
+      .includes(numberValue(entry.fundingCycle || fundingCycleNumber(entry)));
+    const cycleSettled = baselineExpenseCycleSettled || (Boolean(entry.cycleManaged)
       && cycle.settled
       && entryDate >= cycle.start
-      && entryDate < cycle.next;
+      && entryDate < cycle.next);
     return {
       ...entry,
       dueDay,
       timingEstimated: !hasExplicitDay,
       cycleSettled,
+      baselineExpenseCycleSettled,
     };
   };
 
@@ -448,6 +461,7 @@
       dueDay: Number.parseInt(timing, 10) || timingDay({ timing }, index),
       timingEstimated: false,
       cycleManaged: true,
+      fundingCycle: index < 2 ? 1 : 2,
       amountEstimated: Boolean(
         month.paySchedule?.exceptions?.[`${month.id}-${String(timing).padStart(2, "0")}`]?.estimated,
       ),
@@ -467,6 +481,7 @@
           dueDay: day,
           timingEstimated: false,
           cycleManaged: true,
+          fundingCycle: index + 1,
         });
       });
     }
@@ -485,6 +500,7 @@
           dueDay: day,
           timingEstimated: !hasExplicitDay,
           cycleManaged: true,
+          fundingCycle: fundingCycleNumber(bill),
         });
       });
     });
@@ -963,6 +979,11 @@
       const key = input.dataset.execInput;
       input.value = inputs[key] ?? "";
     });
+    if (nodes.openingCurrentLabel) {
+      nodes.openingCurrentLabel.textContent = month.id === "2026-09"
+        ? "Balance after cycle-one bills"
+        : "Current account opening balance";
+    }
     if (nodes.advancedPanel) nodes.advancedPanel.hidden = !state.advancedOpen;
     if (nodes.controls) {
       nodes.controls.classList.add("is-open");

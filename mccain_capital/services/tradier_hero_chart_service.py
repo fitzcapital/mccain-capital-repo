@@ -93,6 +93,7 @@ OPENING_SESSION_CARRYOVER_MINUTES = 390
 OPENING_SESSION_RIGHT_OFFSET_BARS = 6
 HERO_CHART_TIMEZONE = "America/New_York"
 EXTENDED_HOURS_SYMBOLS = frozenset({"QQQ", "SPY"})
+SPX_VOLUME_PROXY_SYMBOL = "SPY"
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -669,6 +670,52 @@ def normalize_tradier_timesales(
     return bars
 
 
+def _apply_spx_volume_proxy(
+    payload: Dict[str, Any], *, interval: str, anchor_day: date
+) -> Dict[str, Any]:
+    """Replace non-actionable SPX index volume with timestamp-aligned SPY volume."""
+
+    bars = list(payload.get("bars") or [])
+    payload["volume_source"] = SPX_VOLUME_PROXY_SYMBOL
+    payload["volume_proxy_matched_bars"] = 0
+    payload["volume_proxy_total_bars"] = len(bars)
+    try:
+        current_rows = market_data_service.get_intraday(SPX_VOLUME_PROXY_SYMBOL)
+    except Exception as exc:
+        LOGGER.warning("hero chart SPY volume fetch failed: %s", exc)
+        current_rows = []
+    try:
+        prior_rows = market_data_service.get_prior_session_intraday(
+            SPX_VOLUME_PROXY_SYMBOL, anchor_session_day=anchor_day
+        )
+    except Exception as exc:
+        LOGGER.warning("hero chart prior SPY volume fetch failed: %s", exc)
+        prior_rows = []
+
+    proxy_bars = normalize_tradier_timesales(
+        [*list(prior_rows or []), *list(current_rows or [])], interval=interval, limit=0
+    )
+    volume_by_time = {
+        int(bar["time"]): float(bar.get("volume") or 0.0)
+        for bar in proxy_bars
+        if _as_float(bar.get("time")) is not None
+    }
+    matched = 0
+    proxied: List[Dict[str, Any]] = []
+    for source in bars:
+        bar = dict(source)
+        stamp = _as_int(bar.get("time"), -1)
+        if stamp in volume_by_time:
+            bar["volume"] = volume_by_time[stamp]
+            matched += 1
+        else:
+            bar["volume"] = 0.0
+        proxied.append(bar)
+    payload["bars"] = proxied
+    payload["volume_proxy_matched_bars"] = matched
+    return payload
+
+
 def get_intraday_bars(
     symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTERVAL
 ) -> Dict[str, Any]:
@@ -710,6 +757,13 @@ def get_intraday_bars(
         prior_rows = []
     normalized_prior = normalize_tradier_timesales(list(prior_rows or []), interval=interval)
 
+    def finish() -> Dict[str, Any]:
+        if symbol_name == "SPX":
+            _apply_spx_volume_proxy(payload, interval=interval, anchor_day=now_et.date())
+        else:
+            payload["volume_source"] = symbol_name
+        return _with_poll_metadata(payload, now_et=now_et)
+
     if _supports_extended_hours(symbol_name):
         payload.update(
             _extended_hours_bars_for_anchor_day(
@@ -719,7 +773,7 @@ def get_intraday_bars(
                 interval=interval,
             )
         )
-        return _with_poll_metadata(payload, now_et=now_et)
+        return finish()
 
     if _session_phase(now_et) != "open":
         two_session_payload = _two_session_regular_bars(
@@ -729,7 +783,7 @@ def get_intraday_bars(
             interval=interval,
         )
         payload.update(two_session_payload)
-        return _with_poll_metadata(payload, now_et=now_et)
+        return finish()
 
     if not normalized_current:
         quote_price = _as_float(get_live_quote(symbol_name).get("price"))
@@ -744,7 +798,7 @@ def get_intraday_bars(
                 interval=interval,
             )
         )
-        return _with_poll_metadata(payload, now_et=now_et)
+        return finish()
 
     framing = _opening_session_carryover_bars(
         current_bars=normalized_current,
@@ -753,7 +807,7 @@ def get_intraday_bars(
         interval=interval,
     )
     payload.update(framing)
-    return _with_poll_metadata(payload, now_et=now_et)
+    return finish()
 
 
 def get_live_quote(symbol: str = DEFAULT_SYMBOL, *, force_refresh: bool = False) -> Dict[str, Any]:
@@ -898,10 +952,18 @@ def get_hero_levels(
         dict(snapshot.get("spx_quote") or {}),
     )
     structure_snapshot = dict(snapshot.get("market_structure_snapshot") or {})
+    gamma_snapshot = dict(snapshot.get("gamma_snapshot") or {})
+    gamma_as_of = str(
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+        or ""
+    )
 
     return {
         "symbol": resolved_symbol,
         "as_of": structure_snapshot.get("snapshot_timestamp") or app_runtime.now_iso(),
+        "gamma_as_of": gamma_as_of,
         "spot": structure_snapshot.get("spot"),
         "session_mode": structure_snapshot.get("session_mode"),
         "session_mode_label": structure_snapshot.get("session_mode_label"),
@@ -956,6 +1018,10 @@ def get_hero_levels(
         "provider": str(spx_quote.get("provider") or "market_snapshot"),
         "snapshot_timestamp": structure_snapshot.get("snapshot_timestamp"),
         "snapshot_timestamp_label": structure_snapshot.get("snapshot_timestamp_label"),
+        "last_completed_candle_time": structure_snapshot.get("last_completed_candle_time"),
+        "last_completed_candle_time_label": structure_snapshot.get(
+            "last_completed_candle_time_label"
+        ),
         "last_valid_snapshot_time": structure_snapshot.get("last_valid_snapshot_time"),
         "last_valid_snapshot_time_label": structure_snapshot.get("last_valid_snapshot_time_label"),
         "last_valid_snapshot_usable": structure_snapshot.get("last_valid_snapshot_usable"),
@@ -970,11 +1036,13 @@ def get_hero_levels(
 def get_stream_session_payload() -> Dict[str, Any]:
     """Phase 1 uses polling instead of direct browser streaming."""
 
+    session_phase = _session_phase(app_runtime.now_et())
     return {
         "mode": "polling",
         "enabled": False,
         "symbol": DEFAULT_SYMBOL,
-        "session_phase": _session_phase(app_runtime.now_et()),
+        "session_phase": session_phase,
+        "automatic_refresh_enabled": session_phase == "open",
         "bars_interval_ms": 10000,
         "quote_interval_ms": 3000,
         "levels_interval_ms": 45000,

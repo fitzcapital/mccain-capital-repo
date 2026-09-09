@@ -43,7 +43,7 @@
 ## 7. Ordered Eligibility And Quality Grading
 
 - [x] 7.1 Separate setup maturity from quality grading and expose the ordered gate state
-- [x] 7.2 Require a later completed-bar break of the 5-minute trigger candle before entry eligibility
+- [x] 7.2 Preserve completed-candle trigger evidence before entry eligibility
 - [x] 7.3 Keep gamma and higher-timeframe context as quality modifiers, never eligibility substitutes
 - [x] 7.4 Report incomplete patterns as watches/diagnostics rather than historical trades
 - [x] 7.5 Add focused regressions, rebuild, and verify the deployed live and replay payloads
@@ -60,3 +60,31 @@
 - [x] 9.1 Exclude replay entry confirmations after 3:30 PM America/New_York while retaining later bars for prior-setup outcome review
 - [x] 9.2 State the replay cutoff in the Setup Replay controls and response contract
 - [x] 9.3 Add focused cutoff regressions and rebuild the local app
+
+## 10. Replay Outcome Clarity
+
+- [x] 10.1 Expose separate setup-status, target-status, excursion, and target-progress fields
+- [x] 10.2 Render clear full-target, favorable-excursion, limited-follow-through, invalidated, and ambiguous labels
+- [x] 10.3 Add focused outcome regressions and verify the rebuilt deployed surface
+
+## 11. Correct 2-2 Trigger Attribution
+
+- [x] 11.1 Make an opposing second directional candle entry-eligible at the first candle's broken
+  boundary without requiring a third-candle continuation break
+- [x] 11.2 Freeze the true 2-2 signal timestamp and trigger-boundary entry price in replay payloads
+- [x] 11.3 Calculate MFE, MAE, target progress, target status, and invalidation from the displayed
+  trigger-boundary entry using only subsequent candles
+- [x] 11.4 Update Setup Replay labels and chart markers to distinguish pattern trigger from later
+  continuation/follow-through
+- [x] 11.5 Add focused bullish and bearish regressions proving a third candle cannot replace the
+  original 2-2 signal, then rebuild and verify the deployed Market Pulse surface
+
+## 12. Apply Trigger Attribution To Every Supported Pattern
+
+- [x] 12.1 Make bullish and bearish 2-1-2 patterns entry-eligible on their third directional candle
+  at the inside candle's broken boundary without requiring a fourth candle
+- [x] 12.2 Generalize replay signal metadata and entry-basis labels across 2-1-2 and 2-2 families
+- [x] 12.3 Add focused bullish and bearish 2-1-2 regressions proving later candles affect only
+  follow-through and outcome measurements
+- [x] 12.4 Rebuild and verify the deployed Setup Replay uses one consistent trigger-attribution rule
+  for every supported pattern

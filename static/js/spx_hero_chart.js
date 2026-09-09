@@ -18,6 +18,7 @@
   const fastTapePriceNode = document.getElementById("marketPulseFastTapePrice");
   const intervalToggles = Array.from(document.querySelectorAll("[data-hero-chart-interval]"));
   const emptyState = document.getElementById("spxExecutionHeroChartEmpty");
+  const volumeLabel = document.getElementById("spxExecutionHeroVolumeLabel");
   const pollStatusNode = document.getElementById("marketPulseHeroPollStatus");
   const sessionBreakLabel = document.getElementById("spxExecutionHeroSessionBreak");
   const sessionShade = document.getElementById("spxExecutionHeroSessionShade");
@@ -342,10 +343,12 @@
   let dayLevelLines = [];
   let gammaSelectionLine = null;
   let canonicalStrategyLines = [];
+  const expandedCanonicalRoles = new Set();
   let canonicalStrategyState = { generationId: "", overlays: [] };
   let lastGammaSelectionTimestamp = 0;
   let polling = {
     session_phase: "open",
+    automatic_refresh_enabled: true,
     bars_interval_ms: 10000,
     quote_interval_ms: 3000,
     levels_interval_ms: 45000,
@@ -369,6 +372,17 @@
     bars: `market-pulse:${symbol}:bars`,
     levels: `market-pulse:${symbol}:levels`,
     quote: `market-pulse:${symbol}:quote`,
+  };
+  const handleSessionContractUpdate = (event) => {
+    const contract = event?.detail?.contract;
+    if (!contract || typeof contract !== "object") return;
+    polling = {
+      ...polling,
+      session_phase: String(contract.market_phase || contract.phase || "closed"),
+      automatic_refresh_enabled: contract.automatic_refresh_enabled === true,
+    };
+    clearPollTimers();
+    startPolling();
   };
   let initialized = false;
   let lastBarsPayload = null;
@@ -397,7 +411,7 @@
   let pollStatus = {
     bars: { label: "Bars", state: "pending", text: "pending" },
     quote: { label: "Quote", state: "pending", text: "pending" },
-    levels: { label: "Levels", state: "pending", text: "pending" },
+    levels: { label: "Gamma", state: "pending", text: "pending" },
   };
   let displayPrefs = {
     showMarkers: true,
@@ -1028,10 +1042,14 @@
 
   let setupReplayMarkers = [];
 
-  const markersForPayload = (payload) => [
-    ...stratMarkersForPayload(payload),
-    ...(displayPrefs.showMarkers ? setupReplayMarkers : []),
-  ].sort((left, right) => Number(left.time || 0) - Number(right.time || 0));
+  const markersForPayload = (payload) => {
+    const candleTimes = new Set((payload?.bars || []).map((bar) => Number(bar.time)));
+    return [
+      ...stratMarkersForPayload(payload),
+      ...(displayPrefs.showMarkers
+        ? setupReplayMarkers.filter((marker) => candleTimes.has(marker.time)) : []),
+    ].sort((left, right) => Number(left.time || 0) - Number(right.time || 0));
+  };
 
   const handleSetupReplayMarkers = (event) => {
     const setups = Array.isArray(event?.detail?.setups) ? event.detail.setups : [];
@@ -1675,7 +1693,7 @@
       axisLabelVisible: true,
       axisLabelColor: overlay.color,
       axisLabelTextColor: "#07111F",
-      title: overlay.title,
+      title: expandedCanonicalRoles.has(overlay.roles.join("/")) ? overlay.title : "",
     }));
     canonicalStrategyState = {
       generationId: String(payload?.canonical_freshness?.generation_id || ""),
@@ -1684,12 +1702,60 @@
     return canonicalStrategyState;
   };
 
+  // Price-axis labels are canvas-drawn, so handle their clicks at the chart host.
+  // Keep the hit area on the axis to avoid intercepting candles or drawing tools.
+  const toggleCanonicalPriceDetails = (event) => {
+    if (drawingState.enabled) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const axisWidth = chart.priceScale("right").width();
+    if (x < rect.width - axisWidth || x > rect.width || y < 0 || y > rect.height) return;
+    const hits = canonicalStrategyState.overlays.map((overlay, index) => {
+      const coordinate = candleSeries.priceToCoordinate(overlay.value);
+      return { overlay, index, distance: coordinate === null ? Infinity : Math.abs(y - coordinate) };
+    }).filter((hit) => hit.distance <= 14).sort((a, b) => a.distance - b.distance);
+    const hit = hits[0];
+    if (!hit) return;
+    const key = hit.overlay.roles.join("/");
+    if (expandedCanonicalRoles.has(key)) expandedCanonicalRoles.delete(key);
+    else expandedCanonicalRoles.add(key);
+    canonicalStrategyLines[hit.index]?.applyOptions({
+      title: expandedCanonicalRoles.has(key) ? hit.overlay.title : "",
+    });
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  canvas.addEventListener("click", toggleCanonicalPriceDetails, true);
+
   const handleCanonicalMarketPulseUpdate = (event) => {
     const payload = event.detail && typeof event.detail.payload === "object"
       ? event.detail.payload
       : null;
     if (payload) {
       applyCanonicalStrategyOverlays(payload);
+      const refreshContract = payload.refresh_contract && typeof payload.refresh_contract === "object"
+        ? payload.refresh_contract
+        : null;
+      if (refreshContract) {
+        const previousPhase = String(polling?.session_phase || "").toLowerCase();
+        const nextPhase = String(refreshContract.market_phase || previousPhase).toLowerCase();
+        polling = {
+          ...polling,
+          session_phase: nextPhase,
+          automatic_refresh_enabled: refreshContract.automatic_refresh_enabled !== false,
+        };
+        if (microTapeState && MicroTape?.setLifecycle) {
+          renderMicroTapeState(MicroTape.setLifecycle(microTapeState, {
+            visible: pageVisible,
+            marketPhase: nextPhase,
+          }));
+        }
+        if (lastLevelsPayload) renderSummary(lastLevelsPayload);
+        if (nextPhase !== previousPhase) {
+          startPolling();
+        }
+      }
     }
   };
 
@@ -1990,9 +2056,14 @@
 
   const renderSummary = (levels) => {
     // /api/hero/levels already derives read, pullback, destination, and trade state.
-    const state = humanizeMarketState(levels.decision_label || levels.trade_state_label || levels.state);
+    const sessionOpen = marketIsOpenForPolling();
+    const state = sessionOpen
+      ? humanizeMarketState(levels.decision_label || levels.trade_state_label || levels.state)
+      : "Session closed";
     const currentRead = String(levels.current_read || "Await structure");
-    const headline = `${state} - ${currentRead}`.toUpperCase();
+    const headline = sessionOpen
+      ? `${state} - ${currentRead}`.toUpperCase()
+      : "SESSION CLOSED · REVIEW ONLY";
 
     updateHeaderSummary(levels);
     setText("marketPulseHeaderSpot", fmt(levels.spot, 2));
@@ -2022,7 +2093,7 @@
     setText("marketPulseHeroMacroFlip", fmt(levels.main_flip, 0));
 
     setText("marketPulseHeroTopState", `READ: ${currentRead}`);
-    setText("marketPulseHeroTopMode", `DECISION: ${state}`);
+    setText("marketPulseHeroTopMode", sessionOpen ? `DECISION: ${state}` : "SESSION CLOSED");
     setText("marketPulseHeroRailSummary", levels.current_read || "Awaiting valid structure");
     setText("marketPulseHeroChartBanner", headline);
 
@@ -2030,8 +2101,8 @@
     setText("marketPulseHeroPullbackLevel", levels.pullback_level || "Awaiting level");
     setText("marketPulseHeroDestinationInline", levels.next_destination || "Awaiting next test");
 
-    setStateChip("marketPulseHeroStateContext", levels.state);
-    setStateChip("marketPulseHeroStateChip", levels.state);
+    setStateChip("marketPulseHeroStateContext", sessionOpen ? levels.state : "SESSION_CLOSED");
+    setStateChip("marketPulseHeroStateChip", sessionOpen ? levels.state : "SESSION_CLOSED");
     setText("marketPulseHeroTradeState", state);
     setText("marketPulseHeroBestLook", levels.best_look || "Wait for cleaner structure");
     setText("marketPulseHeroRequiredTrigger", levels.required_trigger || "Confirmation required");
@@ -2099,6 +2170,13 @@
         ...payload,
         bars: candles,
       };
+      if (volumeLabel) {
+        const volumeSource = String(payload.volume_source || symbol).toUpperCase();
+        volumeLabel.textContent = `${volumeSource} volume`;
+        volumeLabel.title = volumeSource === "SPY"
+          ? "SPY share volume aligned to each SPX candle"
+          : `${volumeSource} reported volume`;
+      }
       syncAxisSessionMode(lastBarsPayload);
       setPollStatus("bars", "fresh", formatClock(payload.latest_bar_time || payload.fetched_at));
 
@@ -2191,7 +2269,17 @@
         console.warn(`${symbol} hero levels update skipped: invalid level payload`, payload);
         return;
       }
-      setPollStatus("levels", "fresh", formatClock(nextLevels.as_of || nextLevels.snapshot_timestamp));
+      const gammaStatus = String(nextLevels.gamma_data_status || "").toLowerCase();
+      const gammaAsOf = nextLevels.gamma_as_of || nextLevels.as_of || nextLevels.snapshot_timestamp;
+      const gammaState = ["invalid"].includes(gammaStatus)
+        ? "error"
+        : ["stale_but_usable", "partial"].includes(gammaStatus)
+          ? "stale"
+          : "fresh";
+      const gammaText = gammaState === "fresh"
+        ? formatClock(gammaAsOf)
+        : `${gammaState} ${formatAge(gammaAsOf)}`;
+      setPollStatus("levels", gammaState, gammaText);
       const nextSignature = levelsSignature(nextLevels);
       if (nextSignature === lastAppliedLevelsSignature) {
         lastLevelsPayload = nextLevels;
@@ -2263,7 +2351,8 @@
 
   const marketIsOpenForPolling = () => {
     const phase = String(polling?.session_phase || "").trim().toLowerCase();
-    return phase === "open" || phase === "regular" || phase === "live";
+    const sessionOpen = phase === "open" || phase === "regular" || phase === "live";
+    return sessionOpen && polling?.automatic_refresh_enabled !== false;
   };
 
   const barsBaseIntervalMs = () => {
@@ -2314,6 +2403,7 @@
   };
 
   const scheduleBarsPoll = (delay) => {
+    if (!marketIsOpenForPolling()) return;
     if (refreshCoordinator) {
       refreshCoordinator.schedule(refreshLaneNames.bars, Math.max(0, Number(delay) || 0));
       return;
@@ -2337,6 +2427,7 @@
   };
 
   const scheduleLevelsPoll = (delay) => {
+    if (!marketIsOpenForPolling()) return;
     if (refreshCoordinator) {
       refreshCoordinator.schedule(refreshLaneNames.levels, Math.max(0, Number(delay) || 0));
       return;
@@ -2356,6 +2447,7 @@
   };
 
   const scheduleQuotePoll = (delay) => {
+    if (!marketIsOpenForPolling()) return;
     if (refreshCoordinator) {
       refreshCoordinator.schedule(refreshLaneNames.quote, Math.max(0, Number(delay) || 0));
       return;
@@ -2376,6 +2468,10 @@
 
   const startPolling = () => {
     clearPollTimers();
+    if (!marketIsOpenForPolling()) {
+      if (lastLevelsPayload) renderSummary(lastLevelsPayload);
+      return;
+    }
     if (refreshCoordinator) {
       refreshCoordinator.register(refreshLaneNames.bars, {
         run: async () => {
@@ -2653,7 +2749,15 @@
   window.addEventListener("pagehide", () => {
     clearPollTimers();
     window.removeEventListener("market-pulse-stream-payload", handleSharedStreamPayload);
+    window.removeEventListener(
+      "market-pulse-session-contract-updated",
+      handleSessionContractUpdate,
+    );
   });
+  window.addEventListener(
+    "market-pulse-session-contract-updated",
+    handleSessionContractUpdate,
+  );
   resize();
   boot();
 })();

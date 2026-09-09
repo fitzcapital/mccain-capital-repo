@@ -46,6 +46,18 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "broker_metrics_updated_at",
             "broker_equity_source",
         }.issubset(account_cols)
+        setup_event_cols = _table_columns(conn, "market_pulse_setup_events")
+        assert {
+            "setup_event_id",
+            "session_date",
+            "signal_time",
+            "family",
+            "pattern_code",
+            "outcome_state",
+            "mfe",
+            "mae",
+            "target_progress_percent",
+        }.issubset(setup_event_cols)
 
         applied = [
             r[0] for r in conn.execute("SELECT id FROM schema_migrations ORDER BY id").fetchall()
@@ -65,7 +77,10 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0012_full_trading_host_coverage",
             "0013_multi_account_ledgers",
             "0014_account_broker_metrics",
-            "0015_broker_equity_source",
-        ]
+                "0015_broker_equity_source",
+                "0016_market_pulse_setup_events",
+                "0017_market_pulse_reliability_events",
+                "0018_market_pulse_reliability_history_index",
+            ]
     finally:
         conn.close()

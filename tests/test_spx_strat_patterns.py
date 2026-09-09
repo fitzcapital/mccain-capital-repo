@@ -60,6 +60,45 @@ def test_detects_opposing_22_reversals_at_level():
     assert up["code"] == "2-2 REV U"
 
 
+def test_key_level_location_accepts_quarter_point_boundary_but_not_more():
+    bars = [
+        _bar("11:20", 7767.08, 7760.82),
+        _bar("11:25", 7769.75, 7765.97),
+        _bar("11:30", 7768.18, 7762.96),
+    ]
+    boundary = detect_latest_key_level_pattern(
+        bars,
+        level_key="call_wall",
+        level_label="Call Wall",
+        level_value=7770.00,
+    )
+    outside = detect_latest_key_level_pattern(
+        bars,
+        level_key="call_wall",
+        level_label="Call Wall",
+        level_value=7770.01,
+    )
+    assert boundary["code"] == "2-2 REV D"
+    assert outside is None
+
+
+def test_key_level_proximity_does_not_promote_continuation():
+    continuation = [
+        _bar("11:25", 7770.00, 7765.97),
+        _bar("11:30", 7768.18, 7762.96),
+        _bar("11:35", 7763.59, 7754.14),
+    ]
+    assert (
+        detect_latest_key_level_pattern(
+            continuation,
+            level_key="call_wall",
+            level_label="Call Wall",
+            level_value=7770.00,
+        )
+        is None
+    )
+
+
 def test_rejects_outside_bar_generic_break_and_midrange_pattern():
     outside = [
         _bar("09:30", 100, 90),

@@ -60,7 +60,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/typography.css') }}?v={{ static_v }}&rev=ibm-plex-20260730a">
 </head>
 
-{% set wide_shell_pages = ['dashboard', 'executive', 'market-pulse', 'market_pulse', 'candle-opens', 'analytics'] %}
+{% set wide_shell_pages = ['dashboard', 'executive', 'market-pulse', 'market_pulse', 'analytics'] %}
 {% set shell_mode = 'dense' if active == 'budget' else ('wide' if active in wide_shell_pages else 'standard') %}
 <body class="{% if active %}page-{{ active|replace('_', '-')|replace(' ', '-') }}{% endif %}{% if request.path != '/dashboard' %} appModernizedPage{% endif %} shellMode shellMode-{{ shell_mode }}" data-shell-mode="{{ shell_mode }}">
   <div class="shellStarfield" id="shellStarfield" aria-hidden="true">
@@ -485,6 +485,7 @@
           <a class="btn {% if active=='executive' %}active{% endif %}" href="/executive"><span class="navLabelIcon">{{ app_icon('executive') }}</span><span>Executive</span></a>
           <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="navLabelIcon">{{ app_icon('dashboard') }}</span><span>Trading Dashboard</span></a>
           <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="navLabelIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
+          <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="navLabelIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="navLabelIcon">{{ app_icon('trades') }}</span><span>Trades</span></a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="navLabelIcon">{{ app_icon('journal') }}</span><span>Journal</span></a>
         </div>
@@ -515,7 +516,8 @@
             <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">{{ app_icon('dashboard') }}</span><span>Trading Dashboard</span></a>
             <a class="btn {% if active=='the-plan' %}active{% endif %}" href="/the-plan"><span class="menuItemIcon">{{ app_icon('plan') }}</span><span>The Plan</span></a>
             <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="menuItemIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
+            <a class="btn {% if request.path == '/market-pulse/setup-analytics' %}active{% endif %}" href="/market-pulse/setup-analytics?ticker=SPX"><span class="menuItemIcon">{{ app_icon('analytics') }}</span><span>Setup Analytics</span></a>
+            <a class="btn {% if request.path == '/market-pulse/reliability' %}active{% endif %}" href="/market-pulse/reliability?ticker=SPX"><span class="menuItemIcon">{{ app_icon('analytics') }}</span><span>Reliability</span></a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat"><span class="menuItemIcon">{{ app_icon('strategy') }}</span><span>The Strat</span></a>
             <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook"><span class="menuItemIcon">{{ app_icon('playbook') }}</span><span>Playbook</span></a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies"><span class="menuItemIcon">{{ app_icon('strategy') }}</span><span>Strategies</span></a>
@@ -792,6 +794,8 @@
             <a class="btn {% if active=='executive' %}primary{% endif %}" href="/executive">Executive</a>
             <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Trading Dashboard</a>
             <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse">Market Pulse</a>
+            <a class="btn {% if request.path == '/market-pulse/setup-analytics' %}primary{% endif %}" href="/market-pulse/setup-analytics?ticker=SPX">Setup Analytics</a>
+            <a class="btn {% if request.path == '/market-pulse/reliability' %}primary{% endif %}" href="/market-pulse/reliability?ticker=SPX">Reliability</a>
             <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>

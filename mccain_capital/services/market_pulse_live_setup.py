@@ -14,6 +14,8 @@ import tempfile
 from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
+from mccain_capital.services.market_pulse_setup_replay import evaluate_setup_outcome
+
 
 ET = ZoneInfo("America/New_York")
 DEFAULT_CUTOFF = time(15, 15)
@@ -68,19 +70,26 @@ def parse_cutoff(value: Any) -> time:
 
 
 def setup_identity(*, session_id: str, ticker: str, candidate: Mapping[str, Any]) -> str:
-    level = dict(candidate.get("level") or {})
     pattern = dict(candidate.get("strat_pattern") or {})
-    value = _number(level.get("value"))
+    pattern_code = str(pattern.get("code") or "")
+    pattern_completed_at = str(pattern.get("completed_at") or "")
     identity = {
         "session": str(session_id or ""),
         "ticker": str(ticker or "").upper(),
-        "family": str(candidate.get("family") or ""),
         "direction": str(candidate.get("direction") or ""),
-        "level_key": str(level.get("key") or ""),
-        "level_value": round(value, 4) if value is not None else None,
-        "pattern_code": str(pattern.get("code") or ""),
-        "pattern_completed_at": str(pattern.get("completed_at") or ""),
+        "pattern_code": pattern_code,
+        "pattern_completed_at": pattern_completed_at,
     }
+    if not pattern_code or not pattern_completed_at:
+        level = dict(candidate.get("level") or {})
+        value = _number(level.get("value"))
+        identity.update(
+            {
+                "family": str(candidate.get("family") or ""),
+                "level_key": str(level.get("key") or ""),
+                "level_value": round(value, 4) if value is not None else None,
+            }
+        )
     digest = hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()[:20]
@@ -190,7 +199,13 @@ def _terminal_state(
 
 
 def _empty_ledger() -> dict[str, Any]:
-    return {"version": 1, "setups": {}, "deliveries": {}, "recent": []}
+    return {
+        "version": 2,
+        "setups": {},
+        "deliveries": {},
+        "recent": [],
+        "processed_completed_candles": {},
+    }
 
 
 def _read_ledger(path: str) -> dict[str, Any]:
@@ -204,7 +219,235 @@ def _read_ledger(path: str) -> dict[str, Any]:
     payload.setdefault("setups", {})
     payload.setdefault("deliveries", {})
     payload.setdefault("recent", [])
+    payload.setdefault("processed_completed_candles", {})
     return payload
+
+
+def _event_candidate(event: Mapping[str, Any]) -> dict[str, Any]:
+    """Adapt a frozen replay event to the existing durable setup identity."""
+
+    target = dict(event.get("target") or {})
+    return {
+        "id": event.get("candidate_id"),
+        "family": event.get("family"),
+        "family_label": event.get("family_label"),
+        "direction": event.get("direction"),
+        "state": "confirmed",
+        "lane": "active_now",
+        "score": event.get("score"),
+        "grade": event.get("grade"),
+        "level": copy.deepcopy(event.get("level") or {}),
+        "supporting_levels": copy.deepcopy(event.get("supporting_levels") or []),
+        "target_level": target,
+        "strat_pattern": copy.deepcopy(event.get("strat_pattern") or {}),
+        "trigger_evidence": copy.deepcopy(event.get("trigger_evidence") or {}),
+        "plan": {
+            "trigger": event.get("confirmation"),
+            "cancel": event.get("invalidation"),
+            "target": target.get("label") if target else None,
+        },
+    }
+
+
+def _freeze_event_facts(
+    record: Mapping[str, Any], event: Mapping[str, Any], *, generation_id: str
+) -> dict[str, Any]:
+    """Apply canonical event facts without touching lifecycle or delivery history."""
+
+    frozen = dict(record)
+    same_event = bool(
+        record.get("setup_event_id")
+        and record.get("setup_event_id") == event.get("setup_event_id")
+    )
+    supporting_levels = copy.deepcopy(record.get("supporting_levels") or [])
+    known_support = {
+        str(dict(level).get("key") or "") for level in supporting_levels if isinstance(level, Mapping)
+    }
+    for level in event.get("supporting_levels") or []:
+        key = str(dict(level).get("key") or "") if isinstance(level, Mapping) else ""
+        if key and key not in known_support:
+            supporting_levels.append(copy.deepcopy(level))
+            known_support.add(key)
+    if not same_event:
+        frozen.update(
+            {
+                "setup_event_id": event.get("setup_event_id"),
+                "candidate_id": event.get("candidate_id"),
+                "family": event.get("family"),
+                "family_label": event.get("family_label"),
+                "direction": event.get("direction"),
+                "level": copy.deepcopy(event.get("level") or {}),
+                "entry_zone": event.get("entry_zone"),
+                "entry_basis": event.get("entry_basis"),
+                "supporting_levels": supporting_levels,
+                "target_level": copy.deepcopy(event.get("target") or {}),
+                "score": int(_number(event.get("score")) or 0),
+                "grade": event.get("grade") or "—",
+                "trigger": event.get("confirmation") or "Confirmation recorded",
+                "invalidation": event.get("invalidation") or "Review invalidation unavailable",
+                "target": (event.get("target") or {}).get("label")
+                or "Review target unavailable",
+                "strat_pattern": copy.deepcopy(event.get("strat_pattern") or {}),
+                "trigger_evidence": copy.deepcopy(event.get("trigger_evidence") or {}),
+                "evidence_at": event.get("signal_time"),
+                "confirmed_at": frozen.get("confirmed_at") or event.get("signal_time"),
+            }
+        )
+    frozen["supporting_levels"] = supporting_levels
+    frozen["generation_id"] = generation_id
+    return frozen
+
+
+def _reconcile_event_lifecycles(
+    *,
+    ledger: dict[str, Any],
+    events: Iterable[Mapping[str, Any]],
+    bars: Iterable[Mapping[str, Any]],
+    session_id: str,
+    ticker: str,
+    generation_id: str,
+    now_et: datetime,
+) -> list[dict[str, Any]]:
+    """Resolve every stable event with Replay's forward completed-candle semantics."""
+
+    ordered_bars = sorted(
+        (dict(row) for row in bars if isinstance(row, Mapping)),
+        key=lambda row: _parse_timestamp(row.get("ts") or row.get("timestamp")) or datetime.min.replace(tzinfo=ET),
+    )
+    reconciled: list[dict[str, Any]] = []
+    setups = ledger.setdefault("setups", {})
+    for event in events:
+        candidate = _event_candidate(event)
+        setup_id = setup_identity(session_id=session_id, ticker=ticker, candidate=candidate)
+        previous = dict(setups.get(setup_id) or {})
+        if not previous or previous.get("setup_event_id") != event.get("setup_event_id"):
+            continue
+        record = _freeze_event_facts(previous, event, generation_id=generation_id)
+        signal_at = _parse_timestamp(event.get("signal_time"))
+        future = [
+            row
+            for row in ordered_bars
+            if signal_at is not None
+            and (_parse_timestamp(row.get("ts") or row.get("timestamp")) or signal_at) > signal_at
+        ]
+        outcome = evaluate_setup_outcome(
+            signal={
+                "entry_price": event.get("entry_zone"),
+                "level_value": (event.get("level") or {}).get("value"),
+                "direction": event.get("direction"),
+                "signal_time": event.get("signal_time"),
+            },
+            future=future,
+            target=event.get("target"),
+        )
+        previous_state = str(previous.get("state") or "")
+        outcome_state = str(outcome.get("state") or "")
+        resolved_state = {
+            "target_reached": LiveSetupState.TARGET_REACHED.value,
+            "invalidated": LiveSetupState.INVALIDATED.value,
+        }.get(outcome_state, LiveSetupState.CONFIRMED.value)
+        terminal = previous_state in TERMINAL_STATES
+        if terminal:
+            resolved_state = previous_state
+        if terminal:
+            record["outcome"] = copy.deepcopy(previous.get("outcome") or {})
+            record["outcome_state"] = previous.get("outcome_state")
+        else:
+            record["outcome"] = copy.deepcopy(outcome)
+            record["outcome_state"] = outcome_state
+        record["state"] = resolved_state
+        if resolved_state != previous_state:
+            record["revision"] = int(previous.get("revision") or 0) + 1
+            record["state_changed_at"] = str(outcome.get("at") or now_et.isoformat())
+        setups[setup_id] = record
+        reconciled.append(record)
+    return reconciled
+
+
+def _persist_setup_events(
+    *,
+    ledger: dict[str, Any],
+    events: Iterable[Mapping[str, Any]],
+    session_id: str,
+    ticker: str,
+    generation_id: str,
+    latest_completed_at: str,
+    now_et: datetime,
+) -> list[dict[str, Any]]:
+    """Idempotently persist every unseen point-in-time event as durable history."""
+
+    setups = ledger.setdefault("setups", {})
+    recent = ledger.setdefault("recent", [])
+    persisted: list[dict[str, Any]] = []
+    ordered = sorted(
+        events,
+        key=lambda row: (
+            str(row.get("signal_time") or ""),
+            str(row.get("setup_event_id") or ""),
+        ),
+    )
+    for event in ordered:
+        event_id = str(event.get("setup_event_id") or "")
+        if not event_id:
+            continue
+        candidate = _event_candidate(event)
+        setup_id = setup_identity(session_id=session_id, ticker=ticker, candidate=candidate)
+        previous = dict(setups.get(setup_id) or {})
+        if previous.get("setup_event_id") == event_id:
+            previous = _freeze_event_facts(previous, event, generation_id=generation_id)
+            setups[setup_id] = previous
+            persisted.append(previous)
+            continue
+        if previous.get("setup_event_id"):
+            existing_levels = list(previous.get("supporting_levels") or [])
+            alternate_level = copy.deepcopy(event.get("level") or {})
+            known_keys = {
+                str(dict(previous.get("level") or {}).get("key") or ""),
+                *(str(dict(level).get("key") or "") for level in existing_levels),
+            }
+            if alternate_level and str(alternate_level.get("key") or "") not in known_keys:
+                existing_levels.append({**alternate_level, "role": "supporting_confluence"})
+                previous["supporting_levels"] = existing_levels
+                setups[setup_id] = previous
+            persisted.append(previous)
+            continue
+        signal_time = str(event.get("signal_time") or "")
+        late_review_only = bool(signal_time and signal_time != latest_completed_at)
+        state = str(previous.get("state") or "CONFIRMED")
+        if state not in TERMINAL_STATES:
+            state = "CONFIRMED"
+        first_seen_at = str(previous.get("first_seen_at") or now_et.isoformat())
+        record = _freeze_event_facts({
+            **previous,
+            "setup_id": setup_id,
+            "revision": int(previous.get("revision") or 0) or 1,
+            "state": state,
+            "first_seen_at": first_seen_at,
+            "state_changed_at": str(previous.get("state_changed_at") or first_seen_at),
+            "late_review_only": late_review_only,
+            "alert_eligible": False,
+            "alert_status": "late_review_only" if late_review_only else "recorded",
+            "acknowledged_at": previous.get("acknowledged_at"),
+        }, event, generation_id=generation_id)
+        setups[setup_id] = record
+        persisted.append(record)
+        if not previous:
+            recent.insert(
+                0,
+                {
+                    "setup_id": setup_id,
+                    "setup_event_id": event_id,
+                    "state": state,
+                    "changed_at": signal_time or now_et.isoformat(),
+                    "family_label": record["family_label"],
+                    "direction": record["direction"],
+                    "score": record["score"],
+                    "late_review_only": late_review_only,
+                },
+            )
+    ledger["recent"] = recent[:20]
+    ledger.setdefault("processed_completed_candles", {})[session_id] = latest_completed_at
+    return persisted
 
 
 def _write_ledger(path: str, payload: Mapping[str, Any]) -> None:
@@ -237,9 +480,11 @@ def evaluate_live_setup_monitor(
     canonical_freshness: Mapping[str, Any],
     authoritative_action: Mapping[str, Any],
     bars: Iterable[Mapping[str, Any]],
+    setup_events: Iterable[Mapping[str, Any]] | None = None,
     now: datetime,
     ledger_path: str,
     cutoff: Any = None,
+    claim_delivery: bool = True,
 ) -> dict[str, Any]:
     """Evaluate and durably persist one canonical live setup monitor revision."""
 
@@ -291,16 +536,39 @@ def evaluate_live_setup_monitor(
         with open(lock_path, "a+", encoding="utf-8") as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
             ledger = _read_ledger(ledger_path)
+            persisted_events = _persist_setup_events(
+                ledger=ledger,
+                events=setup_events or [],
+                session_id=session_id,
+                ticker=ticker_key,
+                generation_id=generation_id,
+                latest_completed_at=str(latest_bar.get("completed_at") or ""),
+                now_et=now_et,
+            )
+            persisted_events = _reconcile_event_lifecycles(
+                ledger=ledger,
+                events=setup_events or [],
+                bars=bars,
+                session_id=session_id,
+                ticker=ticker_key,
+                generation_id=generation_id,
+                now_et=now_et,
+            )
             previous = dict((ledger.get("setups") or {}).get(setup_id) or {})
-            desired = _candidate_state(primary)
-            terminal = _terminal_state(previous, primary, latest_bar)
-            if terminal is not None:
-                desired = terminal
-            elif (
-                desired in {LiveSetupState.WATCHING, LiveSetupState.ARMED}
-                and now_et.time() > cutoff_time
-            ):
-                desired = LiveSetupState.EXPIRED
+            stable_event = bool(previous.get("setup_event_id"))
+            known_states = {state.value for state in LiveSetupState}
+            if stable_event and str(previous.get("state") or "") in known_states:
+                desired = LiveSetupState(str(previous["state"]))
+            else:
+                desired = _candidate_state(primary)
+                terminal = _terminal_state(previous, primary, latest_bar)
+                if terminal is not None:
+                    desired = terminal
+                elif (
+                    desired in {LiveSetupState.WATCHING, LiveSetupState.ARMED}
+                    and now_et.time() > cutoff_time
+                ):
+                    desired = LiveSetupState.EXPIRED
             previous_state = str(previous.get("state") or "")
             if previous_state in TERMINAL_STATES:
                 desired = LiveSetupState(previous_state)
@@ -318,6 +586,7 @@ def evaluate_live_setup_monitor(
             )
             plan = dict(primary.get("plan") or {})
             record = {
+                **previous,
                 "setup_id": setup_id,
                 "revision": revision,
                 "state": desired.value,
@@ -326,6 +595,9 @@ def evaluate_live_setup_monitor(
                 "family_label": primary.get("family_label"),
                 "direction": primary.get("direction"),
                 "level": copy.deepcopy(primary.get("level") or {}),
+                "supporting_levels": copy.deepcopy(
+                    primary.get("supporting_levels") or previous.get("supporting_levels") or []
+                ),
                 "target_level": copy.deepcopy(primary.get("target_level") or {}),
                 "score": int(_number(primary.get("score")) or 0),
                 "grade": primary.get("grade") or "—",
@@ -349,6 +621,30 @@ def evaluate_live_setup_monitor(
                 "alert_status": "not_eligible",
                 "acknowledged_at": previous.get("acknowledged_at"),
             }
+            if stable_event:
+                for key in (
+                    "setup_event_id",
+                    "candidate_id",
+                    "family",
+                    "family_label",
+                    "direction",
+                    "level",
+                    "supporting_levels",
+                    "target_level",
+                    "score",
+                    "grade",
+                    "trigger",
+                    "invalidation",
+                    "target",
+                    "strat_pattern",
+                    "trigger_evidence",
+                    "evidence_at",
+                    "confirmed_at",
+                    "outcome",
+                    "outcome_state",
+                ):
+                    if key in previous:
+                        record[key] = copy.deepcopy(previous[key])
             confirmation_time = _parse_timestamp(confirmed_at)
             before_cutoff = bool(
                 confirmation_time is not None and confirmation_time.time() <= cutoff_time
@@ -372,14 +668,14 @@ def evaluate_live_setup_monitor(
             deliver_now = False
             if eligible:
                 record["alert_eligible"] = True
-                if alert_id not in deliveries:
+                if alert_id not in deliveries and claim_delivery:
                     deliveries[alert_id] = {
                         "setup_id": setup_id,
                         "channel": "in_app",
                         "delivered_at": now_et.isoformat(),
                     }
                     deliver_now = True
-                record["alert_status"] = "delivered"
+                record["alert_status"] = "delivered" if alert_id in deliveries else "pending"
                 record["alert_id"] = alert_id
             ledger.setdefault("setups", {})[setup_id] = record
             if desired.value != previous_state:
@@ -411,8 +707,17 @@ def evaluate_live_setup_monitor(
                 _candidate_summary(row, session_id=session_id, ticker=ticker_key)
                 for row in candidates[1:6]
             ]
+            known_secondary_ids = {str(row.get("setup_id") or "") for row in base["secondary"]}
+            for event_record in reversed(persisted_events):
+                event_setup_id = str(event_record.get("setup_id") or "")
+                if event_setup_id == setup_id or event_setup_id in known_secondary_ids:
+                    continue
+                base["secondary"].append(copy.deepcopy(event_record))
+                known_secondary_ids.add(event_setup_id)
+                if len(base["secondary"]) >= 5:
+                    break
             base["recent"] = list(ledger.get("recent") or [])[:8]
-            if eligible:
+            if eligible and alert_id in deliveries:
                 base["alert_event"] = {
                     "id": alert_id,
                     "setup_id": setup_id,

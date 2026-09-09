@@ -9,7 +9,7 @@ import math
 from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
-from mccain_capital.services.spx_strat_patterns import detect_latest_key_level_pattern
+from mccain_capital.services.spx_strat_patterns import detect_ending_key_level_pattern
 
 
 ET = ZoneInfo("America/New_York")
@@ -147,19 +147,34 @@ def confluence_grade(score: Any) -> str:
 def _trigger_evidence(
     rows: Iterable[Mapping[str, Any]], pattern: Mapping[str, Any] | None, direction: str
 ) -> dict[str, Any]:
-    """Require a later completed candle to break the completed pattern's trigger candle."""
+    """Return the execution boundary and completed candle that triggered the pattern."""
     if not pattern:
         return {"armed": False, "triggered": False, "trigger_price": None}
     completed_at = str(pattern.get("completed_at") or "")
     pattern_times = {str(value) for value in pattern.get("bar_timestamps") or []}
     pattern_rows = [
-        row
-        for row in rows
-        if str(row.get("ts") or row.get("timestamp") or "") in pattern_times
+        row for row in rows if str(row.get("ts") or row.get("timestamp") or "") in pattern_times
     ]
     if not pattern_rows:
         return {"armed": True, "triggered": False, "trigger_price": None}
     field = "high" if direction == "bullish" else "low"
+    pattern_family = str(pattern.get("family") or "")
+    boundary_index = {
+        "2-2-reversal": 0,
+        "2-1-2": 1,
+    }.get(pattern_family)
+    if boundary_index is not None and len(pattern_rows) > boundary_index:
+        trigger_price = _number(pattern_rows[boundary_index].get(field))
+        return {
+            "armed": True,
+            "triggered": trigger_price is not None,
+            "trigger_price": trigger_price,
+            "triggered_at": completed_at if trigger_price is not None else "",
+            "trigger_source": "pattern_signal_candle",
+            "trigger_boundary_source": (
+                "first_pattern_candle" if pattern_family == "2-2-reversal" else "inside_candle"
+            ),
+        }
     trigger_price = _number(pattern_rows[-1].get(field))
     if trigger_price is None:
         return {"armed": True, "triggered": False, "trigger_price": None}
@@ -179,6 +194,7 @@ def _trigger_evidence(
         "armed": True,
         "triggered": triggered,
         "trigger_price": trigger_price,
+        "trigger_source": "later_confirmation_candle",
         "triggered_at": next(
             (
                 str(row.get("ts") or row.get("timestamp") or "")
@@ -187,7 +203,9 @@ def _trigger_evidence(
                 if direction == "bullish"
             ),
             "",
-        ) if direction == "bullish" else next(
+        )
+        if direction == "bullish"
+        else next(
             (
                 str(row.get("ts") or row.get("timestamp") or "")
                 for row in later
@@ -348,7 +366,7 @@ def rank_market_scenarios(
                 ScenarioFamily.LOCAL_FLIP_RECLAIM,
             }
             direction = "bullish" if bullish else "bearish"
-            pattern = detect_latest_key_level_pattern(
+            pattern = detect_ending_key_level_pattern(
                 bars,
                 level_key=level.key,
                 level_label=level.label,
@@ -423,7 +441,13 @@ def rank_market_scenarios(
             plan = _scenario_plan(family, level, target, triggered)
             if pattern:
                 plan["trigger"] = (
-                    f"Triggered above {trigger['trigger_price']:,.2f} after {pattern['code']}"
+                    f"Triggered above {trigger['trigger_price']:,.2f} on {pattern['code']} signal candle"
+                    if triggered
+                    and bullish
+                    and trigger.get("trigger_source") == "pattern_signal_candle"
+                    else f"Triggered below {trigger['trigger_price']:,.2f} on {pattern['code']} signal candle"
+                    if triggered and trigger.get("trigger_source") == "pattern_signal_candle"
+                    else f"Triggered above {trigger['trigger_price']:,.2f} after {pattern['code']}"
                     if triggered and bullish
                     else f"Triggered below {trigger['trigger_price']:,.2f} after {pattern['code']}"
                     if triggered

@@ -101,7 +101,13 @@ def create_app():
             if request.method.upper() not in _UNSAFE_METHODS:
                 _ensure_csrf_token()
             if app.config.get("SAFE_MODE"):
-                allow_safe = {"safe_mode_page", "healthz", "favicon", "static"}
+                allow_safe = {
+                    "safe_mode_page",
+                    "healthz",
+                    "market_pulse_monitoring_metrics",
+                    "favicon",
+                    "static",
+                }
                 if request.endpoint not in allow_safe:
                     return redirect(url_for("safe_mode_page"))
             if (
@@ -119,6 +125,7 @@ def create_app():
                 "passkeys_auth_options",
                 "passkeys_auth_verify",
                 "healthz",
+                "market_pulse_monitoring_metrics",
                 "favicon",
                 "static",
                 "vanquish_lock_state",
@@ -190,4 +197,9 @@ def create_app():
         trades_service.prepare_sync_runtime_state()
         trades_service.ensure_auto_sync_worker_started(app)
         app._auto_sync_worker_started = True
+    from mccain_capital.services.market_pulse_setup_monitor_runtime import (
+        start_server_setup_monitor_once,
+    )
+
+    start_server_setup_monitor_once(app)
     return app

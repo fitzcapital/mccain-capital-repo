@@ -23,6 +23,15 @@ def test_healthz_returns_ok_payload(client):
     assert payload["app"] == "mccain-capital"
 
 
+def test_market_pulse_monitoring_metrics_are_numeric_and_read_only(client):
+    resp = client.get("/ops/health/market-pulse")
+    assert resp.status_code == 200
+    rows = dict(line.split("=", 1) for line in resp.get_data(as_text=True).splitlines())
+    assert int(rows["container_task_limit"]) >= 1
+    assert int(rows["worker_pressure"]) in {0, 1, 2}
+    assert "gamma_stale" in rows
+
+
 def test_security_headers_applied(client):
     resp = client.get("/healthz")
     assert resp.headers.get("X-Content-Type-Options") == "nosniff"
@@ -1466,7 +1475,8 @@ def test_executive_august_guardrails_remain_independent(client):
     assert august["redLine"] == 4000
     assert august["openingBOA"] == 4400
     assert august["protectedFloor"] == 5500
-    assert august["targetCloseLow"] == 6500
+    assert august["targetCloseLow"] == 4500
+    assert august["targetCloseHigh"] == 4500
     assert august["temporaryFloor"] == 4000
     assert august["permanentFloorGoal"] == 10000
     assert august["floorActivationMonth"] == "2026-09"
@@ -1487,6 +1497,16 @@ def test_executive_august_guardrails_remain_independent(client):
         {"name": "Food", "account": "Current", "amount": 450, "timing": "Monthly"}
     ]
     assert all(bill["name"] != "Food / Dates" for bill in august["bills"])
+    power_bills = [bill for bill in august["bills"] if bill["name"] == "Power"]
+    assert power_bills == [
+        {
+            "name": "Power",
+            "account": "Current",
+            "amount": 149,
+            "timing": "Paycheck 1",
+            "dueDay": 2,
+        }
+    ]
     chase_bills = [bill for bill in august["bills"] if bill["name"] == "Chase fixed payment"]
     assert chase_bills == [
         {
@@ -1498,11 +1518,29 @@ def test_executive_august_guardrails_remain_independent(client):
         }
     ]
     september = next(month for month in months if month["id"] == "2026-09")
+    assert september["openingBOA"] == 0
+    assert september["openingCurrent"] == 4500
+    assert september["baselineSettledExpenseCycles"] == [1]
+    assert september["deposits"]["currentPaycheck1"] == 1873.78
+    assert september["deposits"]["boaPaycheck1"] == 1873.78
+    assert september["deposits"]["currentPaycheck2"] == 4700
+    assert september["deposits"]["boaPaycheck2"] == 4700
     assert september["paySchedule"]["exceptions"]["2026-09-25"] == {
         "boa": 4700,
         "current": 4700,
         "estimated": True,
     }
+    assert [bill for bill in august["bills"] if bill["name"] == "Ragan & Ragan"] == []
+    for month in [item for item in months if item["id"] >= "2026-09"]:
+        assert [bill for bill in month["bills"] if bill["name"] == "Ragan & Ragan"] == [
+            {
+                "name": "Ragan & Ragan",
+                "account": "Current",
+                "amount": 150,
+                "timing": "Paycheck 2",
+                "dueDay": 28,
+            }
+        ]
 
 
 def test_executive_capital_flow_projection_contract():
@@ -1546,6 +1584,13 @@ def test_executive_capital_flow_projection_contract():
         "The previous projection was kept",
         "renderCapitalFlow(month, projection)",
         "Cycle settled",
+        "const fundingCycleNumber = (entry)",
+        "month.baselineSettledExpenseCycles || []",
+        "baselineExpenseCycleSettled",
+        "isOutflow(entry) && (month.baselineSettledExpenseCycles || [])",
+        "fundingCycle: index < 2 ? 1 : 2",
+        "fundingCycle: index + 1",
+        "fundingCycle: fundingCycleNumber(bill)",
     ):
         assert contract in script
 
@@ -1557,6 +1602,8 @@ def test_executive_capital_flow_receiving_surface(client):
     body = resp.get_data(as_text=True)
     assert "data-exec-capital-flow" in body
     assert 'aria-label="Daily capital flow"' in body
+    assert "data-exec-opening-current-label" in body
+    assert '"baselineSettledExpenseCycles": [1]' in body
     assert (
         "Active floor ${formatMoney(projection.activeHardFloor)}"
         in Path("static/js/executive_command_center.js").read_text()
@@ -4280,7 +4327,7 @@ def test_candle_opens_page_renders_monthly_market_calendar(client):
     assert b"February 2026 Candle Opens" in resp.data
     assert b"Presidents Day" in resp.data
     assert b"2D" in resp.data
-    assert b"Trading Days" in resp.data
+    assert b"Timing Reference" in resp.data
     assert b"Day reset" in resp.data
     assert b"candleWeekdayInline" in resp.data
     assert b"candleFocusStrip" in resp.data

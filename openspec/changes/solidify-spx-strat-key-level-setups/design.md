@@ -1,10 +1,10 @@
 ## Context
 
-Scenario ranking currently derives continuation confirmation from two closes plus a retest, while
-failed sweeps consume a broad `REVERSAL_READY` strategy state. Candle evidence calls any opposing
-directional break a 2-2 and waits for an additional trigger bar. Replay invokes the same ranker, but
-does not freeze an exact pattern identity. These paths can disagree with the user's actual SPX
-five-minute playbook.
+Scenario ranking previously derived continuation confirmation from two closes plus a retest, while
+failed sweeps consumed a broad `REVERSAL_READY` strategy state. Exact pattern detection now exists,
+but replay incorrectly waits for an additional candle to break the completed 2-2 signal candle and
+labels that later continuation candle as the 2-2 event. This disagrees with the user's actual SPX
+five-minute playbook and misaligns displayed entry evidence with outcome measurements.
 
 ## Goals / Non-Goals
 
@@ -51,6 +51,13 @@ five-minute playbook.
 8. **Keep reversal and continuation paths distinct.** A sweep followed by failure/recovery may arm
    only `failed_high` or `failed_low`. Breakout and breakdown require acceptance plus a pullback hold
    and cannot borrow a reversal location event, preventing one pattern from appearing as two trades.
+9. **Attribute execution to each pattern's actual signal candle.** In `2U -> 2D`, the second
+   candle's break of the first candle's low is the bearish reversal trigger; in `2D -> 2U`, its
+   break of the first candle's high is the bullish reversal trigger. In `2 -> 1 -> 2D`, the third
+   candle's break of the inside candle's low is the bearish 2-1-2 trigger; the bullish form uses the
+   inside candle's high. The completed final pattern candle supplies the signal timestamp and frozen
+   entry boundary. Subsequent candles belong only to follow-through, target, invalidation, MFE, and
+   MAE evaluation. All outcome metrics use the displayed trigger boundary as their entry baseline.
 
 ## Risks / Trade-offs
 
@@ -60,6 +67,9 @@ five-minute playbook.
   normalize finite OHLC values and cover equality boundaries with fixtures.
 - **[Historical results change]** Replay counts will drop and timestamps may move to the actual
   confirming candle → label results with their exact pattern and keep them read-only.
+- **[Trigger-candle range can include post-trigger movement]** Completed OHLC cannot reconstruct the
+  exact intrabar order after the boundary break → freeze the boundary price as entry and begin
+  outcome evaluation with later candles rather than inventing intrabar MFE or MAE.
 - **[Final-session CDH/CDL can rewrite history]** A later extreme can hide a valid earlier setup →
   derive current-day extremes point-in-time from each replay prefix.
 - **[Level interaction can occur just before the pattern]** Strict pattern-window anchoring may miss
@@ -76,10 +86,10 @@ service and presentation changes; canonical market data remains unchanged.
 None. The first release intentionally uses strict completed-candle and pattern-window rules.
 # Ordered eligibility and grading
 
-Setup maturity and setup quality are separate concepts. A reversal progresses through location,
-sweep, failure, completed five-minute Strat pattern, armed trigger, and a later break of the trigger
-candle. A continuation progresses through break, acceptance, pullback hold, armed trigger, and a
-later break. Only the final trigger break makes a setup entry-eligible.
+Setup maturity and setup quality are separate concepts. A supported pattern becomes entry-eligible
+when its final directional candle breaks its STRAT trigger boundary: the first directional candle's
+opposite boundary for 2-2 Reversal, or the inside candle's directional boundary for 2-1-2. Later
+candles are follow-through and outcome evidence, not additional confirmation gates.
 
 Quality is scored only after entry eligibility. Location, ordered structural evidence, the exact
 five-minute pattern, trigger quality, target space, gamma context, and optional higher-timeframe
@@ -92,3 +102,12 @@ historical trade setups.
 - The cutoff applies to confirmation/entry time, not merely pattern discovery time.
 - Bars after the cutoff remain available for MFE, MAE, target, and invalidation outcomes of setups that qualified earlier.
 - The response and replay controls expose the cutoff so a missing late-day row is explainable rather than appearing to be a detector failure.
+
+## Replay outcome presentation follow-up
+
+- Keep setup validity, structural-target completion, and price excursion as separate facts.
+- Preserve the existing target-first/invalidation-first calculation and ambiguous same-bar safeguard.
+- Describe favorable movement that stops short of the target without calling it a full target hit or a
+  recorded profitable trade; Setup Replay remains observational and non-ledger.
+- Expose MFE, MAE, and target-progress percentage as supporting measurements instead of forcing one
+  terminal label to carry all outcome meaning.

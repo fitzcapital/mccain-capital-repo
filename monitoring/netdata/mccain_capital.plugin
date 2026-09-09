@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Netdata external collector for bounded Market Pulse health metrics."""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+
+URL = os.environ.get(
+    "MCCAIN_CAPITAL_METRICS_URL",
+    "http://127.0.0.1:5001/ops/health/market-pulse",
+)
+UPDATE_EVERY = max(5, int(sys.argv[1]) if len(sys.argv) > 1 else 10)
+GAMMA_DIMENSIONS = (
+    "market_open",
+    "gamma_stale",
+    "gamma_refresh_failed",
+    "gamma_refresh_in_progress",
+    "gamma_age_seconds",
+    "gamma_max_age_seconds",
+)
+WORKER_DIMENSIONS = (
+    "worker_threads",
+    "container_tasks",
+    "container_task_limit",
+    "worker_warning_threshold",
+    "worker_critical_threshold",
+    "worker_pressure",
+)
+
+
+def fetch_metrics() -> dict[str, int]:
+    with urllib.request.urlopen(URL, timeout=5) as response:
+        body = response.read().decode("utf-8", errors="replace")
+    metrics: dict[str, int] = {}
+    for line in body.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and value.strip().lstrip("-").isdigit():
+            metrics[key.strip()] = int(value.strip())
+    return metrics
+
+
+def emit_chart(chart: str, dimensions: tuple[str, ...], metrics: dict[str, int]) -> None:
+    print(f"BEGIN {chart}")
+    for dimension in dimensions:
+        print(f"SET {dimension} = {metrics.get(dimension, 0)}")
+    print("END")
+
+
+def main() -> None:
+    print(
+        f"CHART mccain_capital.gamma '' 'McCain Capital Gamma Health' 'state' "
+        f"'market_pulse' 'gamma' line 90000 {UPDATE_EVERY} '' '' 'mccain_capital'"
+    )
+    for dimension in GAMMA_DIMENSIONS:
+        print(f"DIMENSION {dimension} '' absolute 1 1")
+    print(
+        f"CHART mccain_capital.worker_resources '' 'McCain Capital Worker Resources' 'tasks' "
+        f"'market_pulse' 'worker_resources' line 90001 {UPDATE_EVERY} '' '' 'mccain_capital'"
+    )
+    for dimension in WORKER_DIMENSIONS:
+        print(f"DIMENSION {dimension} '' absolute 1 1")
+    print("CLABEL 'service' 'McCain Capital' 1")
+    print("CLABEL_COMMIT")
+    sys.stdout.flush()
+
+    while True:
+        try:
+            metrics = fetch_metrics()
+            emit_chart("mccain_capital.gamma", GAMMA_DIMENSIONS, metrics)
+            emit_chart("mccain_capital.worker_resources", WORKER_DIMENSIONS, metrics)
+            sys.stdout.flush()
+        except (OSError, urllib.error.URLError, ValueError):
+            pass
+        time.sleep(UPDATE_EVERY)
+
+
+if __name__ == "__main__":
+    main()

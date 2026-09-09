@@ -58,6 +58,49 @@ def test_get_intraday_bars_filters_spx_to_regular_session_after_hours(monkeypatc
     )
 
 
+def test_get_intraday_bars_replaces_spx_volume_with_aligned_spy_volume(monkeypatch):
+    now_et = datetime(2026, 4, 8, 11, 0, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+    spx_rows = [
+        {
+            "ts": "2026-04-08T10:55:00-04:00",
+            "open": 6780,
+            "high": 6784,
+            "low": 6779,
+            "close": 6782,
+            "volume": 7,
+        }
+    ]
+    spy_rows = [
+        {
+            "ts": "2026-04-08T10:55:00-04:00",
+            "open": 678.0,
+            "high": 678.4,
+            "low": 677.9,
+            "close": 678.2,
+            "volume": 1_250_000,
+        }
+    ]
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_intraday",
+        lambda symbol: spy_rows if symbol == "SPY" else spx_rows,
+    )
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: [],
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="SPX", interval="5min")
+
+    assert payload["bars"][0]["close"] == 6782
+    assert payload["bars"][0]["volume"] == 1_250_000
+    assert payload["volume_source"] == "SPY"
+    assert payload["volume_proxy_matched_bars"] == 1
+    assert payload["volume_proxy_total_bars"] == 1
+
+
 def test_get_intraday_bars_includes_extended_hours_for_qqq_after_hours(monkeypatch):
     now_et = datetime(2026, 4, 8, 17, 0, 0, tzinfo=app_runtime.TZ)
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)

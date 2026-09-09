@@ -1,0 +1,63 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse_reliability.css') }}?v={{ static_v }}">
+<main class="reliabilityPage">
+  <header class="reliabilityHero">
+    <div>
+      <span class="reliabilityKicker">Market Pulse · System quality</span>
+      <h1>{{ ticker }} Reliability</h1>
+      <p>Proof that execution inputs arrived current, complete, and persisted.</p>
+    </div>
+    <div class="reliabilityHeroActions">
+      <label>Window
+        <select onchange="location.href='?ticker={{ ticker }}&days='+this.value">
+          {% for option in [7, 30, 90, 180] %}<option value="{{ option }}" {% if history.days == option %}selected{% endif %}>{{ option }} days</option>{% endfor %}
+        </select>
+      </label>
+      <a class="btn" href="{{ market_pulse_url }}">Live Market Pulse</a>
+    </div>
+  </header>
+
+  {% set total_checks = namespace(value=0) %}
+  {% set total_failures = namespace(value=0) %}
+  {% for component in history.components.values() %}
+    {% set total_checks.value = total_checks.value + component.checks %}
+    {% set total_failures.value = total_failures.value + component.failures %}
+  {% endfor %}
+  <section class="reliabilityStats" aria-label="Reliability summary">
+    <article><span>Observed checks</span><strong>{{ total_checks.value }}</strong><small>durable source checks</small></article>
+    <article><span>Open + recovered incidents</span><strong>{{ history.incidents|length }}</strong><small>within this window</small></article>
+    <article><span>Recorded failures</span><strong>{{ total_failures.value }}</strong><small>failed or stale checks</small></article>
+    <article><span>Sources tracked</span><strong>{{ history.components|length }}</strong><small>canonical + proxy inputs</small></article>
+  </section>
+
+  <section class="reliabilityPanel">
+    <div class="reliabilityPanelHead"><div><span>Availability by source</span><h2>Can each input be trusted?</h2></div><small>Successful checks ÷ all recorded checks</small></div>
+    {% if history.components %}
+      <div class="reliabilitySourceGrid">
+        {% for name, component in history.components.items() %}
+          <article>
+            <div><strong>{{ name|replace('_', ' ')|title }}</strong><b>{{ '%.1f'|format(component.availability_pct) }}%</b></div>
+            <div class="reliabilityMeter" aria-label="{{ name }} availability {{ component.availability_pct }} percent"><i style="width: {{ component.availability_pct }}%"></i></div>
+            <dl><div><dt>Checks</dt><dd>{{ component.checks }}</dd></div><div><dt>Failures</dt><dd>{{ component.failures }}</dd></div><div><dt>Avg latency</dt><dd>{{ component.average_latency_ms }} ms</dd></div><div><dt>Proxy/fallback</dt><dd>{{ component.fallbacks }}</dd></div></dl>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}<div class="reliabilityEmpty"><strong>No reliability evidence yet.</strong><span>Evidence appears after Market Pulse completes its next canonical check.</span></div>{% endif %}
+  </section>
+
+  <section class="reliabilityPanel">
+    <div class="reliabilityPanelHead"><div><span>Incident timeline</span><h2>What failed, and when did it recover?</h2></div><small>Detailed incidents retained for 30 days</small></div>
+    {% if history.incidents %}
+      <div class="reliabilityTimeline">
+        {% for incident in history.incidents %}
+          <article class="{% if incident.recovered_at %}is-recovered{% else %}is-open{% endif %}">
+            <i aria-hidden="true"></i>
+            <div><strong>{{ incident.component|replace('_', ' ')|title }}</strong><span>{{ incident.reason|replace('_', ' ') }}</span></div>
+            <div><small>Started</small><strong>{{ incident.started_at }}</strong></div>
+            <div><small>Recovery</small><strong>{{ incident.recovered_at or 'Still open' }}</strong></div>
+            <div><small>Duration</small><strong>{{ incident.duration_seconds }}s</strong></div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}<div class="reliabilityEmpty"><strong>No incidents recorded in this window.</strong><span>That is an empty evidence window, not a claim of perfect uptime.</span></div>{% endif %}
+  </section>
+</main>

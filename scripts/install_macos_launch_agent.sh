@@ -5,7 +5,7 @@ SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 ROOT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 AGENT_LABEL="${AGENT_LABEL:-com.mccaincapital.app}"
 AGENT_PATH="${HOME}/Library/LaunchAgents/${AGENT_LABEL}.plist"
-START_SCRIPT="${ROOT_DIR}/scripts/start_mccain_capital_on_login.sh"
+WATCH_SCRIPT="${ROOT_DIR}/scripts/watch_mccain_capital_runtime.sh"
 LOG_DIR="${ROOT_DIR}/persistent-data/logs"
 
 mkdir -p "${HOME}/Library/LaunchAgents" "${LOG_DIR}"
@@ -21,7 +21,7 @@ cat > "${AGENT_PATH}" <<PLIST
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>
-      <string>${START_SCRIPT}</string>
+      <string>${WATCH_SCRIPT}</string>
     </array>
 
     <key>EnvironmentVariables</key>
@@ -32,6 +32,9 @@ cat > "${AGENT_PATH}" <<PLIST
 
     <key>RunAtLoad</key>
     <true/>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
 
     <key>KeepAlive</key>
     <false/>
@@ -52,7 +55,7 @@ cat > "${AGENT_PATH}" <<PLIST
 PLIST
 
 chmod 644 "${AGENT_PATH}"
-chmod +x "${START_SCRIPT}"
+chmod +x "${WATCH_SCRIPT}" "${ROOT_DIR}/scripts/start_mccain_capital_on_login.sh"
 
 /bin/launchctl bootout "gui/$(id -u)" "${AGENT_PATH}" >/dev/null 2>&1 || true
 /bin/launchctl bootstrap "gui/$(id -u)" "${AGENT_PATH}"

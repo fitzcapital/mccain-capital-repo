@@ -15,6 +15,9 @@ username or password.
 The `httpcheck` collector checks McCain Capital's `/healthz` endpoint every 10 seconds and records
 availability, response time, response length, and HTTP status.
 
+The local `mccain_capital` collector also publishes Gamma freshness/failure and container worker
+pressure. Sustained warning, critical, and recovery transitions appear in Netdata's Events feed.
+
 Stop Netdata without affecting the app:
 
 ```bash

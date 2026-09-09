@@ -235,6 +235,9 @@ def test_get_hero_levels_uses_shared_snapshot_regime_without_reclassification(mo
         lambda force_refresh=False, now_et=None: {
             "quotes": [{"symbol": "SPX", "provider": "market_snapshot"}],
             "spx_quote": {"symbol": "SPX", "provider": "market_snapshot"},
+            "gamma_snapshot": {
+                "last_successful_compute": "2026-04-08T15:54:00-04:00"
+            },
             "execution_model": {"posture_summary": "Shared snapshot summary"},
             "market_structure_snapshot": {
                 "snapshot_timestamp": "2026-04-08T15:55:00-04:00",
@@ -279,6 +282,7 @@ def test_get_hero_levels_uses_shared_snapshot_regime_without_reclassification(mo
     assert payload["pullback_level"] == "CW 6775"
     assert payload["provider"] == "market_snapshot"
     assert payload["posture_summary"] == "Shared snapshot summary"
+    assert payload["gamma_as_of"] == "2026-04-08T15:54:00-04:00"
 
 
 def test_stream_session_payload_uses_interval_aware_polling_contract():
@@ -300,3 +304,4 @@ def test_stream_session_payload_uses_interval_aware_polling_contract():
     assert payload["micro_tape_max_points"] == 72
     assert payload["micro_tape_authoritative"] is False
     assert payload["session_phase"] in {"pre", "open", "afterhours", "closed"}
+    assert payload["automatic_refresh_enabled"] is (payload["session_phase"] == "open")

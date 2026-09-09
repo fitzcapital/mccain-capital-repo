@@ -13,6 +13,10 @@ recognized key level.
   touched by the pattern; mid-range candle sequences remain non-actionable diagnostics.
 - Make the exact pattern, direction, anchor level, completion time, and evidence provenance explicit
   in ranked scenarios, the live setup monitor, and Setup Replay.
+- Attribute every supported pattern to its actual STRAT signal candle and trigger boundary. The
+  opposing second candle triggers a 2-2 Reversal at the first candle's boundary; the third candle
+  triggers a 2-1-2 at the inside candle's boundary. Later candles are follow-through and outcome
+  evidence, never a second entry gate or a relabeled pattern trigger.
 - Reconstruct Current-Day High and Current-Day Low from only the candles available at each replay
   timestamp so a later session extreme cannot erase an earlier valid key-level setup.
 - Remove 3-1-2 and generic “Strat confirmation” language from live execution surfaces without
@@ -20,7 +24,8 @@ recognized key level.
 - Preserve hard safety gates: completed five-minute candles only, fresh canonical data, no score or
   gamma override, and no automatic trade execution.
 - Acceptance is measurable: focused fixtures must prove valid and invalid 2-1-2 and 2-2 sequences,
-  reject outside-bar and mid-range lookalikes, and keep live and replay classifications identical.
+  reject outside-bar and mid-range lookalikes, keep live and replay classifications identical, and
+  align replay timestamps and excursion metrics to the actual pattern trigger.
 
 ## Capabilities
 

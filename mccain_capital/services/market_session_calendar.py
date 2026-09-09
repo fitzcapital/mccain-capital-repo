@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
-from typing import Mapping
+from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 
@@ -170,3 +170,44 @@ def next_session_open(
             return window.opens_at
         candidate += timedelta(days=1)
     raise RuntimeError("Unable to resolve the next exchange session")
+
+
+def session_contract(
+    now: datetime,
+    *,
+    exceptional_closures: Mapping[date, str] | None = None,
+    canonical_interval_seconds: int = 15,
+) -> dict[str, Any]:
+    """Return the server-authoritative lifecycle contract for a Market Pulse client."""
+
+    current = now.astimezone(EASTERN) if now.tzinfo else now.replace(tzinfo=EASTERN)
+    window = session_window(current.date(), exceptional_closures=exceptional_closures)
+    phase = market_phase(current, exceptional_closures=exceptional_closures)
+    next_open = next_session_open(current, exceptional_closures=exceptional_closures)
+    next_transition = next_open
+    if window.is_session:
+        assert window.opens_at is not None and window.closes_at is not None
+        if current < window.opens_at:
+            next_transition = window.opens_at
+        elif current < window.closes_at:
+            next_transition = window.closes_at
+
+    interval_seconds = max(5, int(canonical_interval_seconds or 15))
+    polling_allowed = phase == "open"
+    return {
+        "phase": phase,
+        "market_phase": phase,
+        "session_date": current.date().isoformat(),
+        "server_time": current.isoformat(),
+        "regular_session_open_at": window.opens_at.isoformat() if window.opens_at else "",
+        "regular_session_close_at": window.closes_at.isoformat() if window.closes_at else "",
+        "next_transition_at": next_transition.isoformat(),
+        "next_session_open_at": next_open.isoformat(),
+        "automatic_refresh_enabled": polling_allowed,
+        "automatic_polling_allowed": polling_allowed,
+        "canonical_interval_seconds": interval_seconds,
+        "recommended_cadence_seconds": interval_seconds if polling_allowed else 0,
+        "next_check_seconds": interval_seconds if polling_allowed else 0,
+        "session_status": window.status,
+        "session_reason": window.reason,
+    }

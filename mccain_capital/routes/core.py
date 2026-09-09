@@ -63,6 +63,11 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
+    app.add_url_rule(
+        "/ops/health/market-pulse",
+        endpoint="market_pulse_monitoring_metrics",
+        view_func=h.market_pulse_monitoring_metrics,
+    )
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
     app.add_url_rule("/executive", endpoint="executive_dashboard", view_func=h.executive_dashboard)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
@@ -98,6 +103,30 @@ def register(app):
         "/api/market-pulse/setup-replay",
         endpoint="market_pulse_setup_replay_api",
         view_func=h.market_pulse_setup_replay_api,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/market-pulse/setup-analytics",
+        endpoint="market_pulse_setup_analytics_page",
+        view_func=h.market_pulse_setup_analytics_page,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/market-pulse/setup-analytics",
+        endpoint="market_pulse_setup_analytics_api",
+        view_func=h.market_pulse_setup_analytics_api,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/market-pulse/reliability",
+        endpoint="market_pulse_reliability_page",
+        view_func=h.market_pulse_reliability_page,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/market-pulse/reliability",
+        endpoint="market_pulse_reliability_api",
+        view_func=h.market_pulse_reliability_api,
         methods=["GET"],
     )
     app.add_url_rule(

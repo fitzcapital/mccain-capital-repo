@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import as_completed
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
-import json
+import fcntl
 import hashlib
+import json
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
@@ -26,6 +26,7 @@ from mccain_capital.services.gamma_snapshot_models import GammaSourceMetadata
 from mccain_capital.services.gamma_snapshot_models import GammaValidationResult
 from mccain_capital.services.gamma_snapshot_models import GammaWarningState
 from mccain_capital.services.gamma_snapshot_models import GroupedStrikeRow
+from mccain_capital.services.gamma_snapshot_models import MarketPulseSnapshotModel
 from mccain_capital.services.gamma_snapshot_models import RefreshMode
 from mccain_capital.services.gamma_snapshot_models import SnapshotStatus
 from mccain_capital.services.gamma_snapshot_models import ValidationError
@@ -46,6 +47,8 @@ WEEKEND_POLL_SECONDS = 1800
 MAX_SNAPSHOT_PAGES = 8
 CSV_FILENAME = "gamma_data.csv"
 PNG_FILENAME = "gamma_map.png"
+SHARED_SNAPSHOT_FILENAME = ".gamma_snapshot_runtime.json"
+SHARED_REFRESH_LOCK_FILENAME = ".gamma_refresh_runtime.lock"
 DEFAULT_CONTRACT_MULTIPLIER = 100
 DEFAULT_GEX_SCALER = 0.01
 DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD = 50_000_000.0
@@ -68,6 +71,7 @@ EOD_GAMMA_NOTIFY_END_ET = (os.environ.get("EOD_GAMMA_NOTIFY_END_ET") or "19:30")
 COLD_CACHE_BOOTSTRAP_RETRY_SECONDS = 15
 
 _LOCK = threading.Lock()
+_REFRESH_GATE = threading.Lock()
 _STARTED = False
 LOGGER = logging.getLogger(__name__)
 _DEFAULT_FIELD_LABELS: Dict[str, str] = {
@@ -87,6 +91,7 @@ _RUNTIME_STATE: Dict[str, Any] = {
     "status": "waiting",
     "cache_status": "cold",
     "bootstrap_in_progress": False,
+    "refresh_in_progress": False,
     "last_bootstrap_attempted_at": "",
     "last_bootstrap_failed_at": "",
 }
@@ -147,6 +152,73 @@ def _now_iso() -> str:
 
 def _json_clone(value: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(json.dumps(value))
+
+
+def _shared_gamma_snapshot_path() -> str:
+    return app_runtime.upload_path(SHARED_SNAPSHOT_FILENAME)
+
+
+def _shared_gamma_refresh_lock_path() -> str:
+    return app_runtime.upload_path(SHARED_REFRESH_LOCK_FILENAME)
+
+
+def _read_shared_gamma_snapshot() -> Dict[str, Any]:
+    try:
+        with open(_shared_gamma_snapshot_path(), "r", encoding="utf-8") as handle:
+            envelope = json.load(handle)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    payload = envelope.get("payload") if isinstance(envelope, dict) else None
+    if not isinstance(payload, dict):
+        return {}
+    try:
+        snapshot = coerce_validated_snapshot(payload)
+    except ValidationError:
+        return {}
+    return snapshot if _snapshot_is_trustworthy(snapshot) else {}
+
+
+def _write_shared_gamma_snapshot(snapshot: Dict[str, Any]) -> bool:
+    warning_state = dict(snapshot.get("warning_state") or {})
+    status = str(warning_state.get("snapshot_status") or "")
+    if status not in {SnapshotStatus.HEALTHY.value, SnapshotStatus.DEGRADED.value}:
+        return False
+    canonical_input = {
+        key: value
+        for key, value in snapshot.items()
+        if key in MarketPulseSnapshotModel.model_fields
+    }
+    try:
+        canonical_snapshot = coerce_validated_snapshot(canonical_input)
+    except ValidationError:
+        return False
+    path = _shared_gamma_snapshot_path()
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=directory,
+            prefix=".gamma-snapshot.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = handle.name
+            json.dump({"payload": canonical_snapshot}, handle, separators=(",", ":"), default=str)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        return True
+    except OSError:
+        return False
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def normalize_gamma_symbol(symbol: str) -> str:
@@ -1210,48 +1282,62 @@ def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
             "User-Agent": "mccain-capital/1.0",
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            body = resp.read().decode("utf-8", errors="ignore")
-            parsed = json.loads(body)
+    attempts = max(1, int(float(os.environ.get("TRADIER_REQUEST_ATTEMPTS") or 2)))
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                parsed = json.loads(body)
+                _TRADIER_CHAIN_STATUS = {
+                    "ok": True,
+                    "error": "",
+                    "status_code": int(getattr(resp, "status", 200) or 200),
+                    "path": path,
+                }
+                return parsed if isinstance(parsed, dict) else None
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="ignore")
+            except Exception:
+                body = ""
+            message = body or str(exc)
+            try:
+                parsed = json.loads(body) if body else {}
+                fault = parsed.get("fault") if isinstance(parsed, dict) else {}
+                if isinstance(fault, dict):
+                    message = str(fault.get("faultstring") or message)
+            except Exception:
+                pass
+            status_code = int(getattr(exc, "code", 0) or 0)
             _TRADIER_CHAIN_STATUS = {
-                "ok": True,
-                "error": "",
-                "status_code": int(getattr(resp, "status", 200) or 200),
+                "ok": False,
+                "error": message,
+                "status_code": status_code,
                 "path": path,
             }
-            return parsed if isinstance(parsed, dict) else None
-    except urllib.error.HTTPError as exc:
-        body = ""
-        try:
-            body = exc.read().decode("utf-8", errors="ignore")
-        except Exception:
-            body = ""
-        message = body or str(exc)
-        try:
-            parsed = json.loads(body) if body else {}
-            fault = parsed.get("fault") if isinstance(parsed, dict) else {}
-            if isinstance(fault, dict):
-                message = str(fault.get("faultstring") or message)
-        except Exception:
-            pass
-        _TRADIER_CHAIN_STATUS = {
-            "ok": False,
-            "error": message,
-            "status_code": int(getattr(exc, "code", 0) or 0),
-            "path": path,
-        }
-        LOGGER.warning("Tradier gamma chain request failed: %s", message)
-        return None
-    except Exception as exc:
-        _TRADIER_CHAIN_STATUS = {
-            "ok": False,
-            "error": str(exc) or exc.__class__.__name__,
-            "status_code": 0,
-            "path": path,
-        }
-        LOGGER.warning("Tradier gamma chain request failed: %s", _TRADIER_CHAIN_STATUS["error"])
-        return None
+            retryable = status_code == 429 or status_code >= 500
+            if retryable and attempt + 1 < attempts:
+                time.sleep(0.25 * (attempt + 1))
+                continue
+            LOGGER.warning("Tradier gamma chain request failed: %s", message)
+            return None
+        except Exception as exc:
+            _TRADIER_CHAIN_STATUS = {
+                "ok": False,
+                "error": str(exc) or exc.__class__.__name__,
+                "status_code": 0,
+                "path": path,
+            }
+            if attempt + 1 < attempts:
+                time.sleep(0.25 * (attempt + 1))
+                continue
+            LOGGER.warning(
+                "Tradier gamma chain request failed: %s",
+                _TRADIER_CHAIN_STATUS["error"],
+            )
+            return None
+    return None
 
 
 def _massive_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -1437,11 +1523,6 @@ def _fetch_chain_from_tradier(symbol: str, expiry_set: set[str]) -> pd.DataFrame
     expiries = sorted(str(expiry) for expiry in expiry_set if str(expiry))
     if not expiries:
         return pd.DataFrame()
-    max_workers = min(
-        len(expiries),
-        max(1, int(float(os.environ.get("TRADIER_CHAIN_WORKERS") or 2))),
-    )
-
     def _fetch_expiry(expiry: str) -> Tuple[str, Dict[str, Any] | None]:
         return expiry, _tradier_json(
             "/v1/markets/options/chains",
@@ -1449,16 +1530,11 @@ def _fetch_chain_from_tradier(symbol: str, expiry_set: set[str]) -> pd.DataFrame
         )
 
     payloads: List[Tuple[str, Dict[str, Any] | None]] = []
-    if max_workers <= 1:
-        payloads = [_fetch_expiry(expiry) for expiry in expiries]
-    else:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(_fetch_expiry, expiry) for expiry in expiries]
-            for future in as_completed(futures):
-                try:
-                    payloads.append(future.result())
-                except Exception:
-                    continue
+    for expiry in expiries:
+        try:
+            payloads.append(_fetch_expiry(expiry))
+        except Exception:
+            continue
 
     for expiry, payload in payloads:
         options = ((payload or {}).get("options") or {}).get("option")
@@ -3493,10 +3569,155 @@ def run_gamma_refresh_once() -> Dict[str, Any]:
     return _boundary_snapshot(snapshot)
 
 
+def _snapshot_compute_time(snapshot: Dict[str, Any]) -> Optional[datetime]:
+    return _parse_runtime_iso(
+        snapshot.get("last_successful_compute")
+        or snapshot.get("computed_at")
+        or snapshot.get("asof")
+    )
+
+
+def _install_shared_gamma_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    installed = coerce_validated_snapshot(snapshot)
+    warning_state = dict(installed.get("warning_state") or {})
+    snapshot_status = str(
+        warning_state.get("snapshot_status") or SnapshotStatus.INVALID.value
+    )
+    runtime_status = "stale" if snapshot_status == SnapshotStatus.STALE.value else "ok"
+    with _LOCK:
+        current_time = _snapshot_compute_time(_CACHE)
+        shared_time = _snapshot_compute_time(installed)
+        if (
+            not _snapshot_is_trustworthy(_CACHE)
+            or current_time is None
+            or (shared_time is not None and shared_time > current_time)
+        ):
+            _CACHE.clear()
+            _CACHE.update(_json_clone(installed))
+            _RUNTIME_STATE["last_attempted_at"] = str(
+                installed.get("computed_at") or installed.get("asof") or ""
+            )
+            _RUNTIME_STATE["last_error"] = str(
+                (installed.get("diagnostics") or {}).get("error") or ""
+            )
+            _RUNTIME_STATE["last_refresh_ms"] = int(
+                ((installed.get("diagnostics") or {}).get("refresh_ms")) or 0
+            )
+            _RUNTIME_STATE["status"] = runtime_status
+            _RUNTIME_STATE["cache_status"] = "shared"
+        return _json_clone(_CACHE or installed)
+
+
+def _shared_snapshot_is_current(
+    snapshot: Dict[str, Any], *, now_et: Optional[datetime] = None
+) -> bool:
+    computed_at = _snapshot_compute_time(snapshot)
+    if computed_at is None:
+        return False
+    current = now_et.astimezone(app_runtime.TZ) if now_et else app_runtime.now_et()
+    age_seconds = max(0.0, (current - computed_at.astimezone(app_runtime.TZ)).total_seconds())
+    return age_seconds < _gamma_poll_seconds(current)
+
+
+def run_coordinated_gamma_refresh_once() -> Dict[str, Any]:
+    """Refresh once across all Gunicorn workers, not once per worker.
+
+    The web app intentionally runs multiple processes. Without this shared lock,
+    each process starts its own background loop and duplicates the same Tradier
+    options-chain request. The shared last-good snapshot also lets every process
+    serve one coherent gamma generation.
+    """
+
+    if not _REFRESH_GATE.acquire(blocking=False):
+        return _refresh_in_progress_snapshot()
+    with _LOCK:
+        _RUNTIME_STATE["refresh_in_progress"] = True
+        _RUNTIME_STATE["last_attempted_at"] = _now_iso()
+    try:
+        lock_path = _shared_gamma_refresh_lock_path()
+        os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
+        with open(lock_path, "a+", encoding="utf-8") as lock_handle:
+            try:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return _refresh_in_progress_snapshot()
+            shared = _read_shared_gamma_snapshot()
+            if shared and _shared_snapshot_is_current(shared):
+                return _boundary_snapshot(_install_shared_gamma_snapshot(shared))
+
+            snapshot = run_gamma_refresh_once()
+            warning_state = dict(snapshot.get("warning_state") or {})
+            status = str(warning_state.get("snapshot_status") or "")
+            if status in {SnapshotStatus.HEALTHY.value, SnapshotStatus.DEGRADED.value}:
+                _write_shared_gamma_snapshot(snapshot)
+            elif shared:
+                return _boundary_snapshot(_install_shared_gamma_snapshot(shared))
+            return _boundary_snapshot(snapshot)
+    except Exception as exc:
+        with _LOCK:
+            _RUNTIME_STATE["last_error"] = str(exc)
+            _RUNTIME_STATE["status"] = "error"
+            _RUNTIME_STATE["cache_status"] = "last_good"
+        raise
+    finally:
+        with _LOCK:
+            _RUNTIME_STATE["refresh_in_progress"] = False
+        _REFRESH_GATE.release()
+
+
+def _refresh_in_progress_snapshot() -> Dict[str, Any]:
+    with _LOCK:
+        cached = _json_clone(_CACHE)
+    shared = _read_shared_gamma_snapshot()
+    snapshot = cached if _snapshot_is_trustworthy(cached) else shared
+    if not snapshot:
+        snapshot = _internal_invalid_snapshot(
+            reason="Invalid Snapshot: Gamma refresh is in progress and no last-good data exists."
+        )
+    payload = _boundary_snapshot(snapshot)
+    payload["diagnostics"] = dict(payload.get("diagnostics") or {})
+    payload["diagnostics"]["refresh_in_progress"] = True
+    return payload
+
+
+def get_gamma_runtime_diagnostics(*, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Return bounded, read-only refresh telemetry without triggering provider work."""
+
+    with _LOCK:
+        runtime_state = dict(_RUNTIME_STATE)
+        cached = _json_clone(_CACHE)
+    shared = _read_shared_gamma_snapshot()
+    snapshot = cached if _snapshot_is_trustworthy(cached) else shared
+    warning_state = dict(snapshot.get("warning_state") or {})
+    snapshot_status = str(
+        warning_state.get("snapshot_status")
+        or snapshot.get("snapshot_status")
+        or SnapshotStatus.INVALID.value
+    )
+    computed_at = _snapshot_compute_time(snapshot)
+    current = now or datetime.now(timezone.utc)
+    age_seconds = (
+        max(0, int((current.astimezone(timezone.utc) - computed_at.astimezone(timezone.utc)).total_seconds()))
+        if computed_at is not None
+        else -1
+    )
+    last_error = str(runtime_state.get("last_error") or "")
+    return {
+        "status": str(runtime_state.get("status") or "waiting"),
+        "snapshot_status": snapshot_status,
+        "age_seconds": age_seconds,
+        "last_attempted_at": str(runtime_state.get("last_attempted_at") or ""),
+        "last_error": last_error[:160],
+        "refresh_failed": bool(last_error or runtime_state.get("status") == "error"),
+        "refresh_in_progress": bool(runtime_state.get("refresh_in_progress")),
+        "has_last_good": bool(_snapshot_is_trustworthy(snapshot)),
+    }
+
+
 def _worker_loop() -> None:
     while True:
         try:
-            run_gamma_refresh_once()
+            run_coordinated_gamma_refresh_once()
         except Exception as exc:
             with _LOCK:
                 _RUNTIME_STATE["last_attempted_at"] = _now_iso()
@@ -3562,6 +3783,10 @@ def _bootstrap_gamma_snapshot_on_cold_cache() -> Optional[Dict[str, Any]]:
 
 
 def get_gamma_snapshot() -> Dict[str, Any]:
+    if _STARTED:
+        shared = _read_shared_gamma_snapshot()
+        if shared:
+            _install_shared_gamma_snapshot(shared)
     with _LOCK:
         snapshot = _json_clone(_CACHE)
         runtime_state = dict(_RUNTIME_STATE)

@@ -5,6 +5,7 @@ from mccain_capital.services.market_session_calendar import (
     is_session_day,
     market_phase,
     next_session_open,
+    session_contract,
     session_window,
 )
 
@@ -47,3 +48,32 @@ def test_dst_boundaries_keep_eastern_open_and_correct_utc_offsets():
     assert winter is not None and winter.utcoffset().total_seconds() == -5 * 3600
     assert summer is not None and summer.utcoffset().total_seconds() == -4 * 3600
     assert market_phase(datetime(2026, 3, 9, 9, 30, tzinfo=ET)) == "open"
+
+
+def test_session_contract_crosses_regular_open_and_close_boundaries():
+    before = session_contract(datetime(2026, 8, 24, 9, 29, 59, tzinfo=ET))
+    opened = session_contract(datetime(2026, 8, 24, 9, 30, tzinfo=ET))
+    closed = session_contract(datetime(2026, 8, 24, 16, 0, tzinfo=ET))
+
+    assert before["phase"] == "premarket"
+    assert before["next_transition_at"] == "2026-08-24T09:30:00-04:00"
+    assert before["automatic_polling_allowed"] is False
+    assert opened["phase"] == "open"
+    assert opened["next_transition_at"] == "2026-08-24T16:00:00-04:00"
+    assert opened["automatic_refresh_enabled"] is True
+    assert closed["phase"] == "afterhours"
+    assert closed["next_session_open_at"] == "2026-08-25T09:30:00-04:00"
+
+
+def test_session_contract_handles_weekend_holiday_and_early_close():
+    weekend = session_contract(datetime(2026, 8, 23, 10, 0, tzinfo=ET))
+    holiday = session_contract(datetime(2026, 7, 3, 10, 0, tzinfo=ET))
+    early = session_contract(datetime(2026, 11, 27, 12, 0, tzinfo=ET))
+
+    assert weekend["session_status"] == "weekend"
+    assert weekend["next_transition_at"] == "2026-08-24T09:30:00-04:00"
+    assert holiday["session_status"] == "holiday"
+    assert holiday["automatic_polling_allowed"] is False
+    assert early["phase"] == "open"
+    assert early["regular_session_close_at"] == "2026-11-27T13:00:00-05:00"
+    assert early["next_transition_at"] == "2026-11-27T13:00:00-05:00"

@@ -2977,7 +2977,34 @@
     };
   };
 
+  const syncStreamLifecycle = (event) => {
+    const refreshContract = event?.detail?.payload?.refresh_contract;
+    if (refreshContract && typeof refreshContract === "object") {
+      current = {
+        ...(current || {}),
+        refresh_contract: {
+          ...((current || {}).refresh_contract || {}),
+          ...refreshContract,
+        },
+      };
+    }
+    if (!pageVisible) {
+      closeStream();
+      return;
+    }
+    if (!automaticRefreshAllowed()) {
+      closeStream();
+      dispatchStreamStatus("Market closed", "Live stream paused · last valid session retained");
+      return;
+    }
+    if (!stream && reconnectTimer === null) {
+      dispatchStreamStatus("Live stream connecting", "Restoring live feed…");
+      connectStream();
+    }
+  };
+
   connectStream();
+  window.addEventListener("market-pulse-canonical-update", syncStreamLifecycle);
   document.addEventListener("visibilitychange", () => {
     pageVisible = document.visibilityState !== "hidden";
     if (!pageVisible) {
@@ -3002,6 +3029,9 @@
       dispatchStreamStatus("Market closed", "Live stream paused · last valid session retained");
     }
   });
-  window.addEventListener("pagehide", closeStream);
+  window.addEventListener("pagehide", () => {
+    window.removeEventListener("market-pulse-canonical-update", syncStreamLifecycle);
+    closeStream();
+  });
   window.addEventListener("beforeunload", closeStream);
 })();

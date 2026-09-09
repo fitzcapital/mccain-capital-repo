@@ -92,3 +92,25 @@ test("coordinator reports truthful scheduled and refreshing lifecycle states", a
   assert.ok(states.includes("idle"));
   coordinator.unregister("canonical");
 });
+
+test("a boundary scheduled during an in-flight refresh runs once after reconciliation", async () => {
+  const {coordinator} = loadCoordinator();
+  let calls = 0;
+  let release;
+  coordinator.register("canonical", {
+    initialDelay: 0,
+    autoSchedule: false,
+    run: async () => {
+      calls += 1;
+      if (calls === 1) await new Promise((resolve) => { release = resolve; });
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  coordinator.schedule("canonical", 0);
+  coordinator.schedule("canonical", 0);
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 15));
+
+  assert.equal(calls, 2);
+  coordinator.unregister("canonical");
+});

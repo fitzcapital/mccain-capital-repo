@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from datetime import datetime
 from datetime import timezone
+import fcntl
 import json
 import os
 import re
@@ -40,6 +41,59 @@ _CACHE: Dict[str, Any] = {
 }
 
 _COMPACT_TICKER = re.compile(r"^(?:O:)?(SPXW|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
+
+
+def _snapshot_path() -> str:
+    return os.path.join(str(app_runtime.PERSISTENT_DATA_DIR), "market_pulse_options_snapshot.json")
+
+
+def _snapshot_lock_path() -> str:
+    return f"{_snapshot_path()}.lock"
+
+
+def _snapshot_has_data(snapshot: Dict[str, Any]) -> bool:
+    spx = (snapshot.get("symbols") or {}).get("SPX") or {}
+    return bool(
+        snapshot.get("asof") and (spx.get("underlying") or {}).get("price") and spx.get("contracts")
+    )
+
+
+def _snapshot_age_seconds(snapshot: Dict[str, Any]) -> float | None:
+    try:
+        stamp = datetime.fromisoformat(str(snapshot.get("asof") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds())
+
+
+def _read_shared_snapshot() -> Dict[str, Any] | None:
+    try:
+        with open(_snapshot_path(), "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return None
+    return payload if isinstance(payload, dict) and _snapshot_has_data(payload) else None
+
+
+def _write_shared_snapshot(snapshot: Dict[str, Any]) -> None:
+    if not _snapshot_has_data(snapshot):
+        return
+    path = _snapshot_path()
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    temp_path = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(snapshot, handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        try:
+            os.unlink(temp_path)
+        except FileNotFoundError:
+            pass
 
 
 def _now_iso() -> str:
@@ -164,7 +218,9 @@ def _extract_contract_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     cp = (
         "C"
         if cp_raw.startswith("c")
-        else "P" if cp_raw.startswith("p") else str(parsed.get("cp") or "")
+        else "P"
+        if cp_raw.startswith("p")
+        else str(parsed.get("cp") or "")
     )
     strike = _safe_float(details.get("strike_price"))
     if strike is None:
@@ -217,8 +273,8 @@ def _extract_contract_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
-def _fetch_spx_contracts() -> List[Dict[str, Any]]:
-    return _fetch_spx_contracts_from_tradier()
+def _fetch_spx_contracts(spot: Optional[float] = None) -> List[Dict[str, Any]]:
+    return _fetch_spx_contracts_from_tradier(spot=spot)
 
 
 def _parse_cboe_option_symbol(symbol: str) -> Dict[str, Any]:
@@ -297,7 +353,35 @@ def _fetch_spx_contracts_from_cboe() -> List[Dict[str, Any]]:
     return contracts
 
 
-def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
+def _contract_shortlist(
+    contracts: List[Dict[str, Any]], spot: Optional[float]
+) -> List[Dict[str, Any]]:
+    """Keep a bounded, direction-balanced shortlist with NTM candidates first."""
+
+    def rank(contract: Dict[str, Any]) -> tuple[Any, ...]:
+        strike = _safe_float(contract.get("strike"))
+        distance = abs(strike - spot) if strike is not None and spot is not None else float("inf")
+        return (
+            int(contract.get("_root_rank", 9)),
+            int(contract.get("_dte", 999)),
+            distance,
+            int(contract.get("_liq_rank", 9)),
+            abs(float(contract.get("mid") or 0) - 7.50),
+            -int(contract.get("vol") or 0),
+            float(contract.get("spread") or 9999.0),
+        )
+
+    ranked = sorted(contracts, key=rank)
+    selected: List[Dict[str, Any]] = []
+    for cp in ("C", "P"):
+        candidate = next((contract for contract in ranked if contract.get("cp") == cp), None)
+        if candidate is not None:
+            selected.append(candidate)
+    selected.extend(contract for contract in ranked if contract not in selected)
+    return selected[:MAX_CONTRACTS]
+
+
+def _fetch_spx_contracts_from_tradier(spot: Optional[float] = None) -> List[Dict[str, Any]]:
     if not _tradier_key():
         return []
     today = app_runtime.today_iso()
@@ -348,6 +432,8 @@ def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
                     "label": format_contract_label(
                         "SPXW" if dte <= 7 else "SPX", expiration, float(strike), cp
                     ),
+                    "strike": float(strike),
+                    "cp": cp,
                     "mid": mid,
                     "delta": delta,
                     "vol": vol,
@@ -363,17 +449,12 @@ def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
         return []
     window = [c for c in contracts if int(c.get("_dte") or 999) <= 7]
     work = window if window else contracts
-    work.sort(
-        key=lambda c: (
-            int(c.get("_root_rank") or 9),
-            int(c.get("_liq_rank") or 9),
-            -int(c.get("vol") or 0),
-            float(c.get("spread") or 9999.0),
-        )
-    )
+    work = _contract_shortlist(work, spot)
     return [
         {
             "label": c.get("label"),
+            "strike": c.get("strike"),
+            "cp": c.get("cp"),
             "mid": c.get("mid"),
             "delta": c.get("delta"),
             "vol": c.get("vol"),
@@ -381,7 +462,7 @@ def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
             "spread": c.get("spread"),
             "liq": c.get("liq"),
         }
-        for c in work[:MAX_CONTRACTS]
+        for c in work
     ]
 
 
@@ -403,7 +484,7 @@ def _poll_once() -> None:
     price = _safe_float(under.get("price"))
     change_pct = _safe_float(under.get("pct_change"))
     provider = str(under.get("provider") or "tradier").strip().lower() or "tradier"
-    contracts = _fetch_spx_contracts()
+    contracts = _fetch_spx_contracts(spot=price)
 
     snap = {
         "asof": _now_iso(),
@@ -415,15 +496,33 @@ def _poll_once() -> None:
             }
         },
     }
+    if not _snapshot_has_data(snap):
+        return
+    _write_shared_snapshot(snap)
     with _LOCK:
         _CACHE.clear()
         _CACHE.update(snap)
 
 
+def _run_locked_refresh(*, force: bool = False) -> None:
+    lock_path = _snapshot_lock_path()
+    os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as lock_handle:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        try:
+            shared = _read_shared_snapshot()
+            age = _snapshot_age_seconds(shared or {})
+            if not force and shared is not None and age is not None and age < POLL_SECONDS:
+                return
+            _poll_once()
+        finally:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+
+
 def _worker_loop() -> None:
     while True:
         try:
-            _poll_once()
+            _run_locked_refresh()
         except Exception:
             pass
         time.sleep(POLL_SECONDS)
@@ -439,11 +538,28 @@ def start_options_worker_once() -> None:
     t.start()
 
 
-def get_options_snapshot() -> Dict[str, Any]:
+def get_options_snapshot(*, recover_if_empty: bool = False) -> Dict[str, Any]:
+    if recover_if_empty:
+        start_options_worker_once()
+    shared = _read_shared_snapshot()
+    if shared is not None:
+        with _LOCK:
+            _CACHE.clear()
+            _CACHE.update(shared)
+    elif recover_if_empty:
+        try:
+            _run_locked_refresh()
+        except Exception:
+            pass
+        shared = _read_shared_snapshot()
+        if shared is not None:
+            with _LOCK:
+                _CACHE.clear()
+                _CACHE.update(shared)
     with _LOCK:
         return json.loads(json.dumps(_CACHE))
 
 
 def run_options_refresh_once() -> Dict[str, Any]:
-    _poll_once()
+    _run_locked_refresh(force=True)
     return get_options_snapshot()

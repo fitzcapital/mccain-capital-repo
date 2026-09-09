@@ -35,4 +35,8 @@ def test_short_soak_passes_and_detects_a_deliberate_regression():
     report = run_resilience_soak(2)
     assert report["status"] == "pass" and report["attempts"] == 18
     assert report["maximum_recovery_seconds"] == 15
+    assert report["monitor_heartbeats"] == report["attempts"]
+    assert report["page_closed_setups"] == report["replay_matches"]
+    assert report["duplicate_alerts"] == 0
+    assert report["clock_recoveries"] == 2
     assert run_resilience_soak(1, inject_regression="mixed_commit")["status"] == "fail"

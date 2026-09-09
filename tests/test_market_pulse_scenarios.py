@@ -67,7 +67,7 @@ def test_scenario_labels_describe_price_action_instead_of_generic_breaks():
     assert "Breakdown" not in labels.values()
 
 
-def test_confirmed_local_flip_breakdown_outranks_distant_high():
+def test_completed_212_local_flip_breakdown_outranks_distant_high():
     levels = [
         {"key": "local_flip", "value": 7750},
         {"key": "current_day_high", "value": 7800},
@@ -87,15 +87,15 @@ def test_confirmed_local_flip_breakdown_outranks_distant_high():
     )
 
     assert result["primary"]["family"] == "local_flip_loss"
-    assert result["primary"]["lane"] == "alternative"
-    assert result["primary"]["state"] == "trigger_armed"
-    assert result["primary"]["grade"] == ""
+    assert result["primary"]["lane"] == "active_now"
+    assert result["primary"]["state"] == "triggered"
+    assert result["primary"]["grade"]
     assert result["primary"]["strat_pattern"]["code"] == "2-1-2D"
-    assert result["primary"]["plan"]["target"] == "Set after direction confirms"
+    assert result["primary"]["plan"]["target"] == "Put Wall 7,725"
     assert any(row["level"]["key"] == "current_day_high" for row in result["dormant"])
 
 
-def test_quality_grade_is_published_only_after_later_trigger_break():
+def test_quality_grade_is_published_on_212_signal_candle_and_not_retimed_later():
     bars = [
         _bar("09:55", high=7755, low=7745, close=7750),
         _bar("10:00", high=7756, low=7746, close=7749),
@@ -103,7 +103,7 @@ def test_quality_grade_is_published_only_after_later_trigger_break():
         _bar("10:10", high=7754, low=7740, close=7744),
     ]
     levels = [{"key": "local_flip", "value": 7750}, {"key": "put_wall", "value": 7725}]
-    armed = rank_market_scenarios(
+    signaled = rank_market_scenarios(
         spot=7744, levels=levels, bars=bars, gamma_regime="negative_gamma"
     )["primary"]
     triggered = rank_market_scenarios(
@@ -113,13 +113,12 @@ def test_quality_grade_is_published_only_after_later_trigger_break():
         gamma_regime="negative_gamma",
     )["primary"]
 
-    assert armed["state"] == "trigger_armed"
-    assert armed["quality_score"] is None
-    assert armed["grade"] == ""
-    assert triggered["state"] == "triggered"
-    assert triggered["quality_score"] == triggered["score"]
-    assert triggered["grade"]
-    assert triggered["trigger_evidence"]["triggered_at"].endswith("10:15:00-04:00")
+    assert signaled["state"] == "triggered"
+    assert signaled["quality_score"] == signaled["score"]
+    assert signaled["grade"]
+    assert signaled["trigger_evidence"]["triggered_at"].endswith("10:10:00-04:00")
+    assert triggered["state"] != "triggered"
+    assert not triggered.get("strat_pattern")
 
 
 def test_score_is_fixed_at_one_hundred_and_cannot_unlock_candidate():

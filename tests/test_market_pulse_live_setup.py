@@ -75,20 +75,121 @@ def _bar(clock="11:30", *, high=7701, low=7680, close=7690):
     }
 
 
-def _evaluate(path: Path, *, candidate=None, now=None, locked=False, bars=None):
+def _evaluate(
+    path: Path,
+    *,
+    candidate=None,
+    now=None,
+    locked=False,
+    bars=None,
+    setup_events=None,
+    claim_delivery=True,
+):
     return evaluate_live_setup_monitor(
         ticker="SPX",
         scenario_rankings={"candidates": [candidate or _candidate()]},
         canonical_freshness=_freshness(locked=locked),
         authoritative_action={"permission": "ready", "action_state": "ACTIVE"},
         bars=bars or [_bar()],
+        setup_events=setup_events,
         now=now or datetime(2026, 8, 20, 11, 31, tzinfo=ET),
         ledger_path=str(path),
         cutoff="15:15",
+        claim_delivery=claim_delivery,
     )
 
 
-def test_setup_and_alert_identities_are_stable_and_level_specific():
+def _setup_event(*, clock="11:25", level=7710, event_id="event-secondary"):
+    return {
+        "setup_event_id": event_id,
+        "candidate_id": f"failed-high-{level}",
+        "signal_time": f"2026-08-20T{clock}:00-04:00",
+        "family": "failed_high",
+        "family_label": "Reject Prior-Day High",
+        "direction": "bearish",
+        "entry_zone": level - 1,
+        "level": {"key": "prior_day_high", "label": "Prior-Day High", "value": level},
+        "target": {"key": "put_wall", "label": "Put Wall", "value": 7650},
+        "score": 82,
+        "grade": "B+",
+        "confirmation": "2-2 reversal trigger broken",
+        "invalidation": "Cancel above Prior-Day High",
+        "strat_pattern": {
+            "code": "2-2 REV D",
+            "family": "2-2-reversal",
+            "completed_at": f"2026-08-20T{clock}:00-04:00",
+        },
+        "trigger_evidence": {"triggered_at": f"2026-08-20T{clock}:00-04:00"},
+    }
+
+
+def test_stable_event_family_is_not_overwritten_by_current_primary(tmp_path):
+    path = tmp_path / "frozen-family.json"
+    event = _setup_event(clock="11:30", level=7710, event_id="event-failed-high")
+    primary = _candidate(level=7710)
+    primary["family"] = "breakdown"
+    primary["family_label"] = "Acceptance Below"
+
+    result = _evaluate(
+        path,
+        candidate=primary,
+        setup_events=[event],
+        bars=[_bar("11:30", high=7710, low=7690, close=7700)],
+    )
+    record = next(row for row in json.loads(path.read_text())["setups"].values())
+
+    assert result["primary"]["family"] == "failed_high"
+    assert record["family"] == "failed_high"
+    assert record["strat_pattern"] == event["strat_pattern"]
+    assert record["outcome_state"] == "open"
+    assert record["state"] == "CONFIRMED"
+
+
+def test_live_event_outcome_matches_replay_and_terminal_state_is_monotonic(tmp_path):
+    path = tmp_path / "event-outcome.json"
+    event = _setup_event(clock="11:30", level=7710, event_id="event-invalidated")
+    primary = _candidate(level=7710)
+    primary["family"] = "breakdown"
+
+    first = _evaluate(
+        path,
+        candidate=primary,
+        setup_events=[event],
+        bars=[
+            _bar("11:30", high=7710, low=7690, close=7700),
+            _bar("11:35", high=7715, low=7700, close=7712),
+        ],
+        now=datetime(2026, 8, 20, 11, 36, tzinfo=ET),
+    )
+    setup_id = first["primary"]["setup_id"]
+    assert acknowledge_setup(
+        ledger_path=str(path), setup_id=setup_id, now=datetime(2026, 8, 20, 11, 37, tzinfo=ET)
+    )
+    changed_event = json.loads(json.dumps(event))
+    changed_event["target"] = {
+        "key": "current_day_high",
+        "label": "Current-Day High",
+        "value": 7720,
+    }
+    repeated = _evaluate(
+        path,
+        candidate=primary,
+        setup_events=[changed_event],
+        bars=[_bar("11:30", high=7710, low=7690, close=7700)],
+        now=datetime(2026, 8, 20, 11, 38, tzinfo=ET),
+    )
+
+    assert first["primary"]["state"] == "INVALIDATED"
+    assert first["primary"]["outcome"]["at"].endswith("11:35:00-04:00")
+    assert repeated["primary"]["state"] == "INVALIDATED"
+    assert repeated["primary"]["family"] == "failed_high"
+    assert repeated["primary"]["target_level"] == event["target"]
+    assert repeated["primary"]["outcome_state"] == "invalidated"
+    assert repeated["primary"]["outcome"] == first["primary"]["outcome"]
+    assert repeated["primary"]["acknowledged_at"]
+
+
+def test_setup_and_alert_identities_are_stable_across_anchor_levels():
     first = setup_identity(session_id="2026-08-20", ticker="SPX", candidate=_candidate())
     repeated = setup_identity(session_id="2026-08-20", ticker="SPX", candidate=_candidate())
     other_level = setup_identity(
@@ -96,8 +197,12 @@ def test_setup_and_alert_identities_are_stable_and_level_specific():
     )
 
     assert first == repeated
-    assert first != other_level
+    assert first == other_level
     assert alert_identity(first) == alert_identity(repeated)
+
+    later = _candidate(level=7710)
+    later["strat_pattern"]["completed_at"] = "2026-08-20T11:35:00-04:00"
+    assert setup_identity(session_id="2026-08-20", ticker="SPX", candidate=later) != first
 
 
 def test_confirmed_setup_delivers_once_across_polls_and_restart(tmp_path):
@@ -110,6 +215,19 @@ def test_confirmed_setup_delivers_once_across_polls_and_restart(tmp_path):
     assert first["alert_event"]["deliver_now"] is True
     assert second["primary"]["revision"] == 1
     assert second["alert_event"]["deliver_now"] is False
+
+
+def test_server_evaluation_persists_setup_without_claiming_browser_delivery(tmp_path):
+    path = tmp_path / "server-owned.json"
+    server = _evaluate(path, claim_delivery=False)
+    browser = _evaluate(path, now=datetime(2026, 8, 20, 11, 32, tzinfo=ET))
+
+    ledger = json.loads(path.read_text(encoding="utf-8"))
+    assert server["primary"]["alert_status"] == "pending"
+    assert server["alert_event"] is None
+    assert browser["alert_event"]["deliver_now"] is True
+    assert len(ledger["setups"]) == 1
+    assert len(ledger["deliveries"]) == 1
 
 
 def test_stale_data_pauses_alerting_and_action_language(tmp_path):
@@ -209,6 +327,58 @@ def test_concurrent_workers_create_one_delivery(tmp_path):
     assert len(ledger["setups"]) == 1
 
 
+def test_replay_eligible_secondary_event_is_durable_review_history(tmp_path):
+    path = tmp_path / "all-events.json"
+    event = _setup_event()
+
+    first = _evaluate(path, setup_events=[event])
+    repeated = _evaluate(
+        path,
+        now=datetime(2026, 8, 20, 11, 32, tzinfo=ET),
+        setup_events=[event],
+    )
+    ledger = json.loads(path.read_text(encoding="utf-8"))
+    secondary = next(row for row in first["secondary"] if row.get("setup_event_id"))
+
+    assert len(ledger["setups"]) == 2
+    assert secondary["setup_event_id"] == "event-secondary"
+    assert secondary["late_review_only"] is True
+    assert secondary["alert_status"] == "late_review_only"
+    assert ledger["processed_completed_candles"]["2026-08-20"].endswith("11:30:00-04:00")
+    assert len(repeated["recent"]) == len(first["recent"])
+    assert len(json.loads(path.read_text(encoding="utf-8"))["setups"]) == 2
+
+
+def test_same_pattern_anchor_variants_are_persisted_as_one_event(tmp_path):
+    path = tmp_path / "same-candle.json"
+    events = [
+        _setup_event(clock="11:30", level=7710, event_id="event-a"),
+        _setup_event(clock="11:30", level=7720, event_id="event-b"),
+    ]
+    events[1]["level"] = {
+        "key": "current_day_high",
+        "label": "Current-Day High",
+        "value": 7720,
+    }
+
+    _evaluate(path, setup_events=events)
+    _evaluate(path, setup_events=list(reversed(events)))
+    ledger = json.loads(path.read_text(encoding="utf-8"))
+
+    event_records = [row for row in ledger["setups"].values() if row.get("setup_event_id")]
+    assert {row["setup_event_id"] for row in event_records} == {"event-a"}
+    assert len(event_records) == 1
+    assert all(row["late_review_only"] is False for row in event_records)
+    assert event_records[0]["supporting_levels"] == [
+        {
+            "key": "current_day_high",
+            "label": "Current-Day High",
+            "value": 7720,
+            "role": "supporting_confluence",
+        }
+    ]
+
+
 def test_acknowledgement_is_durable_without_state_change(tmp_path):
     path = tmp_path / "ack.json"
     result = _evaluate(path)
@@ -252,6 +422,91 @@ def test_canonical_api_includes_generation_bound_live_monitor(client):
     assert monitor["generation_id"] == payload["canonical_freshness"]["generation_id"]
     assert "next_evaluation_at" in monitor
     assert "persistence" in monitor
+
+
+def test_live_recovery_uses_durable_point_in_time_level_observations(client, monkeypatch):
+    from mccain_capital.services import core
+
+    captured = {}
+    monkeypatch.setattr(
+        core,
+        "_market_pulse_durable_level_observations",
+        lambda ticker, session_date: [
+            {
+                "key": "new_put_wall",
+                "value": 7645,
+                "as_of": f"{session_date}T09:30:00-04:00",
+            }
+        ],
+    )
+
+    def events(**kwargs):
+        captured["levels"] = kwargs["levels"]
+        return []
+
+    monkeypatch.setattr(core, "build_intraday_setup_events", events)
+    monkeypatch.setattr(
+        core,
+        "evaluate_live_setup_monitor",
+        lambda **kwargs: {"ticker": kwargs["ticker"], "primary": None},
+    )
+    with client.application.app_context():
+        core._market_pulse_live_setup_monitor(
+            ticker="SPX",
+            playbook_view={"scenario_rankings": {"candidates": [{}]}},
+            canonical_freshness={"session_id": "2026-09-01"},
+            execution_chart={"strategy_bars_5m": [_bar()]},
+            market_structure_snapshot={},
+            playbook_quote={},
+            gamma_snapshot={},
+            now_et=datetime(2026, 9, 1, 11, 40, tzinfo=ET),
+        )
+
+    assert any(
+        row.get("key") == "new_put_wall"
+        and row.get("value") == 7645
+        and row.get("as_of") == "2026-09-01T09:30:00-04:00"
+        for row in captured["levels"]
+    )
+
+
+def test_durable_level_recovery_includes_frozen_event_target(tmp_path, monkeypatch):
+    from mccain_capital.services import core
+
+    ledger_path = tmp_path / "live-setups.json"
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "setups": {
+                    "event-1": {
+                        "setup_event_id": "event-1",
+                        "evidence_at": "2026-09-01T11:15:00-04:00",
+                        "level": {
+                            "key": "new_put_wall",
+                            "label": "New Put Wall",
+                            "value": 7645,
+                        },
+                        "target_level": {
+                            "key": "put_wall",
+                            "label": "Put Wall",
+                            "value": 7650,
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(core, "_market_pulse_live_setup_ledger_file", lambda ticker: ledger_path)
+
+    observations = core._market_pulse_durable_level_observations(
+        "SPX", session_date="2026-09-01"
+    )
+
+    assert {(row["key"], row["value"], row["as_of"]) for row in observations} == {
+        ("new_put_wall", 7645.0, "2026-09-01T11:15:00-04:00"),
+        ("put_wall", 7650.0, "2026-09-01T11:15:00-04:00"),
+    }
 
 
 def test_client_contract_rejects_mixed_and_out_of_order_monitor_revisions():

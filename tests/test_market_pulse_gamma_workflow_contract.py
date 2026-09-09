@@ -107,6 +107,9 @@ def test_market_pulse_preserves_primary_controls_and_hooks(client):
 
 def test_five_second_tape_reuses_shared_stream_with_poll_fallback_and_stays_isolated():
     chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
+    context_script = (ROOT / "static/js/market_pulse_gamma_context.js").read_text(
+        encoding="utf-8"
+    )
     workflow_script = (ROOT / "static/js/market_pulse_gamma_workflow.js").read_text(
         encoding="utf-8"
     )
@@ -121,6 +124,10 @@ def test_five_second_tape_reuses_shared_stream_with_poll_fallback_and_stays_isol
     assert "new EventSource" not in chart_script
     assert "micro-tape" not in chart_script
     assert "MicroTape" not in workflow_script
+    assert "payload.refresh_contract" in chart_script
+    assert "marketPhase: nextPhase" in chart_script
+    assert 'addEventListener("market-pulse-canonical-update", syncStreamLifecycle)' in context_script
+    assert 'dispatchStreamStatus("Market closed"' in context_script
 
 
 def test_market_radar_groups_indexes_and_exposes_decision_hierarchy(client):
@@ -151,12 +158,20 @@ def test_playbook_uses_one_labeled_canonical_refresh_control(client):
     assert "Refresh delayed · showing last valid data" in body
     assert "Auto-refresh delayed · showing last valid data" not in body
     assert "AUTO_REFRESH_INTERVAL_MS = 15000" in body
+    assert "INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS = 1" in body
+    assert (
+        'scheduleCanonicalCheck(INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS, "refresh")'
+        in body
+    )
+    assert "bootstrapRefreshDelaySeconds" not in body
     assert 'document.addEventListener("visibilitychange"' in body
     assert 'window.addEventListener("focus"' in body
     assert 'window.addEventListener("pageshow"' in body
     assert "if (!event.persisted) return" in body
     assert "suspendCanonicalRefresh()" in body
     assert 'resumeCanonicalRefresh({ force: true, reason: "Page restored" })' in body
+    assert "Math.min(wakeAt - Date.now(), 2147483000)" in body
+    assert "6 * 60 * 60 * 1000" not in body
     assert "refreshCountdownTimer = null" in body
     assert "liveSetupCountdownTimer = null" in body
     assert "nextGenerationId === currentGenerationId" in body
@@ -198,7 +213,7 @@ def test_playbook_canonical_refresh_has_stable_in_place_targets(client):
 def test_playbook_data_lock_diagnostics_are_collapsed_canonical_and_noncompeting(client):
     body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
 
-    assert '<details class="marketPulseDiagnostics marketPulseSection"' in body
+    assert '<details class="marketPulseDiagnostics marketPulseTrustCenter marketPulseSection' in body
     assert 'id="marketPulseDataLockDiagnostics"' in body
     assert 'id="marketPulseDataLockDiagnostics" open' not in body
     diagnostics = body[
@@ -208,7 +223,7 @@ def test_playbook_data_lock_diagnostics_are_collapsed_canonical_and_noncompeting
     ]
     assert diagnostics.count('data-diagnostic-component="') == 5
     for label in (
-        "Data Lock Diagnostics",
+        "Trust Center",
         "Completed Bars",
         "Age / Limit",
         "Last Success",
@@ -257,6 +272,8 @@ def test_playbook_sticky_summary_is_accessible_persistent_and_default_off(client
     ]
     assert "line-height:1.8;" in status_metric_rule
     assert "line-height:1.1;" not in status_metric_rule
+    assert "grid-template-columns:repeat(4, minmax(116px, 1fr))" not in styles
+    assert "grid-template-columns:repeat(3, minmax(132px, 1fr))" in styles
     assert "body.page-market-pulse #marketPulseStatusBar{\n  position:relative" in styles
     assert "body.page-market-pulse.is-playbook-pinned .marketPulseExecutionStrip" in styles
 
@@ -463,6 +480,48 @@ def test_market_pulse_busts_chart_cache_for_canonical_overlays(client):
     assert "market-pulse-ladder-20260810c" in body
 
 
+def test_chart_uses_closed_session_review_mode_and_stops_component_polling():
+    template = (ROOT / "mccain_capital/templates/core/market_pulse.html").read_text(
+        encoding="utf-8"
+    )
+    chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
+
+    assert "SESSION CLOSED · REVIEW ONLY" in template
+    assert 'polling?.automatic_refresh_enabled !== false' in chart_script
+    assert "if (!marketIsOpenForPolling()) return;" in chart_script
+    start_polling = chart_script[
+        chart_script.index("const startPolling") : chart_script.index("const boot")
+    ]
+    assert "if (!marketIsOpenForPolling())" in start_polling
+    assert "renderSummary(lastLevelsPayload)" in start_polling
+    assert "market-pulse-session-contract-updated" in chart_script
+    assert "automatic_refresh_enabled: contract.automatic_refresh_enabled === true" in chart_script
+
+
+def test_market_pulse_lifecycle_revalidates_server_boundaries_without_local_phase_guessing():
+    template = (ROOT / "mccain_capital/templates/core/market_pulse.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "next_transition_at" in template
+    assert "serverClockOffsetMs" in template
+    assert "forceBoundaryValidation" in template
+    assert "automaticRefreshEnabled = true" not in template
+    initial_validation_start = template.rindex("registerCanonicalRefreshLane();")
+    initial_validation = template[
+        initial_validation_start : template.index("armRefreshCountdown();", initial_validation_start)
+    ]
+    assert "if (automaticRefreshEnabled)" in initial_validation
+    assert "INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS" in initial_validation
+    assert "else pauseCanonicalRefresh()" in initial_validation
+    assert "refreshMarketPulseContext(false, false, true)" in template
+    assert 'if (forceRefresh) url.searchParams.set("refresh", "1")' in template
+    assert 'if (automatic) url.searchParams.set("automatic", "1")' in template
+    assert 'currentGenerationId && automatic ? {"If-None-Match"' in template
+    for event_name in ("visibilitychange", "online", "focus", "pageshow", "pagehide"):
+        assert event_name in template
+
+
 def test_trade_decision_uses_an_explicit_five_step_sequence(client):
     body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
     decision = body[body.index('id="marketPulseTradeReadCard"') : body.index('id="spxPrioritySpotPanel"')]
@@ -491,6 +550,7 @@ def test_market_pulse_refresh_rejects_contradictory_execution_generations(client
     assert "Execution permission conflicts with canonical state." in body
     assert "Execution guide belongs to a different state generation." in body
     assert "Actionable state lacks required canonical confirmation." in body
+    assert '["triggered", "confirmed"].includes' in body
     assert "Gamma Ladder belongs to a different generation." in body
     assert "Gamma Ladder spot diverged from the canonical SPX quote." in body
     assert 'setCanonicalText("marketPulseHeroStateChip", staged.actionCode)' in body

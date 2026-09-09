@@ -1060,6 +1060,22 @@ body.page-market-pulse .marketPulseExecutionHeroChartStage > div.tv-lightweight-
   height:548px;
 }
 
+body.page-market-pulse .marketPulseExecutionHeroVolumeLabel{
+  position:absolute;
+  left:16px;
+  bottom:12px;
+  z-index:4;
+  padding:3px 7px;
+  border:1px solid rgba(99,179,255,.18);
+  border-radius:999px;
+  background:rgba(4,15,27,.78);
+  color:rgba(168,199,229,.72);
+  font-size:.58rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  pointer-events:none;
+}
+
 body.page-market-pulse .marketPulseExecutionHeroLevelRail{
   position:absolute;
   top:6px;
@@ -1993,9 +2009,15 @@ body.page-market-pulse .marketPulseFastTape__chart{
 }
 
 body.page-market-pulse .marketPulseFastTape .marketPulseMicroTapeStatus{
+  align-self:flex-start;
+  max-width:100%;
+  overflow:visible;
   color:rgba(203,219,239,.72);
   font-size:.7rem;
   line-height:1.25;
+  overflow-wrap:anywhere;
+  text-overflow:clip;
+  white-space:normal;
 }
 
 body.page-market-pulse .marketPulseFastTape .marketPulseMicroTapeStatus.is-live{
@@ -6342,6 +6364,42 @@ body.page-market-pulse #marketPulseStatusBar .marketPulseTickerSearchMessage{
   }
 }
 
+/* Final cascade guard: the Trust Center owns this evidence at every breakpoint. */
+body.page-market-pulse #marketPulseOperationalHealth,
+body.page-market-pulse .marketPulseSessionState[data-command-surface="evidence"]{
+  display:none !important;
+}
+
+/* One progressive Trust Center replaces repeated top-level pipeline summaries. */
+body.page-market-pulse #marketPulseOperationalHealth,
+body.page-market-pulse .marketPulseSessionState[data-command-surface="evidence"]{
+  display:none;
+}
+
+body.page-market-pulse .marketPulseTrustCenter{
+  border-color:rgba(72,223,190,.42);
+  background:linear-gradient(105deg,rgba(7,31,43,.96),rgba(6,18,34,.98));
+}
+
+body.page-market-pulse .marketPulseTrustCenter.is-locked{border-color:rgba(255,92,126,.58)}
+body.page-market-pulse .marketPulseTrustCenter.is-degraded{border-color:rgba(255,191,85,.58)}
+body.page-market-pulse .marketPulseTrustCenter .marketPulseDiagnosticsSummary small,
+body.page-market-pulse .marketPulseTrustCenter .marketPulseDiagnosticRow strong{
+  overflow-wrap:anywhere;
+  white-space:normal;
+}
+
+body.page-market-pulse .marketPulseTrustHistoryLink{margin-left:auto}
+
+@media (max-width:700px){
+  body.page-market-pulse .marketPulseTrustCenter .marketPulseDiagnosticsSummary,
+  body.page-market-pulse .marketPulseTrustCenter .marketPulseDiagnosticsFooter{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  body.page-market-pulse .marketPulseTrustHistoryLink{margin-left:0;width:100%}
+}
+
 /* Compact header utilities and coordinator-owned polling countdown. */
 body.page-market-pulse #marketPulseStatusBar{
   position:relative;
@@ -6801,6 +6859,38 @@ body.page-market-pulse .marketPulseReplayColumns p{
 body.page-market-pulse .marketPulseReplayColumns .marketPulseReplayRisk{
   color:#8fa2ba;
   font-size:12px;
+}
+
+body.page-market-pulse .marketPulseReplayOutcome{
+  margin-bottom:6px;
+  color:#eaf2fd;
+  font-size:clamp(17px,1.2vw,22px);
+  line-height:1.2;
+}
+
+body.page-market-pulse .marketPulseReplayOutcome.is-full_target,
+body.page-market-pulse .marketPulseReplayOutcome.is-favorable_excursion{
+  color:#63f3cc;
+}
+
+body.page-market-pulse .marketPulseReplayOutcome.is-limited_follow_through{
+  color:#f4c466;
+}
+
+body.page-market-pulse .marketPulseReplayOutcome.is-ambiguous{
+  color:#ffcc72;
+}
+
+body.page-market-pulse .marketPulseReplayOutcomeStatus,
+body.page-market-pulse .marketPulseReplayOutcomeMetrics{
+  color:#9eacc2;
+  font-size:13px;
+  line-height:1.35;
+}
+
+body.page-market-pulse .marketPulseReplayOutcomeMetrics{
+  margin-top:4px;
+  color:#7f90aa;
 }
 
 @media (max-width:760px){
@@ -11643,7 +11733,7 @@ body[data-theme="cinematic-nebula"].page-market-pulse #marketPulseStatusBar .mar
   display:grid !important;
   grid-column:2 !important;
   grid-row:1 / span 3 !important;
-  grid-template-columns:repeat(4, minmax(116px, 1fr)) !important;
+  grid-template-columns:repeat(3, minmax(132px, 1fr)) !important;
   gap:8px !important;
 }
 

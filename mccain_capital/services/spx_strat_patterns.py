@@ -6,6 +6,9 @@ import math
 from typing import Any, Iterable, Mapping
 
 
+SPX_KEY_LEVEL_PROXIMITY_POINTS = 0.25
+
+
 def _number(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
@@ -36,10 +39,18 @@ def classify_strat_bar(previous: Mapping[str, Any], current: Mapping[str, Any]) 
     return "1"
 
 
-def _spans_level(bar: Mapping[str, Any], level: float) -> bool:
+def bar_is_at_key_level(bar: Mapping[str, Any], level: float) -> bool:
+    """Return whether an SPX candle reaches or narrowly tests a key level."""
+
     high = _number(bar.get("high"))
     low = _number(bar.get("low"))
-    return high is not None and low is not None and low <= level <= high
+    return (
+        high is not None
+        and low is not None
+        and low - SPX_KEY_LEVEL_PROXIMITY_POINTS
+        <= level
+        <= high + SPX_KEY_LEVEL_PROXIMITY_POINTS
+    )
 
 
 def _pattern_payload(
@@ -100,7 +111,7 @@ def _detect_ending_key_level_pattern(
             pattern_bars = window[1:]
             pattern_direction = "bullish" if final_type == "2U" else "bearish"
             if (not wanted_direction or wanted_direction == pattern_direction) and any(
-                _spans_level(bar, level) for bar in pattern_bars
+                bar_is_at_key_level(bar, level) for bar in pattern_bars
             ):
                 return _pattern_payload(
                     code="2-1-2U" if pattern_direction == "bullish" else "2-1-2D",
@@ -124,7 +135,7 @@ def _detect_ending_key_level_pattern(
     if (
         reversal_direction
         and (not wanted_direction or wanted_direction == reversal_direction)
-        and any(_spans_level(bar, level) for bar in pattern_bars)
+        and any(bar_is_at_key_level(bar, level) for bar in pattern_bars)
     ):
         return _pattern_payload(
             code="2-2 REV D" if reversal_direction == "bearish" else "2-2 REV U",
@@ -161,3 +172,22 @@ def detect_latest_key_level_pattern(
         if pattern:
             return pattern
     return None
+
+
+def detect_ending_key_level_pattern(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    level_key: str,
+    level_label: str,
+    level_value: Any,
+    direction: str | None = None,
+) -> dict[str, Any] | None:
+    """Return a supported pattern only when it ends on the latest completed candle."""
+
+    return _detect_ending_key_level_pattern(
+        rows,
+        level_key=level_key,
+        level_label=level_label,
+        level_value=level_value,
+        direction=direction,
+    )

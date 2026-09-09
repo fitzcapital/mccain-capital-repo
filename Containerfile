@@ -47,10 +47,14 @@ ENV UPLOAD_DIR=/data/uploads
 ENV BOOKS_DIR=/data/books
 ENV SECRET_KEY_FILE=/data/.secret_key
 ENV AUTO_SYNC_PASSWORD_FALLBACK=1
+ENV OPENBLAS_NUM_THREADS=1
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV NUMEXPR_NUM_THREADS=1
 RUN mkdir -p /data/uploads /data/books
 EXPOSE 5001
 
 # Gunicorn for production.
 # Live broker sync can exceed the default 30s request timeout, so raise the timeout
 # and keep an extra worker available while one request is busy running Playwright.
-CMD ["sh", "-lc", "gunicorn --worker-class gthread --workers ${WEB_CONCURRENCY:-2} --threads ${GUNICORN_THREADS:-2} --timeout 180 --graceful-timeout 30 -b 0.0.0.0:${PORT:-5001} mccain_capital.wsgi:app"]
+CMD ["sh", "-lc", "gunicorn --worker-class gthread --workers ${WEB_CONCURRENCY:-2} --threads ${GUNICORN_THREADS:-2} --max-requests ${GUNICORN_MAX_REQUESTS:-750} --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-100} --timeout 180 --graceful-timeout 30 -b 0.0.0.0:${PORT:-5001} mccain_capital.wsgi:app"]

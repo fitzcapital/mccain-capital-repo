@@ -1,0 +1,109 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse_setup_analytics.css') }}?v={{ static_v }}">
+
+<main class="setupAnalytics" data-setup-analytics data-api-url="{{ analytics_api_url }}" data-today="{{ analytics_today }}">
+  <header class="card setupAnalyticsCommand">
+    <div class="setupAnalyticsIdentity">
+      <span class="setupAnalyticsKicker">Market Pulse · Today's setup review</span>
+      <h1>{{ ticker }} Setup Analytics</h1>
+      <p>Today’s Live Replay evidence first. Expand Filters to study prior sessions.</p>
+    </div>
+    <div class="setupAnalyticsCommandInsight" data-analytics-insight aria-live="polite">
+      <span class="setupAnalyticsKicker">Best window</span>
+      <strong>Loading evidence…</strong>
+    </div>
+    <div class="setupAnalyticsCommandTools">
+      <div class="setupAnalyticsCoverageGauge" data-analytics-gauge></div>
+      <a class="btn" href="{{ market_pulse_url }}#marketPulseSetupReplay">Live Replay</a>
+    </div>
+  </header>
+
+  <nav class="card setupAnalyticsPresets" aria-label="Study range" data-analytics-presets>
+    <span>Quick study</span>
+    <button type="button" data-preset="today" aria-pressed="true">Today</button>
+    <button type="button" data-preset="last_3_sessions" aria-pressed="false">3 Sessions</button>
+    <button type="button" data-preset="this_week" aria-pressed="false">This Week</button>
+    <button type="button" data-preset="last_20_sessions" aria-pressed="false">20 Sessions</button>
+    <button type="button" data-preset="all_history" aria-pressed="false">All History</button>
+  </nav>
+
+  <details class="card setupAnalyticsFilterDrawer" data-filter-drawer>
+    <summary><span>Filters</span><small data-filter-summary>Today · all setups</small></summary>
+    <form class="setupAnalyticsFilters" data-analytics-filters>
+      <input type="hidden" name="preset" value="today">
+      <label>From<input type="date" name="start_date" value="{{ analytics_today }}"></label>
+      <label>To<input type="date" name="end_date" value="{{ analytics_today }}"></label>
+      <label>Start time<input type="time" name="start_time" value="09:30"></label>
+      <label>End time<input type="time" name="end_time" value="16:00"></label>
+      <label>Direction<select name="direction"><option value="">All</option><option value="bullish">Bullish</option><option value="bearish">Bearish</option></select></label>
+      <label>Setup<select name="family"><option value="">All families</option></select></label>
+      <label>Pattern<select name="pattern"><option value="">All patterns</option></select></label>
+      <label>Outcome<select name="outcome"><option value="">All outcomes</option><option value="target_reached">Target reached</option><option value="invalidated">Invalidated</option><option value="open">Open</option><option value="ambiguous">Ambiguous</option><option value="unavailable">Legacy / unavailable</option></select></label>
+      <label>Level<select name="level"><option value="">All levels</option></select></label>
+      <label>Grade<select name="grade"><option value="">All grades</option></select></label>
+      <div class="setupAnalyticsFilterActions"><button class="btn btnPrimary" type="submit">Apply</button><button class="btn" type="button" data-analytics-reset>Reset</button></div>
+    </form>
+  </details>
+
+  <div class="setupAnalyticsStatus" data-analytics-status aria-live="polite">Loading setup evidence…</div>
+  <section class="setupAnalyticsKpis" data-analytics-kpis aria-label="Setup summary"></section>
+
+  <div class="setupAnalyticsTradeSize">
+    <label for="analytics-contracts">Contracts for profit estimates</label>
+    <input id="analytics-contracts" data-analytics-contracts type="number" min="1" max="1000" step="1" value="3" aria-describedby="analytics-contracts-feedback">
+    <span id="analytics-contracts-feedback" data-contracts-feedback aria-live="polite">Estimates use 3 contracts.</span>
+  </div>
+  <nav class="setupAnalyticsTabs" role="tablist" aria-label="Analytics views">
+    <button type="button" role="tab" aria-selected="true" data-analytics-tab="overview">Overview</button>
+    <button type="button" role="tab" aria-selected="false" data-analytics-tab="timing">Timing</button>
+    <button type="button" role="tab" aria-selected="false" data-analytics-tab="families">Families</button>
+    <button type="button" role="tab" aria-selected="false" data-analytics-tab="ledger">Ledger</button>
+  </nav>
+
+  <section class="setupAnalyticsView is-active" role="tabpanel" data-analytics-view="overview">
+    <article class="card setupAnalyticsPanel setupAnalyticsTimelinePanel">
+      <header><div><small>Frequency by New York time · outcome color</small><h2>Market-session frequency profile</h2></div><button class="setupAnalyticsTextButton" type="button" data-open-view="timing">Full timing study →</button></header>
+      <div class="setupAnalyticsTimeline" data-chart="heatmap-overview"></div>
+    </article>
+    <article class="card setupAnalyticsPanel">
+      <header><div><small>Highest evaluated samples first</small><h2>Setup families</h2></div><button class="setupAnalyticsTextButton" type="button" data-open-view="families">View all families →</button></header>
+      <div class="setupAnalyticsFamilyCards is-preview" data-family-cards="overview"></div>
+    </article>
+    <aside class="card setupAnalyticsCoverage" data-analytics-coverage>SPX setup outcomes measure underlying movement—not option fills, returns, or realized profit.</aside>
+  </section>
+
+  <section class="setupAnalyticsView" role="tabpanel" data-analytics-view="timing" hidden>
+    <article class="card setupAnalyticsPanel">
+      <header><div><small>Bar height: frequency · color: captured target rate</small><h2>Complete market-session profile</h2></div></header>
+      <div class="setupAnalyticsTimeline" data-chart="heatmap-timing"></div>
+    </article>
+    <article class="card setupAnalyticsPanel">
+      <header><div><small>Frequency · includes legacy history</small><h2>Setups by session</h2></div></header>
+      <div class="setupAnalyticsChart" data-chart="sessions"></div>
+    </article>
+  </section>
+
+  <section class="setupAnalyticsView" role="tabpanel" data-analytics-view="families" hidden>
+    <article class="card setupAnalyticsPanel">
+      <header><div><small>Every retained setup family</small><h2>Playbook comparison</h2></div></header>
+      <div class="setupAnalyticsExcursionLegend" data-excursion-legend></div>
+      <div class="setupAnalyticsFamilyCards" data-family-cards="all"></div>
+    </article>
+    <article class="card setupAnalyticsPanel">
+      <header><div><small>Captured outcomes · SPX points</small><h2>Favorable versus adverse movement</h2></div></header>
+      <div class="setupAnalyticsChart" data-chart="excursion"></div>
+    </article>
+  </section>
+
+  <section class="setupAnalyticsView" role="tabpanel" data-analytics-view="ledger" hidden>
+    <article class="card setupAnalyticsLedger">
+      <header class="setupAnalyticsLedgerHead">
+        <div><small>Auditable event history</small><h2>Setup ledger</h2><p>Expand a row for frozen evidence and its Replay link.</p></div>
+        <label>Sort<select data-analytics-sort><option value="signal_desc">Newest first</option><option value="signal_asc">Oldest first</option><option value="score_desc">Highest grade</option><option value="mfe_desc">Largest MFE</option></select></label>
+      </header>
+      <div class="setupAnalyticsLedgerRows" data-analytics-ledger></div>
+      <footer class="setupAnalyticsPagination"><button class="btn" type="button" data-page-prev>Previous</button><span data-page-label>Page —</span><button class="btn" type="button" data-page-next>Next</button></footer>
+    </article>
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='js/market_pulse_setup_analytics.js') }}?v={{ static_v }}"></script>

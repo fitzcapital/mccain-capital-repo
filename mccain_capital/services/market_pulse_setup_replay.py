@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import copy
 import math
 from typing import Any, Iterable, Mapping
@@ -14,10 +14,16 @@ from mccain_capital.services.market_pulse_scenarios import (
     normalize_levels,
     rank_market_scenarios,
 )
+from mccain_capital.services.spx_strat_patterns import bar_is_at_key_level
+from mccain_capital.services.market_session_calendar import session_window, market_phase
 
 
 ET = ZoneInfo("America/New_York")
-REPLAY_ENTRY_CUTOFF_ET = time(15, 30)
+REPLAY_ENTRY_CUTOFF_ET = time(15, 15)
+MINIMUM_TARGET_SPACE = 5.0
+ESTIMATED_CONTRACT_COST = 750.0
+ESTIMATED_ABSOLUTE_DELTA = 0.40
+ESTIMATED_TP_RETURNS = (15, 20, 30)
 DYNAMIC_LEVEL_KEYS = {
     "gamma_flip",
     "local_flip",
@@ -69,16 +75,88 @@ def _normalized_bars(rows: Iterable[Mapping[str, Any]], session_date: str) -> li
     return sorted(bars, key=lambda row: row["ts"])
 
 
-def _next_target(levels: list[Any], value: float, direction: str) -> dict[str, Any] | None:
-    candidates = (
-        [level for level in levels if level.value > value]
-        if direction == "bullish"
-        else [level for level in levels if level.value < value]
+def resolve_replay_session(
+    rows: Iterable[Mapping[str, Any]], *, now: datetime, requested_session: str = ""
+) -> dict[str, Any]:
+    """Select review candles without granting live execution freshness.
+
+    Strategy candle timestamps identify the opening of each five-minute interval.
+    """
+
+    current = now.astimezone(ET) if now.tzinfo else now.replace(tzinfo=ET)
+    candidates = _normalized_bars(
+        [row for row in rows if isinstance(row, Mapping) and row.get("complete") is not False
+         and row.get("is_complete") is not False],
+        requested_session,
     )
+    completed = []
+    for row in candidates:
+        stamp = _timestamp(row)
+        window = session_window(stamp.date())
+        if (
+            window.is_session
+            and window.opens_at <= stamp < window.closes_at
+            and stamp + timedelta(minutes=5) <= min(current, window.closes_at)
+        ):
+            completed.append(row)
+    selected = requested_session or (completed[-1]["ts"][:10] if completed else "")
+    bars = [row for row in completed if row["ts"][:10] == selected]
+    review_only = selected != current.date().isoformat() or market_phase(current) != "open"
+    label = datetime.fromisoformat(selected).strftime("%a, %b %d") if selected else ""
+    return {
+        "bars": bars,
+        "session_date": selected,
+        "session_label": label,
+        "review_only": review_only,
+        "evaluated_through": bars[-1]["ts"] if bars else None,
+        "available": bool(bars),
+        "unavailable_reason": "" if bars else "No retained candles for this session",
+    }
+
+
+def _next_target(
+    levels: list[Any],
+    value: float,
+    direction: str,
+    *,
+    excluded_keys: Iterable[str] = (),
+) -> dict[str, Any] | None:
+    excluded = {str(key) for key in excluded_keys if key}
+    candidates = (
+        [level for level in levels if level.key not in excluded and level.value > value]
+        if direction == "bullish"
+        else [level for level in levels if level.key not in excluded and level.value < value]
+    )
+    candidates = [level for level in candidates if abs(level.value - value) >= MINIMUM_TARGET_SPACE]
     if not candidates:
         return None
     target = min(candidates, key=lambda level: abs(level.value - value))
     return {"key": target.key, "label": target.label, "value": target.value}
+
+
+def _estimated_scalp_targets(entry: Any, direction: str) -> dict[str, Any]:
+    entry_value = _number(entry)
+    if entry_value is None or direction not in {"bullish", "bearish"}:
+        return {"targets": [], "contract_cost": 750, "absolute_delta": 0.40}
+    premium = ESTIMATED_CONTRACT_COST / 100
+    sign = 1 if direction == "bullish" else -1
+    targets = []
+    for index, return_percent in enumerate(ESTIMATED_TP_RETURNS, start=1):
+        point_move = premium * (return_percent / 100) / ESTIMATED_ABSOLUTE_DELTA
+        targets.append(
+            {
+                "key": f"tp{index}",
+                "return_percent": return_percent,
+                "point_move": round(point_move, 2),
+                "spx_price": round(entry_value + sign * point_move, 2),
+            }
+        )
+    return {
+        "targets": targets,
+        "contract_cost": int(ESTIMATED_CONTRACT_COST),
+        "absolute_delta": ESTIMATED_ABSOLUTE_DELTA,
+        "dealer_gamma_used": False,
+    }
 
 
 def _point_in_time_levels(
@@ -92,6 +170,7 @@ def _point_in_time_levels(
     current_day_low = min((value for value in lows if value is not None), default=None)
     signal_stamp = _timestamp(bars[-1]) if bars else None
     point_in_time: list[dict[str, Any]] = []
+    dynamic_levels: dict[str, tuple[datetime, dict[str, Any]]] = {}
     for source in levels:
         row = dict(source)
         key = str(row.get("key") or "").strip().lower()
@@ -99,11 +178,16 @@ def _point_in_time_levels(
             observed_at = _timestamp({"ts": row.get("as_of")})
             if observed_at is None or signal_stamp is None or observed_at > signal_stamp:
                 continue
+            previous = dynamic_levels.get(key)
+            if previous is None or observed_at >= previous[0]:
+                dynamic_levels[key] = (observed_at, row)
+            continue
         if key == "current_day_high" and current_day_high is not None:
             row["value"] = current_day_high
         elif key == "current_day_low" and current_day_low is not None:
             row["value"] = current_day_low
         point_in_time.append(row)
+    point_in_time.extend(row for _, row in dynamic_levels.values())
     return point_in_time
 
 
@@ -128,6 +212,13 @@ def _pattern_location_event(
         return ""
     pattern_bars = [row for row in bars if str(row.get("ts") or "") in pattern_times]
     if not pattern_bars:
+        return ""
+    signal_close = _number(pattern_bars[-1].get("close"))
+    closes_through_level = bool(
+        signal_close is not None
+        and (signal_close > level_value if direction == "bullish" else signal_close < level_value)
+    )
+    if not closes_through_level:
         return ""
     first_pattern_index = next(
         (
@@ -193,12 +284,15 @@ def _pattern_location_event(
         ):
             return "liquidity_swept"
 
+    if str(pattern.get("family") or "") == "2-2-reversal" and any(
+        bar_is_at_key_level(row, level_value) for row in pattern_bars
+    ):
+        return "key_level_proximity"
+
     return ""
 
 
-def _family_matches_location_event(
-    *, family: Any, direction: str, location_event: str
-) -> bool:
+def _family_matches_location_event(*, family: Any, direction: str, location_event: str) -> bool:
     """Keep sweep/failure replay separate from acceptance continuations."""
 
     family_key = str(family or "").strip().lower()
@@ -206,40 +300,58 @@ def _family_matches_location_event(
         return family_key == "failed_high"
     if location_event in {"cdl_made", "liquidity_swept"} and direction == "bullish":
         return family_key == "failed_low"
+    if location_event == "key_level_proximity":
+        return family_key == ("failed_high" if direction == "bearish" else "failed_low")
     return False
 
 
-def _outcome(
+def evaluate_setup_outcome(
     *,
     signal: Mapping[str, Any],
     future: list[Mapping[str, Any]],
     target: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    entry = _number(signal.get("close"))
+    entry = _number(signal.get("entry_price"))
+    if entry is None:
+        entry = _number(signal.get("close"))
     level = _number(signal.get("level_value"))
     if entry is None or level is None:
-        return {"state": "unavailable", "mfe": None, "mae": None}
+        return {
+            "state": "unavailable",
+            "setup_status": "unavailable",
+            "setup_status_label": "Setup outcome unavailable",
+            "target_status": "unavailable",
+            "target_status_label": "Target outcome unavailable",
+            "opportunity_status": "unavailable",
+            "opportunity_label": "Price opportunity unavailable",
+            "target_progress_percent": None,
+            "mfe": None,
+            "mae": None,
+        }
     direction = str(signal.get("direction") or "")
     target_value = _number((target or {}).get("value"))
     favorable: list[float] = []
     adverse: list[float] = []
     terminal = "open"
     terminal_at = ""
+    evaluated_through = str(signal.get("signal_time") or "")
     for bar in future:
         high = _number(bar.get("high"))
         low = _number(bar.get("low"))
-        if high is None or low is None:
+        close = _number(bar.get("close"))
+        if high is None or low is None or close is None:
             continue
+        evaluated_through = str(bar.get("ts") or evaluated_through)
         if direction == "bullish":
-            favorable.append(high - entry)
-            adverse.append(entry - low)
+            favorable.append(max(0.0, high - entry))
+            adverse.append(max(0.0, entry - low))
             target_hit = target_value is not None and high >= target_value
-            invalidated = low <= level
+            invalidated = close < level
         else:
-            favorable.append(entry - low)
-            adverse.append(high - entry)
+            favorable.append(max(0.0, entry - low))
+            adverse.append(max(0.0, high - entry))
             target_hit = target_value is not None and low <= target_value
-            invalidated = high >= level
+            invalidated = close > level
         if target_hit and invalidated:
             terminal, terminal_at = "ambiguous", str(bar.get("ts") or "")
             break
@@ -249,37 +361,147 @@ def _outcome(
         if invalidated:
             terminal, terminal_at = "invalidated", str(bar.get("ts") or "")
             break
+    mfe = max(favorable, default=0.0)
+    mae = max(adverse, default=0.0)
+    target_distance = abs(target_value - entry) if target_value is not None else None
+    target_progress = (
+        min(100.0, max(0.0, mfe / target_distance * 100.0))
+        if target_distance is not None and target_distance > 0
+        else None
+    )
+    if terminal == "target_reached":
+        setup_status, setup_label = "valid", "Setup remained valid"
+        target_status, target_label = "reached", "Full target reached"
+        opportunity_status, opportunity_label = "full_target", "Full target reached"
+    elif terminal == "invalidated":
+        setup_status, setup_label = "invalidated", "Setup invalidated"
+        target_status, target_label = "not_reached", "Target not reached"
+        opportunity_status = "favorable_excursion" if mfe > 0 else "limited_follow_through"
+        opportunity_label = (
+            "Favorable excursion before invalidation"
+            if mfe > 0
+            else "Limited follow-through before invalidation"
+        )
+    elif terminal == "ambiguous":
+        setup_status, setup_label = "ambiguous", "Setup ordering ambiguous"
+        target_status, target_label = "ambiguous", "Target order is ambiguous"
+        opportunity_status = "ambiguous"
+        opportunity_label = "Target and invalidation touched in the same candle"
+    else:
+        setup_status, setup_label = "open", "Setup remained open"
+        target_status, target_label = "not_reached", "Target not reached"
+        opportunity_status = "favorable_excursion" if mfe > 0 else "limited_follow_through"
+        opportunity_label = (
+            "Favorable excursion — target not reached" if mfe > 0 else "Limited follow-through"
+        )
     return {
         "state": terminal,
         "at": terminal_at,
-        "mfe": max(favorable, default=0.0),
-        "mae": max(adverse, default=0.0),
+        "evaluated_through": terminal_at or evaluated_through,
+        "setup_status": setup_status,
+        "setup_status_label": setup_label,
+        "target_status": target_status,
+        "target_status_label": target_label,
+        "opportunity_status": opportunity_status,
+        "opportunity_label": opportunity_label,
+        "target_progress_percent": target_progress,
+        "mfe": mfe,
+        "mae": mae,
     }
 
 
-def _dedupe_and_rank_setups(setups: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Return one strongest row for each pattern, completion time, and anchor."""
+def _canonical_event_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
+    pattern = dict(row.get("strat_pattern") or {})
+    return (
+        str(pattern.get("code") or ""),
+        str(pattern.get("completed_at") or row.get("signal_candle_time") or ""),
+        str(row.get("direction") or ""),
+    )
 
-    strongest: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+def _contextual_family_label(row: Mapping[str, Any]) -> str:
+    level = dict(row.get("level") or {})
+    level_label = str(level.get("label") or "structural level")
+    return (
+        f"Sweep and reclaim {level_label}"
+        if str(row.get("direction") or "") == "bullish"
+        else f"Sweep and reject {level_label}"
+    )
+
+
+def _canonicalize_setups(setups: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse anchor-level representations into one completed-pattern event."""
+
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for source in setups:
         row = dict(source)
-        pattern = dict(row.get("strat_pattern") or {})
-        anchor = dict(pattern.get("anchor_level") or {})
-        key = (
-            str(pattern.get("code") or ""),
-            str(pattern.get("completed_at") or row.get("signal_time") or ""),
-            str(anchor.get("key") or dict(row.get("level") or {}).get("key") or ""),
+        grouped.setdefault(_canonical_event_key(row), []).append(row)
+
+    canonical: list[dict[str, Any]] = []
+    for event_key, rows in grouped.items():
+        rows.sort(
+            key=lambda row: (
+                -int(_number(row.get("score")) or 0),
+                float(_number(dict(row.get("level") or {}).get("value")) or float("inf")),
+                str(dict(row.get("level") or {}).get("key") or ""),
+            )
         )
-        current = strongest.get(key)
-        row_rank = (bool(row.get("live_gate_complete")), int(row.get("score") or 0))
-        current_rank = (
-            bool(current.get("live_gate_complete")),
-            int(current.get("score") or 0),
-        ) if current else (False, -1)
-        if current is None or row_rank > current_rank:
-            strongest[key] = row
+        primary = copy.deepcopy(rows[0])
+        primary_level = dict(primary.get("level") or {})
+        primary_value = _number(primary_level.get("value"))
+        supporting: list[dict[str, Any]] = []
+        excluded_keys = {str(primary_level.get("key") or "")}
+        ignored: list[dict[str, Any]] = []
+        for row in rows[1:]:
+            level = dict(row.get("level") or {})
+            value = _number(level.get("value"))
+            if value is not None and primary_value is not None and abs(value - primary_value) <= 3:
+                supporting.append({**level, "role": "supporting_confluence"})
+                excluded_keys.add(str(level.get("key") or ""))
+            else:
+                ignored.append(level)
+        score = int(_number(primary.get("score")) or 0)
+        primary["score"] = score
+        primary["grade"] = confluence_grade(score)
+        primary["supporting_levels"] = supporting
+        primary["level_cluster"] = [
+            {**primary_level, "role": "primary"},
+            *supporting,
+        ]
+        available = normalize_levels(primary.pop("_available_levels", []))
+        target = _next_target(
+            available,
+            float(primary_value or 0),
+            str(primary.get("direction") or ""),
+            excluded_keys=excluded_keys,
+        )
+        primary["target"] = target
+        primary["actionable"] = target is not None
+        primary["target_diagnostic"] = (
+            "Nearest meaningful directional target beyond the anchor cluster"
+            if target
+            else "No directional level beyond the anchor cluster has at least 5 points of space"
+        )
+        if ignored:
+            primary["ignored_anchor_levels"] = ignored
+        primary["family_label"] = _contextual_family_label(primary)
+        primary["setup_event_id"] = ":".join(
+            (str(primary.get("ticker") or ""), str(primary.get("session_date") or ""), *event_key)
+        )
+        outcome_signal = {
+            "entry_price": primary.get("entry_zone"),
+            "level_value": primary_level.get("value"),
+            "direction": primary.get("direction"),
+            "signal_time": primary.get("signal_time"),
+        }
+        primary["outcome"] = evaluate_setup_outcome(
+            signal=outcome_signal,
+            future=primary.pop("_future_bars", []),
+            target=target,
+        )
+        canonical.append(primary)
     return sorted(
-        strongest.values(),
+        canonical,
         key=lambda row: (
             -int(row.get("score") or 0),
             str(row.get("signal_time") or ""),
@@ -288,7 +510,11 @@ def _dedupe_and_rank_setups(setups: Iterable[Mapping[str, Any]]) -> list[dict[st
     )
 
 
-def build_intraday_setup_replay(
+# Backward-compatible private name retained for focused callers and tests.
+_outcome = evaluate_setup_outcome
+
+
+def _build_intraday_setup_analysis(
     *,
     ticker: str,
     session_date: str,
@@ -318,7 +544,6 @@ def build_intraday_setup_replay(
             break
         bars_at_signal = rows[: index + 1]
         levels_at_signal = _point_in_time_levels(level_rows, bars_at_signal)
-        normalized_levels_at_signal = normalize_levels(levels_at_signal)
         point_in_time_gamma = (
             gamma_regime
             if gamma_stamp is not None and signal_stamp is not None and gamma_stamp <= signal_stamp
@@ -365,10 +590,7 @@ def build_intraday_setup_replay(
             pattern = dict(candidate.get("strat_pattern") or {})
             trigger_evidence = dict(candidate.get("trigger_evidence") or {})
             trigger_time = str(trigger_evidence.get("triggered_at") or "")
-            event_id = (
-                f"{candidate_id}:{pattern.get('code', '')}:"
-                f"{pattern.get('completed_at', '')}:{trigger_time}"
-            )
+            event_id = f"{candidate_id}:{pattern.get('code', '')}:{pattern.get('completed_at', '')}"
             if not candidate_id or event_id in emitted:
                 continue
             triggered = str(candidate.get("state") or "") in {"triggered", "confirmed"}
@@ -402,8 +624,24 @@ def build_intraday_setup_replay(
                 and family_matches_location
                 and observed_id not in observed_patterns
             )
-            trigger_completed_now = bool(triggered and trigger_time == str(signal_bar.get("ts") or ""))
-            eligible = bool(location_event and family_matches_location and trigger_completed_now)
+            immediate_pattern = str(pattern.get("family") or "") in {
+                "2-2-reversal",
+                "2-1-2",
+            }
+            trigger_completed_now = bool(
+                triggered and trigger_time == str(signal_bar.get("ts") or "")
+            )
+            immediate_trigger_completed_now = bool(
+                immediate_pattern
+                and pattern_completed_now
+                and trigger_evidence.get("triggered")
+                and trigger_time == str(signal_bar.get("ts") or "")
+            )
+            eligible = bool(
+                location_event
+                and family_matches_location
+                and (trigger_completed_now or immediate_trigger_completed_now)
+            )
             if not eligible:
                 if include_rejected and (
                     str(candidate.get("lane") or "") == "alternative" or pattern_completed_now
@@ -423,13 +661,15 @@ def build_intraday_setup_replay(
                                     ),
                                     (
                                         "No CDH/CDL creation or ordered liquidity sweep "
-                                        "inside the pattern"
+                                        "or key-level test inside the pattern"
                                         if pattern and not location_event
                                         else ""
                                     ),
                                     (
                                         "Location event belongs to the reversal family, not continuation"
-                                        if pattern and location_event and not family_matches_location
+                                        if pattern
+                                        and location_event
+                                        and not family_matches_location
                                         else ""
                                     ),
                                 )
@@ -437,7 +677,7 @@ def build_intraday_setup_replay(
                             ),
                         }
                     )
-                if pattern_observed:
+                if pattern_observed and not immediate_pattern:
                     observed_patterns.add(observed_id)
                     armed = copy.deepcopy(candidate)
                     armed["_location_event"] = location_event
@@ -445,27 +685,35 @@ def build_intraday_setup_replay(
                 continue
             emitted.add(event_id)
             level = dict(candidate.get("level") or {})
-            target = _next_target(
-                normalized_levels_at_signal,
-                float(level.get("value")),
-                str(candidate.get("direction") or ""),
-            )
+            score = int(_number(candidate.get("quality_score")) or _number(candidate.get("score")) or 0)
             frozen = {
                 "candidate_id": candidate_id,
                 "setup_event_id": event_id,
                 "ticker": str(ticker or "").upper(),
                 "session_date": session_date,
                 "signal_time": trigger_time or signal_bar["ts"],
+                "signal_candle_time": str(pattern.get("completed_at") or signal_bar["ts"]),
                 "direction": candidate.get("direction"),
                 "family": candidate.get("family"),
                 "family_label": candidate.get("family_label"),
                 "level": level,
                 "entry_zone": trigger_evidence.get("trigger_price") or signal_bar["close"],
+                "entry_basis": (
+                    "first_pattern_candle_boundary"
+                    if pattern.get("family") == "2-2-reversal"
+                    else "inside_candle_boundary"
+                    if pattern.get("family") == "2-1-2"
+                    else "later_confirmation_boundary"
+                ),
+                "estimated_tp_ladder": _estimated_scalp_targets(
+                    trigger_evidence.get("trigger_price") or signal_bar["close"],
+                    str(candidate.get("direction") or ""),
+                ),
                 "confirmation": candidate.get("plan", {}).get("trigger"),
                 "invalidation": candidate.get("plan", {}).get("cancel"),
-                "target": target,
-                "score": candidate.get("quality_score"),
-                "grade": candidate.get("grade"),
+                "target": None,
+                "score": score,
+                "grade": confluence_grade(score),
                 "score_components": list(candidate.get("score_components") or []),
                 "strat_pattern": dict(candidate.get("strat_pattern") or {}),
                 "data_availability": {
@@ -479,19 +727,11 @@ def build_intraday_setup_replay(
                 "live_gate_complete": True,
                 "location_event": location_event,
                 "trigger_evidence": trigger_evidence,
+                "_available_levels": levels_at_signal,
+                "_future_bars": rows[index + 1 :],
             }
-            outcome_signal = {
-                "close": signal_bar["close"],
-                "level_value": level.get("value"),
-                "direction": candidate.get("direction"),
-            }
-            frozen["outcome"] = _outcome(
-                signal=outcome_signal,
-                future=rows[index + 1 :],
-                target=target,
-            )
             setups.append(frozen)
-    setups = _dedupe_and_rank_setups(setups)
+    setups = _canonicalize_setups(setups)
     latest_signal_time = max(
         (str(row.get("signal_time") or "") for row in setups),
         default="",
@@ -504,7 +744,62 @@ def build_intraday_setup_replay(
         "latest_signal_time": latest_signal_time,
         "setups": setups,
         "rejected": rejected if include_rejected else [],
-        "entry_cutoff_label": "3:30 PM ET",
+        "entry_cutoff_label": "3:15 PM ET",
         "read_only": True,
         "disclaimer": "Potential setups only; no trades or journal entries were created.",
     }
+
+
+def build_intraday_setup_events(
+    *,
+    ticker: str,
+    session_date: str,
+    bars: Iterable[Mapping[str, Any]],
+    levels: Iterable[Mapping[str, Any]],
+    strategy: Mapping[str, Any] | None = None,
+    gamma_regime: str = "",
+    gamma_as_of: Any = None,
+) -> list[dict[str, Any]]:
+    """Return the shared point-in-time eligible event stream for Live and Replay."""
+
+    analysis = _build_intraday_setup_analysis(
+        ticker=ticker,
+        session_date=session_date,
+        bars=bars,
+        levels=levels,
+        strategy=strategy,
+        gamma_regime=gamma_regime,
+        gamma_as_of=gamma_as_of,
+        include_rejected=False,
+    )
+    events: list[dict[str, Any]] = []
+    for setup in analysis["setups"]:
+        event = copy.deepcopy(setup)
+        event.pop("outcome", None)
+        events.append(event)
+    return events
+
+
+def build_intraday_setup_replay(
+    *,
+    ticker: str,
+    session_date: str,
+    bars: Iterable[Mapping[str, Any]],
+    levels: Iterable[Mapping[str, Any]],
+    strategy: Mapping[str, Any] | None = None,
+    gamma_regime: str = "",
+    gamma_as_of: Any = None,
+    include_rejected: bool = False,
+) -> dict[str, Any]:
+    """Return replay outcomes built from the shared point-in-time event analysis."""
+
+    return _build_intraday_setup_analysis(
+        ticker=ticker,
+        session_date=session_date,
+        bars=bars,
+        levels=levels,
+        strategy=strategy,
+        gamma_regime=gamma_regime,
+        gamma_as_of=gamma_as_of,
+        include_rejected=include_rejected,
+    )

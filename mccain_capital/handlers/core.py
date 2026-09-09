@@ -66,6 +66,10 @@ def healthz():
     return svc.healthz()
 
 
+def market_pulse_monitoring_metrics():
+    return svc.market_pulse_monitoring_metrics()
+
+
 def favicon():
     return svc.favicon()
 
@@ -116,6 +120,22 @@ def gamma_ladder_api():
 
 def market_pulse_setup_replay_api():
     return svc.market_pulse_setup_replay_api()
+
+
+def market_pulse_setup_analytics_page():
+    return svc.market_pulse_setup_analytics_page()
+
+
+def market_pulse_setup_analytics_api():
+    return svc.market_pulse_setup_analytics_api()
+
+
+def market_pulse_reliability_page():
+    return svc.market_pulse_reliability_page()
+
+
+def market_pulse_reliability_api():
+    return svc.market_pulse_reliability_api()
 
 
 def market_pulse_tape_api():

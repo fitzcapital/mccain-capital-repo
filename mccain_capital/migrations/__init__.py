@@ -847,7 +847,7 @@ def _migration_0013_multi_account_ledgers(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_uploads_account_uploaded "
         "ON uploads(account_id, uploaded_at DESC)"
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_uploads_batch " "ON uploads(import_batch_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_uploads_batch ON uploads(import_batch_id)")
 
     trade_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
     if "account_id" not in trade_cols:
@@ -982,6 +982,121 @@ def _migration_0015_broker_equity_source(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE accounts ADD COLUMN broker_equity_source TEXT")
 
 
+def _migration_0016_market_pulse_setup_events(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS market_pulse_setup_events (
+            setup_event_id TEXT PRIMARY KEY,
+            ticker TEXT NOT NULL,
+            session_date TEXT NOT NULL,
+            signal_time TEXT NOT NULL,
+            signal_candle_time TEXT NOT NULL DEFAULT '',
+            resolution_time TEXT NOT NULL DEFAULT '',
+            evaluated_through TEXT NOT NULL DEFAULT '',
+            family TEXT NOT NULL DEFAULT '',
+            family_label TEXT NOT NULL DEFAULT '',
+            direction TEXT NOT NULL DEFAULT '',
+            pattern_code TEXT NOT NULL DEFAULT '',
+            pattern_family TEXT NOT NULL DEFAULT '',
+            level_key TEXT NOT NULL DEFAULT '',
+            level_label TEXT NOT NULL DEFAULT '',
+            level_value REAL,
+            entry_value REAL,
+            target_key TEXT NOT NULL DEFAULT '',
+            target_label TEXT NOT NULL DEFAULT '',
+            target_value REAL,
+            score INTEGER NOT NULL DEFAULT 0,
+            grade TEXT NOT NULL DEFAULT '',
+            outcome_state TEXT NOT NULL DEFAULT 'unavailable',
+            mfe REAL,
+            mae REAL,
+            target_progress_percent REAL,
+            evidence_json TEXT NOT NULL DEFAULT '{}',
+            source_revision INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mp_setup_events_ticker_session
+            ON market_pulse_setup_events(ticker, session_date);
+        CREATE INDEX IF NOT EXISTS idx_mp_setup_events_signal_time
+            ON market_pulse_setup_events(signal_time);
+        CREATE INDEX IF NOT EXISTS idx_mp_setup_events_family
+            ON market_pulse_setup_events(family);
+        CREATE INDEX IF NOT EXISTS idx_mp_setup_events_pattern
+            ON market_pulse_setup_events(pattern_code);
+        CREATE INDEX IF NOT EXISTS idx_mp_setup_events_direction
+            ON market_pulse_setup_events(direction);
+        CREATE INDEX IF NOT EXISTS idx_mp_setup_events_outcome
+            ON market_pulse_setup_events(outcome_state);
+        """
+    )
+
+
+def _migration_0017_market_pulse_reliability_events(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS market_pulse_reliability_events (
+            incident_id TEXT PRIMARY KEY,
+            ticker TEXT NOT NULL DEFAULT 'SPX',
+            generation_id TEXT NOT NULL DEFAULT '',
+            component TEXT NOT NULL DEFAULT 'pipeline',
+            status TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            started_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            recovered_at TEXT NOT NULL DEFAULT '',
+            duration_seconds INTEGER NOT NULL DEFAULT 0,
+            failure_count INTEGER NOT NULL DEFAULT 1,
+            age_seconds INTEGER,
+            threshold_seconds INTEGER,
+            latency_ms INTEGER,
+            fallback_mode TEXT NOT NULL DEFAULT '',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            alert_opened INTEGER NOT NULL DEFAULT 0,
+            alert_recovered INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mp_reliability_time
+            ON market_pulse_reliability_events(started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_mp_reliability_component
+            ON market_pulse_reliability_events(ticker, component, started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_mp_reliability_status
+            ON market_pulse_reliability_events(status, recovered_at);
+        CREATE INDEX IF NOT EXISTS idx_mp_reliability_generation
+            ON market_pulse_reliability_events(generation_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mp_reliability_active
+            ON market_pulse_reliability_events(ticker, component, reason)
+            WHERE recovered_at = '';
+
+        CREATE TABLE IF NOT EXISTS market_pulse_reliability_daily (
+            session_date TEXT NOT NULL,
+            ticker TEXT NOT NULL DEFAULT 'SPX',
+            component TEXT NOT NULL,
+            checks INTEGER NOT NULL DEFAULT 0,
+            successful_checks INTEGER NOT NULL DEFAULT 0,
+            fresh_checks INTEGER NOT NULL DEFAULT 0,
+            failure_count INTEGER NOT NULL DEFAULT 0,
+            fallback_checks INTEGER NOT NULL DEFAULT 0,
+            total_latency_ms INTEGER NOT NULL DEFAULT 0,
+            incident_seconds INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (session_date, ticker, component)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mp_reliability_daily_date
+            ON market_pulse_reliability_daily(session_date DESC, ticker);
+        """
+    )
+
+
+def _migration_0018_market_pulse_reliability_history_index(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_mp_reliability_ticker_time
+        ON market_pulse_reliability_events(ticker, started_at DESC)"""
+    )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -998,6 +1113,12 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0013_multi_account_ledgers", _migration_0013_multi_account_ledgers),
     ("0014_account_broker_metrics", _migration_0014_account_broker_metrics),
     ("0015_broker_equity_source", _migration_0015_broker_equity_source),
+    ("0016_market_pulse_setup_events", _migration_0016_market_pulse_setup_events),
+    ("0017_market_pulse_reliability_events", _migration_0017_market_pulse_reliability_events),
+    (
+        "0018_market_pulse_reliability_history_index",
+        _migration_0018_market_pulse_reliability_history_index,
+    ),
 ]
 
 

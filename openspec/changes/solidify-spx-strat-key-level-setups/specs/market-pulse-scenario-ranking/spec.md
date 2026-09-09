@@ -88,20 +88,49 @@ state, or a retryable error without blocking the canonical live decision.
 #### Scenario: Replay request stalls or fails
 - **WHEN** replay analysis exceeds its timeout or returns an error
 - **THEN** the loading message is replaced by a concise unavailable state and a retry control
+
+### Requirement: Replay separates setup, target, and excursion outcomes
+
+Setup Replay SHALL report the setup lifecycle, structural-target status, and observed price
+excursion independently. Reaching a full target MUST remain distinct from favorable movement that
+stops short of the target, and neither result SHALL create a recorded trade or financial result.
+
+#### Scenario: Favorable move stops before the target
+- **WHEN** price moves favorably after entry but does not reach the structural target
+- **THEN** Replay identifies the favorable excursion and states that the full target was not reached
+- **AND** it continues to report whether the setup remained open or was subsequently invalidated
+
+#### Scenario: Full structural target is touched
+- **WHEN** a later five-minute candle touches the structural target before invalidation
+- **THEN** Replay labels the target as fully reached and reports the supporting MFE and MAE
+
+#### Scenario: Target and invalidation occur in one candle
+- **WHEN** both boundaries occur inside the same five-minute candle
+- **THEN** Replay labels the ordering ambiguous and does not infer a favorable sequence
 ### Requirement: Setup eligibility precedes quality grading
 
 The system SHALL expose ordered setup maturity independently from quality score. A supported
-five-minute pattern SHALL arm a setup, and only a later completed candle breaking the pattern's
-trigger candle in the intended direction SHALL make it entry-eligible. The system SHALL assign a
-letter grade only to entry-eligible setups. Gamma and higher-timeframe context SHALL modify quality
-only and SHALL NOT substitute for a missing eligibility gate.
+pattern's final directional candle SHALL make the setup entry-eligible when it breaks the pattern's
+STRAT boundary and all location gates are satisfied: the first candle's opposite boundary for 2-2,
+or the inside candle's directional boundary for 2-1-2. A later candle MUST NOT be treated as a second
+trigger gate. The system SHALL assign a letter grade only to entry-eligible setups. Gamma and
+higher-timeframe context SHALL modify quality only and SHALL NOT substitute for a missing
+eligibility gate.
 
-#### Scenario: Pattern completes without trigger break
-- **WHEN** a direction-aligned pattern completes at a qualified location
-- **THEN** the setup is `trigger_armed`
-- **AND** it has no letter grade
-
-#### Scenario: Later candle breaks the trigger
-- **WHEN** a later completed candle breaks the pattern high for bullish direction or pattern low for bearish direction
-- **THEN** the setup is `triggered`
+#### Scenario: Opposing second candle completes the 2-2 trigger
+- **WHEN** the opposing second directional candle completes a supported 2-2 Reversal at a qualified
+  location after breaking the first candle's trigger boundary
+- **THEN** the setup is `triggered` at that boundary and candle timestamp
 - **AND** the quality score and grade are published
+
+#### Scenario: Continuation follows a qualified 2-2
+- **WHEN** a later candle continues through the completed 2-2 signal candle's range
+- **THEN** it changes only follow-through and outcome facts
+- **AND** the original signal timestamp, entry boundary, score eligibility, and pattern identity are
+  preserved
+
+#### Scenario: Third candle completes a qualified 2-1-2
+- **WHEN** the third directional candle completes a supported 2-1-2 at a qualified location after
+  breaking the inside candle's directional boundary
+- **THEN** the setup is `triggered` at that boundary and third-candle timestamp
+- **AND** no fourth-candle break is required for scoring, replay inclusion, or chart marking

@@ -33,7 +33,7 @@
 
 <div class="card candleTodaySnapshot is-{{ today_snapshot.importance_class }}" data-today-date="{{ today_snapshot.iso }}" data-candle-workflow-region="today">
   <div class="candleTodayLead">
-    <div class="pill">Today Snapshot</div>
+    <div class="pill">Today</div>
     <div class="candleTodaySnapshotDate">{{ today_snapshot.date_label }}</div>
     <div class="candleTodaySession">{{ today_snapshot.session_label }}</div>
   </div>
@@ -45,58 +45,16 @@
     <div>
       <span>Resets</span>
       <strong>{{ today_snapshot.reset_count }}</strong>
-      <small>{{ today_snapshot.reset_detail }}</small>
     </div>
     <div>
       <span>Macro</span>
       <strong>{{ today_snapshot.macro_count }}</strong>
-      <small>{% if next_macro_notice %}Next: {{ next_macro_notice.text }}{% else %}{{ today_snapshot.session_label }}{% endif %}</small>
     </div>
-    <div>
-      <span>Tags</span>
-      <strong>{{ today_snapshot.timing_tags_label }}</strong>
-      <small>{% if today_snapshot.in_display_month %}Calendar anchored{% else %}Open this month to anchor{% endif %}</small>
-    </div>
-  </div>
-</div>
-
-<div class="metricStrip metricStripCompact candleMetricStrip candleReferenceMetrics" data-no-mobile-compact="1" data-candle-workflow-region="reference-metrics">
-  <div class="metric">
-    <div class="label">Trading Days</div>
-    <div class="value">{{ trading_days }}</div>
-    <div class="sub">Weekend + market holidays excluded</div>
-  </div>
-  <div class="metric">
-    <div class="label">Open Signals</div>
-    <div class="value">{{ signal_count }}</div>
-    <div class="sub">Combined daily + weekly resets</div>
-  </div>
-  <div class="metric candleMetricLegend">
-    <div class="label">Day Cycles</div>
-    <div class="candleMetricPillRail">
-      {% for item in day_legend.split(', ') %}
-        <span class="candleMetricPill">{{ item }}</span>
-      {% endfor %}
-    </div>
-    <div class="sub">Session-count opens</div>
-  </div>
-  <div class="metric candleMetricLegend">
-    <div class="label">Week Cycles</div>
-    <div class="candleMetricPillRail">
-      {% for item in week_legend.split(', ') %}
-        <span class="candleMetricPill">{{ item }}</span>
-      {% endfor %}
-    </div>
-    <div class="sub">First tradable day only</div>
-  </div>
-  <div class="metric candleMetricLegend">
-    <div class="label">Month Cycles</div>
-    <div class="candleMetricPillRail">
-      {% for item in month_legend.split(', ') %}
-        <span class="candleMetricPill">{{ item }}</span>
-      {% endfor %}
-    </div>
-    <div class="sub">From January month opens</div>
+    {% if today_snapshot.in_display_month %}
+      <button class="btn candleSelectToday" type="button" data-candle-select-today>View today</button>
+    {% else %}
+      <a class="btn candleSelectToday" href="/candle-opens">Open this month</a>
+    {% endif %}
   </div>
 </div>
 
@@ -108,54 +66,47 @@
     </div>
     <span>Reset clusters and macro collisions</span>
   </div>
-{% if focus_cards %}
-<div class="candleFocusStrip">
-  {% for item in focus_cards %}
-    <a class="card candleFocusCard is-{{ item.kind }} is-{{ item.tone }}" href="{{ item.href }}">
-      <div class="candleFocusEyebrow">{{ item.eyebrow }}</div>
-      <div class="candleFocusTitle">{{ item.title }}</div>
-      <div class="candleFocusHeadline">{{ item.headline }}</div>
-      {% if item.meta %}
-        <div class="candleFocusMeta">{{ item.meta }}</div>
+{% if catalyst_cards %}
+<div class="candleCatalystCards candleFocusStrip">
+  {% for item in catalyst_cards[:3] %}
+    <a class="card candleCatalystCard is-{{ item.tone }}" href="{{ item.href }}" data-candle-catalyst-card data-target-date="{{ item.iso }}">
+      <div class="candleFocusEyebrow">{{ item.reasons|join(' · ') }}</div>
+      <div class="candleFocusTitle">{{ item.date }}</div>
+      {% if item.details %}
+        <div class="candleFocusHeadline">{{ item.details|join(' · ') }}</div>
       {% endif %}
     </a>
   {% endfor %}
 </div>
+{% if catalyst_cards|length > 3 %}
+<details class="candleCatalystMore">
+  <summary>View {{ catalyst_cards|length - 3 }} more dates</summary>
+  <div class="candleCatalystCards candleFocusStrip">
+    {% for item in catalyst_cards[3:] %}
+      <a class="card candleCatalystCard is-{{ item.tone }}" href="{{ item.href }}" data-candle-catalyst-card data-target-date="{{ item.iso }}">
+        <div class="candleFocusEyebrow">{{ item.reasons|join(' · ') }}</div>
+        <div class="candleFocusTitle">{{ item.date }}</div>
+        <div class="candleFocusHeadline">{{ item.details|join(' · ') }}</div>
+      </a>
+    {% endfor %}
+  </div>
+</details>
 {% endif %}
-
-{% if cluster_summaries %}
-<div class="candleClusterStrip" aria-label="Reset cluster summaries">
-  {% for item in cluster_summaries %}
-    <a class="card candleClusterCard is-{{ item.tone }}" href="{{ item.href }}" data-candle-summary-card data-target-date="{{ item.iso }}">
-      <div class="candleClusterEyebrow">{{ item.title }}</div>
-      <div class="candleClusterDate">{{ item.date }}</div>
-      <div class="candleClusterHeadline">{{ item.headline }}</div>
-      <div class="candleClusterMeta">{{ item.meta }}</div>
-    </a>
-  {% endfor %}
-</div>
 {% endif %}
 </section>
 
-<div class="card candleCyclePanel" data-candle-workflow-region="cycle-reference">
-  <div class="toolbar">
-    <div class="pill">Cycles</div>
-    <div class="candleCycleGrid">
-      <div class="candleCycleCell">
-        <div class="label">Day</div>
-        <div class="value">{{ day_legend }}</div>
-      </div>
-      <div class="candleCycleCell">
-        <div class="label">Week</div>
-        <div class="value">{{ week_legend }}</div>
-      </div>
-      <div class="candleCycleCell">
-        <div class="label">Month</div>
-        <div class="value">{{ month_legend }}</div>
-      </div>
-    </div>
+<details class="card candleTimingReference" data-candle-workflow-region="timing-reference">
+  <summary>
+    <span class="pill">Timing Reference</span>
+    <strong>{{ trading_days }} sessions · {{ signal_count }} reset markers</strong>
+    <span class="tiny muted">Month totals and cycle definitions</span>
+  </summary>
+  <div class="candleTimingReferenceGrid">
+    <div><span>Day cycles</span><strong>{{ day_legend }}</strong></div>
+    <div><span>Week cycles</span><strong>{{ week_legend }}</strong></div>
+    <div><span>Month cycles</span><strong>{{ month_legend }}</strong></div>
   </div>
-</div>
+</details>
 
 <details class="card candleMacroFold" data-mobile-default="closed" data-candle-workflow-region="macro-agenda">
   <summary class="candleMacroSummary">
@@ -639,7 +590,7 @@
       }
     });
   });
-  Array.from(document.querySelectorAll("[data-candle-summary-card]")).forEach((card) => {
+  Array.from(document.querySelectorAll("[data-candle-catalyst-card]")).forEach((card) => {
     const targetDate = card.dataset.targetDate || "";
     const target = targetDate ? days.find((day) => day.dataset.date === targetDate) : null;
     if (!target) return;
@@ -654,6 +605,15 @@
       target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
     });
   });
+  const todayButton = document.querySelector("[data-candle-select-today]");
+  if (todayButton) {
+    todayButton.addEventListener("click", () => {
+      const target = days.find((day) => day.dataset.isToday === "1");
+      if (!target) return;
+      selectDay(target);
+      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    });
+  }
   Array.from(document.querySelectorAll(".candleTagOverflow")).forEach((button) => {
     button.addEventListener("click", (event) => {
       event.preventDefault();

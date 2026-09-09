@@ -234,8 +234,15 @@ def test_global_navigation_exposes_primary_destinations_and_tools_menu(client):
     body = client.get("/dashboard", follow_redirects=True).get_data(as_text=True)
     nav = body[body.index('<div class="nav">') : body.index('<div id="moreMenu"')]
 
-    for label in ("Executive", "Trading Dashboard", "Market Pulse", "Trades", "Journal"):
+    for label in (
+        "Executive",
+        "Trading Dashboard",
+        "Market Pulse",
+        "Candle Opens",
+        "Trades",
+        "Journal",
+    ):
         assert label in nav
-    for label in ("Candle Opens", "Analytics", "Planner"):
+    for label in ("Analytics", "Planner"):
         assert label not in nav
     assert "Tools ▾" in nav

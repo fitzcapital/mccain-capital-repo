@@ -52,17 +52,31 @@ inputs MUST produce no eligible pattern.
 #### Scenario: Incomplete live candle resembles a trigger
 - **WHEN** the active five-minute candle would complete a supported sequence but has not closed
 - **THEN** the system emits no eligible setup until that candle is completed and canonical
-### Requirement: Trigger-candle execution confirmation
+### Requirement: Pattern-candle execution attribution
 
-The system SHALL treat an exact completed five-minute 2-1-2 or opposing 2-2 reversal as an armed
-trigger, not an entry by itself. Entry confirmation SHALL require a later completed candle to break
-the trigger candle in the pattern direction. Replay SHALL preserve armed-but-untriggered patterns as
-diagnostics and SHALL NOT count them as completed setup opportunities.
+The system SHALL attribute every supported pattern to its final directional candle. For an opposing
+2-2 Reversal, the second candle's break of the first directional candle's opposite boundary SHALL be
+the trigger and frozen entry price. For 2-1-2, the third candle's break of the inside candle's
+directional boundary SHALL be the trigger and frozen entry price. A later candle MUST NOT be required
+to re-trigger or relabel either pattern. Replay SHALL use subsequent candles only for follow-through
+and outcome evaluation.
 
-#### Scenario: Exact pattern arms before entry
-- **WHEN** a supported pattern completes at an eligible key-level event
-- **THEN** the setup is armed without being counted as an entry
-- **AND** a later completed candle must break the trigger candle in the pattern direction
+#### Scenario: Bearish 2-2 triggers on the opposing second candle
+- **WHEN** a completed `2D` candle follows a `2U` candle and breaks the `2U` candle's low at an
+  eligible key-level event
+- **THEN** the `2D` candle is the bearish 2-2 Reversal signal candle
+- **AND** its timestamp and the broken `2U` low are frozen as signal time and entry price
+
+#### Scenario: Later candle continues in the pattern direction
+- **WHEN** a candle after any qualified supported pattern continues beyond the signal candle
+- **THEN** it is reported only as follow-through or outcome evidence
+- **AND** it does not replace the pattern signal timestamp or entry price
+
+#### Scenario: Bearish 2-1-2 triggers on the third candle
+- **WHEN** completed classifications form directional `2`, inside `1`, then `2D`, and the `2D`
+  candle breaks the inside candle's low at an eligible key-level event
+- **THEN** the third candle is the bearish 2-1-2 signal candle
+- **AND** its timestamp and the broken inside-candle low are frozen as signal time and entry price
 
 ### Requirement: Intraday replay entry cutoff
 Setup Replay SHALL restrict historical entry confirmations to the user's execution window ending at
