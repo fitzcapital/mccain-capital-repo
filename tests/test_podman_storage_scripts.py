@@ -136,3 +136,5 @@ def test_live_monitor_auto_cleanup_is_conservative_and_throttled() -> None:
     assert "--no-auto-clean" in script
     assert "podman system prune" not in script
     assert "podman volume prune" not in script
+    assert '$3 == "Succeeded" || $3 == "Completed" {next}' in script
+    assert "active Kubernetes pods" in script

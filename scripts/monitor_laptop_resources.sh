@@ -162,10 +162,11 @@ render() {
       warnings+=("No Kubernetes pods were found in namespace $NAMESPACE.")
     elif printf '%s\n' "$pod_rows" | awk '
       {split($2, ready, "/")}
+      $3 == "Succeeded" || $3 == "Completed" {next}
       ready[1] != ready[2] || $3 != "Running" || $4 + 0 > 0 {bad=1}
       END {exit !bad}
     '; then
-      warnings+=("One or more Kubernetes pods are not ready, not running, or have restarted.")
+      warnings+=("One or more active Kubernetes pods are not ready, not running, or have restarted.")
     fi
     kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods \
       -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount'
