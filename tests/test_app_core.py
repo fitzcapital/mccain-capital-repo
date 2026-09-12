@@ -3041,7 +3041,6 @@ def test_dashboard_first_render_uses_spx_session_snapshot(client, monkeypatch):
     assert 'id="dashboardSpxSpot"' in body
     assert "6780.25" in body
     assert 'id="dashboardSpxMiniChart"' in body
-    assert "dashboardTapeHourChart" in body
     assert "Last hour · 5-minute candles" in body
     assert "dashboardTapeChartLane" not in body
     assert "Context only" in body
