@@ -39,97 +39,135 @@ done
 [[ "$INTERVAL" =~ ^[1-9][0-9]*$ ]] || { echo "Interval must be a positive integer" >&2; exit 2; }
 
 warnings=()
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  RESET=$'\033[0m'
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  CYAN=$'\033[38;5;51m'
+  BLUE=$'\033[38;5;75m'
+  GREEN=$'\033[38;5;48m'
+  YELLOW=$'\033[38;5;220m'
+  RED=$'\033[38;5;203m'
+  PURPLE=$'\033[38;5;141m'
+else
+  RESET="" BOLD="" DIM="" CYAN="" BLUE="" GREEN="" YELLOW="" RED="" PURPLE=""
+fi
 
 section() {
-  printf '\n[%s]\n' "$1"
+  printf '\n%s%s%s\n' "$CYAN" "$1" "$RESET"
+  printf '%s\n' "────────────────────────────────────────────────────────────────────────"
+}
+
+meter() {
+  local value="$1" width=20 filled empty color="$GREEN"
+  (( value >= 85 )) && color="$RED"
+  (( value >= 65 && value < 85 )) && color="$YELLOW"
+  filled=$((value * width / 100))
+  empty=$((width - filled))
+  printf '%s' "$color"
+  printf '%*s' "$filled" '' | tr ' ' '█'
+  printf '%s' "$DIM"
+  printf '%*s' "$empty" '' | tr ' ' '░'
+  printf '%s %3s%%%s' "$RESET" "$value" "$RESET"
 }
 
 render() {
-warnings=()
-if [[ "$WATCH" -eq 1 ]]; then
-  printf '\033[2J\033[H'
-fi
-printf 'McCain Capital resource monitor · %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')"
-
-section "Laptop disk"
-df -h / | awk 'NR == 1 || NR == 2 {print}'
-disk_used="$(df -Pk / | awk 'NR == 2 {gsub(/%/, "", $5); print $5}')"
-if [[ "$disk_used" =~ ^[0-9]+$ ]] && (( disk_used >= DISK_WARN_PERCENT )); then
-  warnings+=("Laptop disk is ${disk_used}% full (warning at ${DISK_WARN_PERCENT}%).")
-fi
-
-section "McCain Capital disk"
-du -sh "$REPO_ROOT" 2>/dev/null || true
-for path in persistent-data artifacts uploads books; do
-  if [[ -e "$REPO_ROOT/$path" ]]; then
-    du -sh "$REPO_ROOT/$path" 2>/dev/null || true
+  warnings=()
+  if [[ "$WATCH" -eq 1 ]]; then
+    printf '\033[H\033[J'
   fi
-done
+  printf '%s%s🚀 McCAIN CAPITAL · LIVE RESOURCE MONITOR%s\n' "$BOLD" "$PURPLE" "$RESET"
+  printf '%sUpdated %s · read-only%s\n' "$DIM" "$(date '+%b %d, %Y  %I:%M:%S %p %Z')" "$RESET"
 
-section "Mac memory pressure"
-if command -v memory_pressure >/dev/null 2>&1; then
-  memory_line="$(memory_pressure 2>/dev/null | awk '/System-wide memory free percentage/ {print; exit}')"
-  echo "${memory_line:-Memory pressure details unavailable}"
-  memory_free="$(printf '%s\n' "$memory_line" | awk '{gsub(/%/, "", $5); print $5}')"
-  if [[ "$memory_free" =~ ^[0-9]+$ ]] && (( memory_free <= MEMORY_WARN_FREE_PERCENT )); then
-    warnings+=("Free memory is ${memory_free}% (warning at ${MEMORY_WARN_FREE_PERCENT}%).")
+  section "💾  LAPTOP DISK"
+  disk_line="$(df -h / | awk 'NR == 2 {print}')"
+  disk_used="$(df -Pk / | awk 'NR == 2 {gsub(/%/, "", $5); print $5}')"
+  meter "${disk_used:-0}"
+  printf '  %s\n' "$disk_line"
+  if [[ "$disk_used" =~ ^[0-9]+$ ]] && (( disk_used >= DISK_WARN_PERCENT )); then
+    warnings+=("Laptop disk is ${disk_used}% full (warning at ${DISK_WARN_PERCENT}%).")
   fi
-else
-  vm_stat | head -6
-fi
 
-section "Podman storage"
-if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
-  podman system df
-else
-  echo "Podman is not running"
-fi
-
-section "Kubernetes workloads"
-if command -v kubectl >/dev/null 2>&1 && kubectl config get-contexts "$KUBE_CONTEXT" >/dev/null 2>&1; then
-  pod_rows="$(kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods --no-headers 2>/dev/null || true)"
-  if [[ -z "$pod_rows" ]]; then
-    warnings+=("No Kubernetes pods were found in namespace $NAMESPACE.")
-  elif printf '%s\n' "$pod_rows" | awk '
-    {split($2, ready, "/")}
-    ready[1] != ready[2] || $3 != "Running" || $4 + 0 > 0 {bad=1}
-    END {exit !bad}
-  '; then
-    warnings+=("One or more Kubernetes pods are not ready, not running, or have restarted.")
-  fi
-  kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods \
-    -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount'
-  echo
-  echo "Declared resource budgets"
-  kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get deployment \
-    -o custom-columns='NAME:.metadata.name,CPU_REQ:.spec.template.spec.containers[0].resources.requests.cpu,CPU_LIMIT:.spec.template.spec.containers[0].resources.limits.cpu,MEM_REQ:.spec.template.spec.containers[0].resources.requests.memory,MEM_LIMIT:.spec.template.spec.containers[0].resources.limits.memory'
-  echo
-  echo "Current pod usage"
-  kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" top pods 2>/dev/null || \
-    echo "Metrics are not ready; declared budgets above are still enforced"
-else
-  echo "Kubernetes context $KUBE_CONTEXT is unavailable"
-  warnings+=("Kubernetes context $KUBE_CONTEXT is unavailable.")
-fi
-
-section "Potential problems"
-if [[ ${#warnings[@]} -eq 0 ]]; then
-  echo "OK · no threshold or workload problems detected"
-else
-  for warning in "${warnings[@]}"; do
-    echo "WARNING · $warning"
+  section "📦  McCAIN CAPITAL STORAGE"
+  printf '%-18s %s\n' "TOTAL REPOSITORY" "$(du -sh "$REPO_ROOT" 2>/dev/null | awk '{print $1}')"
+  for path in persistent-data artifacts uploads books; do
+    if [[ -e "$REPO_ROOT/$path" ]]; then
+      label="$(printf '%s' "$path" | tr '[:lower:]' '[:upper:]')"
+      printf '%-18s %s\n' "$label" "$(du -sh "$REPO_ROOT/$path" 2>/dev/null | awk '{print $1}')"
+    fi
   done
-fi
 
-section "Quick guidance"
-echo "Disk cleanup preview: ./scripts/manage_podman_storage.sh cleanup"
-echo "Safe image cleanup:   ./scripts/manage_podman_storage.sh cleanup --apply"
-echo "Detailed K8s status:  ./scripts/local_k8s_status.sh"
+  section "🧠  MEMORY"
+  if command -v memory_pressure >/dev/null 2>&1; then
+    memory_line="$(memory_pressure 2>/dev/null | awk '/System-wide memory free percentage/ {print; exit}')"
+    memory_free="$(printf '%s\n' "$memory_line" | awk '{gsub(/%/, "", $5); print $5}')"
+    memory_used=$((100 - ${memory_free:-0}))
+    meter "$memory_used"
+    printf '  %s free\n' "${memory_free:-unknown}%"
+    if [[ "$memory_free" =~ ^[0-9]+$ ]] && (( memory_free <= MEMORY_WARN_FREE_PERCENT )); then
+      warnings+=("Free memory is ${memory_free}% (warning at ${MEMORY_WARN_FREE_PERCENT}%).")
+    fi
+  else
+    vm_stat | head -6
+  fi
+
+  section "🐳  PODMAN STORAGE"
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    podman system df
+  else
+    printf '%s● OFFLINE%s Podman is not running\n' "$YELLOW" "$RESET"
+  fi
+
+  section "☸️   KUBERNETES"
+  if command -v kubectl >/dev/null 2>&1 && kubectl config get-contexts "$KUBE_CONTEXT" >/dev/null 2>&1; then
+    pod_rows="$(kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods --no-headers 2>/dev/null || true)"
+    if [[ -z "$pod_rows" ]]; then
+      warnings+=("No Kubernetes pods were found in namespace $NAMESPACE.")
+    elif printf '%s\n' "$pod_rows" | awk '
+      {split($2, ready, "/")}
+      ready[1] != ready[2] || $3 != "Running" || $4 + 0 > 0 {bad=1}
+      END {exit !bad}
+    '; then
+      warnings+=("One or more Kubernetes pods are not ready, not running, or have restarted.")
+    fi
+    kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods \
+      -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount'
+    printf '\n%sRESOURCE BUDGETS%s\n' "$BLUE" "$RESET"
+    kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get deployment \
+      -o custom-columns='NAME:.metadata.name,CPU_REQ:.spec.template.spec.containers[0].resources.requests.cpu,CPU_LIMIT:.spec.template.spec.containers[0].resources.limits.cpu,MEM_REQ:.spec.template.spec.containers[0].resources.requests.memory,MEM_LIMIT:.spec.template.spec.containers[0].resources.limits.memory'
+    printf '\n%sLIVE USAGE%s\n' "$BLUE" "$RESET"
+    kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" top pods 2>/dev/null || \
+      printf '%sℹ Metrics warming up · resource limits remain enforced%s\n' "$YELLOW" "$RESET"
+  else
+    printf '%s● OFFLINE%s Kubernetes context %s is unavailable\n' "$RED" "$RESET" "$KUBE_CONTEXT"
+    warnings+=("Kubernetes context $KUBE_CONTEXT is unavailable.")
+  fi
+
+  section "🩺  SYSTEM VERDICT"
+  if [[ ${#warnings[@]} -eq 0 ]]; then
+    printf '%s%s✅ ALL SYSTEMS HEALTHY%s · no problems detected\n' "$BOLD" "$GREEN" "$RESET"
+  else
+    for warning in "${warnings[@]}"; do
+      printf '%s⚠️  %s%s\n' "$RED" "$warning" "$RESET"
+    done
+  fi
+
+  section "⚡  QUICK ACTIONS"
+  printf '%s%-23s%s %s\n' "$BLUE" "Cleanup preview" "$RESET" "./scripts/manage_podman_storage.sh cleanup"
+  printf '%s%-23s%s %s\n' "$BLUE" "Safe image cleanup" "$RESET" "./scripts/manage_podman_storage.sh cleanup --apply"
+  printf '%s%-23s%s %s\n' "$BLUE" "Detailed K8s status" "$RESET" "./scripts/local_k8s_status.sh"
 }
+
+if [[ "$WATCH" -eq 1 && -t 1 ]]; then
+  printf '\033[?25l'
+  trap 'printf "\033[?25h\n"' EXIT INT TERM
+fi
 
 while true; do
   render
   [[ "$WATCH" -eq 1 ]] || break
-  printf '\nRefreshing in %ss · Ctrl-C to stop\n' "$INTERVAL"
-  sleep "$INTERVAL"
+  for ((remaining=INTERVAL; remaining>0; remaining--)); do
+    printf '\r%s⟳ Next refresh in %2ss · Ctrl-C to stop%s' "$DIM" "$remaining" "$RESET"
+    sleep 1
+  done
 done
