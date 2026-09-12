@@ -216,6 +216,7 @@ Monitor laptop disk use, memory pressure, repository data, Podman images, and Ku
 
 ```bash
 ./scripts/monitor_laptop_resources.sh
+./scripts/monitor_laptop_resources.sh --watch --interval 10
 ```
 
 ### Local Netdata Monitoring
