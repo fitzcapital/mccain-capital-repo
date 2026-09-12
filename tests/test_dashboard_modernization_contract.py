@@ -72,7 +72,7 @@ def test_dashboard_modernization_preserves_primary_destinations(client):
 def test_dashboard_exposes_performance_hub_and_disclosed_reference_deck(client):
     body = client.get("/dashboard", follow_redirects=True).get_data(as_text=True)
 
-    command = body[body.index('id="dashboardCommandDeck"'):body.index('id="dashboardTodayLayer"')]
+    command = body[body.index('id="dashboardCommandDeck"') : body.index('id="dashboardTodayLayer"')]
     assert "Trading Business Dashboard" in command
     assert "Net earned" in command
     assert "Drawdown cushion" in command

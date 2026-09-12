@@ -23,8 +23,7 @@ def _payload(generated_at: datetime, generation: str, *, ticker: str = "SPX") ->
             "symbol": ticker,
             "session_id": generated_at.date().isoformat(),
             "components": {
-                name: {"as_of": stamp, "status": "current"}
-                for name in ("spot", "bars", "gamma")
+                name: {"as_of": stamp, "status": "current"} for name in ("spot", "bars", "gamma")
             },
         },
     }

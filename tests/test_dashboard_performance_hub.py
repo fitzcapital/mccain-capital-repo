@@ -224,7 +224,7 @@ def test_dashboard_demo_account_reports_ten_thousand_and_35_percent_consistency(
 def test_dashboard_performance_signal_styles_are_explicit():
     css = (ROOT / "static/css/command_surfaces.css").read_text()
 
-    assert '.dashboardPerformanceOutcome strong.is-positive{color:#70ffd2!important' in css
+    assert ".dashboardPerformanceOutcome strong.is-positive{color:#70ffd2!important" in css
     assert "color:#70ffd2!important;text-shadow:none!important" in css
     assert ".dashboardTargetConsistencyMetric.is-danger" in css
     assert "rgba(255,100,124,.68)" in css

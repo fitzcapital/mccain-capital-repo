@@ -39,7 +39,10 @@ def test_exceptional_closure_override_fails_closed():
     day = date(2026, 8, 21)
     overrides = {day: "Exchange emergency closure"}
     assert session_window(day, exceptional_closures=overrides).status == "exceptional_closure"
-    assert market_phase(datetime(2026, 8, 21, 11, 0, tzinfo=ET), exceptional_closures=overrides) == "closed"
+    assert (
+        market_phase(datetime(2026, 8, 21, 11, 0, tzinfo=ET), exceptional_closures=overrides)
+        == "closed"
+    )
 
 
 def test_dst_boundaries_keep_eastern_open_and_correct_utc_offsets():

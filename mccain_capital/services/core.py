@@ -429,7 +429,10 @@ def _market_pulse_record_gamma_observation(ticker: str, payload: Dict[str, Any])
         history = {}
     rows = [dict(row) for row in list(history.get("observations") or []) if isinstance(row, dict)]
     identity = (generation_id, observed_at)
-    if any((str(row.get("generation_id") or ""), str(row.get("as_of") or "")) == identity for row in rows):
+    if any(
+        (str(row.get("generation_id") or ""), str(row.get("as_of") or "")) == identity
+        for row in rows
+    ):
         return False
     rows.append(observation)
     sessions = sorted({str(row.get("session") or "") for row in rows if row.get("session")})[-20:]
@@ -821,23 +824,29 @@ def _market_pulse_cached_replay_series(symbol: str) -> tuple[List[Dict[str, Any]
                     "open": (
                         float(row.get("open"))
                         if isinstance(row.get("open"), (int, float))
-                        else float(row.get("o"))
-                        if isinstance(row.get("o"), (int, float))
-                        else float(price)
+                        else (
+                            float(row.get("o"))
+                            if isinstance(row.get("o"), (int, float))
+                            else float(price)
+                        )
                     ),
                     "high": (
                         float(row.get("high"))
                         if isinstance(row.get("high"), (int, float))
-                        else float(row.get("h"))
-                        if isinstance(row.get("h"), (int, float))
-                        else float(price)
+                        else (
+                            float(row.get("h"))
+                            if isinstance(row.get("h"), (int, float))
+                            else float(price)
+                        )
                     ),
                     "low": (
                         float(row.get("low"))
                         if isinstance(row.get("low"), (int, float))
-                        else float(row.get("l"))
-                        if isinstance(row.get("l"), (int, float))
-                        else float(price)
+                        else (
+                            float(row.get("l"))
+                            if isinstance(row.get("l"), (int, float))
+                            else float(price)
+                        )
                     ),
                     "volume": (
                         int(row.get("volume") or 0)
@@ -1607,9 +1616,7 @@ def _market_pulse_setup_replay_source_snapshot(
                             continue
                         merged_bars[cached_stamp.isoformat()] = dict(row)
                     merged_bars.update({str(row["ts"]): row for row in live_bars})
-                    chart["strategy_bars_5m"] = [
-                        merged_bars[key] for key in sorted(merged_bars)
-                    ]
+                    chart["strategy_bars_5m"] = [merged_bars[key] for key in sorted(merged_bars)]
                     overlaid["execution_chart"] = chart
                     candidates.append(overlaid)
         except Exception as exc:
@@ -2003,9 +2010,7 @@ def _market_pulse_resolve_canonical_market_structure(
     next_call_source = (
         "provider"
         if provider_next_call is not None and explicit_next_call is not None
-        else "mixed"
-        if explicit_next_call is not None
-        else "unresolved"
+        else "mixed" if explicit_next_call is not None else "unresolved"
     )
     next_call_reason = ""
     if next_call_value is None:
@@ -2029,9 +2034,7 @@ def _market_pulse_resolve_canonical_market_structure(
     next_put_source = (
         "provider"
         if provider_next_put is not None and explicit_next_put is not None
-        else "mixed"
-        if explicit_next_put is not None
-        else "unresolved"
+        else "mixed" if explicit_next_put is not None else "unresolved"
     )
     next_put_reason = ""
     next_put_value = explicit_next_put
@@ -2262,9 +2265,7 @@ def _market_pulse_resolve_spot_snapshot(
                     if gamma_build_status == "live_valid"
                     and gamma_spot_source == "live_quote"
                     and session_mode == "regular"
-                    else "medium"
-                    if gamma_build_status == "fallback_valid"
-                    else "low"
+                    else "medium" if gamma_build_status == "fallback_valid" else "low"
                 ),
                 "state": (
                     "LIVE_SESSION"
@@ -2454,9 +2455,7 @@ def _market_pulse_resolve_gamma_payload(
             else (
                 "stale_snapshot"
                 if snapshot_status == "stale"
-                else "last_valid_snapshot"
-                if session_mode != "regular"
-                else "live_session_snapshot"
+                else "last_valid_snapshot" if session_mode != "regular" else "live_session_snapshot"
             )
         )
         gamma_data_status = _market_pulse_gamma_data_status(
@@ -2485,9 +2484,7 @@ def _market_pulse_resolve_gamma_payload(
             "confidence": (
                 "high"
                 if snapshot_status == "healthy" and session_mode == "regular"
-                else "medium"
-                if snapshot_status in {"healthy", "degraded"}
-                else "low"
+                else "medium" if snapshot_status in {"healthy", "degraded"} else "low"
             ),
             "derived_from_session": session_mode != "regular",
             "validation_status": (
@@ -4434,9 +4431,7 @@ def _market_pulse_execution_chart_viewmodel(
                     "volume": (
                         int(row.get("volume"))
                         if isinstance(row.get("volume"), (int, float))
-                        else int(row.get("vol"))
-                        if isinstance(row.get("vol"), (int, float))
-                        else 0
+                        else int(row.get("vol")) if isinstance(row.get("vol"), (int, float)) else 0
                     ),
                 }
             )
@@ -5573,9 +5568,7 @@ def _market_pulse_gamma_regime_viewmodel(
         normalized_regime_status = (
             "unavailable"
             if gamma_data_status == "invalid"
-            else "unconfirmed"
-            if gamma_data_status == "partial"
-            else "confirmed"
+            else "unconfirmed" if gamma_data_status == "partial" else "confirmed"
         )
 
     if gamma_data_status == "invalid" or normalized_regime_status == "unavailable":
@@ -6003,9 +5996,7 @@ def _market_pulse_sanitize_cached_snapshot_targets(snapshot: Dict[str, Any]) -> 
     authoritative_label = (
         "Data locked"
         if authoritative_state["action_state"] == "LOCKED"
-        else "Actionable now"
-        if confirmed
-        else "Not actionable yet"
+        else "Actionable now" if confirmed else "Not actionable yet"
     )
     verdict["label"] = authoritative_label
     verdict["detail"] = authoritative_state["reason"]
@@ -7210,9 +7201,7 @@ def _build_playbook_view_model(
         bias_short_label = (
             "EXTENSION RISK"
             if planning_bias == "above_call_wall_extension_risk"
-            else "BREAKDOWN RISK"
-            if planning_bias == "below_put_wall_breakdown_risk"
-            else "WAIT"
+            else "BREAKDOWN RISK" if planning_bias == "below_put_wall_breakdown_risk" else "WAIT"
         )
 
     if trade_state == "ready":
@@ -8029,9 +8018,7 @@ def get_or_build_market_pulse_snapshot(
     authoritative_label = (
         "Data locked"
         if authoritative_state["action_state"] == "LOCKED"
-        else "Actionable now"
-        if scenario_confirmed
-        else "Not actionable yet"
+        else "Actionable now" if scenario_confirmed else "Not actionable yet"
     )
     active_level = dict(strategy.get("active_level") or {})
     primary_target = dict(strategy.get("primary_target") or {})
@@ -10520,9 +10507,7 @@ def _dashboard_daily_brief_viewmodel(
                 (
                     0
                     if row["key"] == "local_flip"
-                    else 1
-                    if row["key"] in {"call_wall", "put_wall"}
-                    else 2
+                    else 1 if row["key"] in {"call_wall", "put_wall"} else 2
                 ),
             )
         )
@@ -10552,9 +10537,7 @@ def _dashboard_daily_brief_viewmodel(
             relation = (
                 "at"
                 if abs(float(spot) - level_value) <= 2.0
-                else "above"
-                if float(spot) > level_value
-                else "below"
+                else "above" if float(spot) > level_value else "below"
             )
             return f"Price is {relation} {active_level['label']} {level_value:.0f}."
         return "Price is between levels."
@@ -10673,9 +10656,7 @@ def _dashboard_daily_brief_viewmodel(
             (
                 "positive"
                 if active_level.get("role") == "support"
-                else "negative"
-                if active_level.get("role") == "resistance"
-                else ""
+                else "negative" if active_level.get("role") == "resistance" else ""
             ),
         ),
         ("Local Flip", local_flip, ""),
@@ -11186,9 +11167,7 @@ def _dashboard_gamma_strip_viewmodel(
             else (
                 "negative"
                 if regime_state == "negative"
-                else "warning"
-                if regime_state in {"neutral", "unconfirmed"}
-                else "info"
+                else "warning" if regime_state in {"neutral", "unconfirmed"} else "info"
             )
         )
 
@@ -11364,9 +11343,7 @@ def _dashboard_gamma_strip_viewmodel(
         else (
             "negative"
             if regime_state == "negative"
-            else "warning"
-            if regime_state == "neutral"
-            else "info"
+            else "warning" if regime_state == "neutral" else "info"
         )
     )
     has_levels = any(
@@ -11578,9 +11555,7 @@ def _dashboard_pace_viewmodel(
                 "tone": (
                     "positive"
                     if target_est_pnl_net > 0
-                    else "negative"
-                    if target_est_pnl_net < 0
-                    else "neutral"
+                    else "negative" if target_est_pnl_net < 0 else "neutral"
                 ),
                 "detail": (
                     f"{target_sessions} trading sessions at "
@@ -12811,17 +12786,13 @@ def _dashboard_tape_viewmodel(
         compact = (
             f"{age_s // 3600}h"
             if age_s >= 3600
-            else f"{age_s // 60}m"
-            if age_s >= 60
-            else f"{age_s}s"
+            else f"{age_s // 60}m" if age_s >= 60 else f"{age_s}s"
         )
         if not has_timestamp and has_price:
             tone = (
                 "missing"
                 if state == "Unavailable"
-                else "delayed"
-                if state in {"Delayed", "Cached"}
-                else "live"
+                else "delayed" if state in {"Delayed", "Cached"} else "live"
             )
         elif not has_timestamp:
             tone = "missing"
@@ -12837,11 +12808,7 @@ def _dashboard_tape_viewmodel(
             "compact": (
                 "quote"
                 if not has_timestamp and has_price
-                else "wait"
-                if not has_timestamp
-                else "fresh"
-                if age_s < 60
-                else compact
+                else "wait" if not has_timestamp else "fresh" if age_s < 60 else compact
             ),
             "band": band,
             "status_label": "" if band == "Live" else band,
@@ -13566,9 +13533,7 @@ def _dashboard_performance_hub_viewmodel(
             else (
                 "Ahead of pace"
                 if required_pace is not None and selected_pace >= required_pace
-                else "Pace required"
-                if has_goal
-                else "Set monthly goal"
+                else "Pace required" if has_goal else "Set monthly goal"
             )
         ),
     }
@@ -13629,9 +13594,7 @@ def dashboard():
     calendar_scope_label = (
         "Continuity Ledger"
         if scope_active and continuity_label
-        else "Active Account"
-        if scope_active
-        else "All History"
+        else "Active Account" if scope_active else "All History"
     )
     calendar_payload = _dashboard_calendar_payload(
         year=year,
@@ -13784,9 +13747,7 @@ def dashboard():
     discipline_label = (
         "Locked in"
         if today_win_rate >= 60 and today_net >= 0
-        else "Stabilize process"
-        if today_count
-        else "No session logged"
+        else "Stabilize process" if today_count else "No session logged"
     )
     recent_start = max(date(year, month, 1), anchor - timedelta(days=45))
     recent_rows = analytics_repo.fetch_analytics_rows(recent_start.isoformat(), anchor.isoformat())
@@ -13813,9 +13774,7 @@ def dashboard():
         if today_count
         and today_net > 0
         and (consistency.get("ratio") is None or consistency.get("ratio", 1.0) <= 0.30)
-        else "Protect capital"
-        if today_count and today_net < 0
-        else "Wait for clean signal"
+        else "Protect capital" if today_count and today_net < 0 else "Wait for clean signal"
     )
     risk_posture_detail = (
         f"Today {today_wins}W/{today_losses}L · Consistency "
@@ -14107,20 +14066,14 @@ def dashboard():
             "compact": (
                 "quote"
                 if not has_timestamp and has_price
-                else "wait"
-                if not has_timestamp
-                else "fresh"
-                if age_s < 60
-                else compact
+                else "wait" if not has_timestamp else "fresh" if age_s < 60 else compact
             ),
             "band": band,
             "status_label": "" if band == "Live" else band,
             "tone": (
                 _dashboard_status_tone(state, age_s)
                 if not has_timestamp and has_price
-                else "missing"
-                if not has_timestamp
-                else _dashboard_status_tone(state, age_s)
+                else "missing" if not has_timestamp else _dashboard_status_tone(state, age_s)
             ),
         }
 
@@ -14505,9 +14458,7 @@ def dashboard():
     scope_label = (
         str(scope.get("label") or "").strip()
         if scope_enabled and scope_active and str(scope.get("label") or "").strip()
-        else "Active Account"
-        if scope_enabled and scope_active
-        else "All History"
+        else "Active Account" if scope_enabled and scope_active else "All History"
     )
     snapshot_bar = _dashboard_snapshot_viewmodel(
         today_net=today_net,
@@ -15797,9 +15748,11 @@ def _market_pulse_context_api_impl(*, recover_stale: bool = False):
         "source_generation_id": source_generation_id,
         "component_versions": component_versions,
         "observation_only_quote": True,
-        "promotion_reason": "required_components_current"
-        if refresh_status == "promoted"
-        else "required_component_blocked",
+        "promotion_reason": (
+            "required_components_current"
+            if refresh_status == "promoted"
+            else "required_component_blocked"
+        ),
         "retry_classification": "scheduled" if refresh_status == "promoted" else "component_stale",
     }
     refresh_duration_ms = max(0, int((time.monotonic() - refresh_started) * 1000))
@@ -15836,9 +15789,11 @@ def _market_pulse_context_api_impl(*, recover_stale: bool = False):
             generation_id=canonical_freshness.get("generation_id"),
             component=component_name,
             outcome=component_status,
-            status="verified"
-            if component_status == "current"
-            else ("locked" if component.get("required") else "degraded"),
+            status=(
+                "verified"
+                if component_status == "current"
+                else ("locked" if component.get("required") else "degraded")
+            ),
             reason=str(component.get("reason_code") or component_status),
             source=component.get("source"),
             age_seconds=component.get("age_seconds"),
@@ -16462,24 +16417,30 @@ def market_pulse_reliability_api():
         limit = max(1, min(int(request.args.get("limit") or 100), 200))
         offset = max(0, int(request.args.get("offset") or 0))
     except (TypeError, ValueError):
-        return jsonify(
-            {
-                "ok": False,
-                "error": "invalid_range",
-                "message": "Use numeric days, limit, and offset values.",
-            }
-        ), 400
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "invalid_range",
+                    "message": "Use numeric days, limit, and offset values.",
+                }
+            ),
+            400,
+        )
     try:
         payload = reliability_history(ticker=ticker, days=days, limit=limit, offset=offset)
     except Exception:
         logging.getLogger(__name__).exception("Market Pulse reliability API query failed")
-        return jsonify(
-            {
-                "ok": False,
-                "error": "reliability_unavailable",
-                "message": "Reliability history is temporarily unavailable.",
-            }
-        ), 503
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "reliability_unavailable",
+                    "message": "Reliability history is temporarily unavailable.",
+                }
+            ),
+            503,
+        )
     response = jsonify({"ok": True, "payload": payload})
     response.headers["Cache-Control"] = "private, max-age=15"
     return response
@@ -17678,6 +17639,7 @@ def candle_opens_page():
         active="candle-opens",
         title=f"{model['month_name']} Candle Opens",
         top_notice=model["today_top_notice"],
+        shell_mode="standard",
     )
 
 

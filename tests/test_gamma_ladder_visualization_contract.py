@@ -108,7 +108,10 @@ def test_gamma_ladder_guidance_obeys_canonical_permission_and_explicit_freshness
     assert "root.dataset.canonicalGammaGeneration = currentCanonicalGammaGenerationId" in controller
     assert "root.dataset.canonicalPermission = currentCanonicalPermission" in controller
     assert "root.dataset.canonicalActionState = currentCanonicalActionState" in controller
-    assert 'root.dataset.canonicalExecutionLocked = currentCanonicalExecutionLocked ? "true" : "false"' in controller
+    assert (
+        'root.dataset.canonicalExecutionLocked = currentCanonicalExecutionLocked ? "true" : "false"'
+        in controller
+    )
 
 
 def test_market_pulse_bootstrap_embeds_the_aligned_gamma_generation(client):
@@ -309,7 +312,7 @@ def test_gamma_ladder_guidance_is_ranked_selected_and_plain_language():
     assert ".slice(0, 3)" in controller
     assert "const nearestPriority = rankedPriorityRows(payload)[0]" in controller
     assert "if (nearestRow) updateSelectedInspector(nearestRow)" in controller
-    assert "5m close ${movingUp ? \"above\" : \"below\"}" in controller
+    assert '5m close ${movingUp ? "above" : "below"}' in controller
     assert "Loss of ${formatNumber(decision, 0)}" in controller
     assert "Crossed ${Number(payload.spot)" in controller
     assert "No prior Gamma snapshot is available." in controller
@@ -419,7 +422,7 @@ def test_gamma_ladder_uses_spot_centered_price_spine_and_robust_depth_scale():
     assert ".gamma-ladder-row.is-decision" in stylesheet
     assert "rgba(66, 221, 180, .94)" in stylesheet
     assert "rgba(255, 100, 124, .94)" in stylesheet
-    assert 'return `Decision ${roleBaseLabel(row)}`' in controller
+    assert "return `Decision ${roleBaseLabel(row)}`" in controller
     assert 'row.level.type === "current" ? "Spot Interaction"' in controller
     assert 'return "Accepted Below"' in controller
     assert 'return "Accepted Above"' in controller

@@ -218,9 +218,7 @@ def _extract_contract_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     cp = (
         "C"
         if cp_raw.startswith("c")
-        else "P"
-        if cp_raw.startswith("p")
-        else str(parsed.get("cp") or "")
+        else "P" if cp_raw.startswith("p") else str(parsed.get("cp") or "")
     )
     strike = _safe_float(details.get("strike_price"))
     if strike is None:

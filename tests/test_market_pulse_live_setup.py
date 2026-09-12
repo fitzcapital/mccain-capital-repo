@@ -499,9 +499,7 @@ def test_durable_level_recovery_includes_frozen_event_target(tmp_path, monkeypat
     )
     monkeypatch.setattr(core, "_market_pulse_live_setup_ledger_file", lambda ticker: ledger_path)
 
-    observations = core._market_pulse_durable_level_observations(
-        "SPX", session_date="2026-09-01"
-    )
+    observations = core._market_pulse_durable_level_observations("SPX", session_date="2026-09-01")
 
     assert {(row["key"], row["value"], row["as_of"]) for row in observations} == {
         ("new_put_wall", 7645.0, "2026-09-01T11:15:00-04:00"),
@@ -531,9 +529,7 @@ def test_canonical_gamma_history_is_durable_bounded_and_deduplicated(tmp_path, m
 
     assert core._market_pulse_record_gamma_observation("SPX", payload) is True
     assert core._market_pulse_record_gamma_observation("SPX", payload) is False
-    observations = core._market_pulse_gamma_observations(
-        "SPX", session_date="2026-09-01"
-    )
+    observations = core._market_pulse_gamma_observations("SPX", session_date="2026-09-01")
 
     assert len(observations) == 1
     assert observations[0]["regime"] == "negative_gamma"

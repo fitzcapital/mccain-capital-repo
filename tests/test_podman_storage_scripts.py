@@ -36,7 +36,9 @@ esac
     return binary, command_log
 
 
-def _run_manager(tmp_path: Path, *args: str, info_exit: int = 0) -> subprocess.CompletedProcess[str]:
+def _run_manager(
+    tmp_path: Path, *args: str, info_exit: int = 0
+) -> subprocess.CompletedProcess[str]:
     binary, command_log = _fake_podman(tmp_path)
     env = os.environ.copy()
     env.update(

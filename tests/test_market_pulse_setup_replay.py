@@ -20,10 +20,10 @@ def test_estimated_scalp_targets_convert_contract_returns_to_spx_prices():
     bullish = _estimated_scalp_targets(7685.13, "bullish")
 
     assert bearish["targets"] == [
-            {"key": "tp1", "return_percent": 15, "point_move": 2.81, "spx_price": 7682.32},
-            {"key": "tp2", "return_percent": 20, "point_move": 3.75, "spx_price": 7681.38},
-            {"key": "tp3", "return_percent": 30, "point_move": 5.62, "spx_price": 7679.51},
-        ]
+        {"key": "tp1", "return_percent": 15, "point_move": 2.81, "spx_price": 7682.32},
+        {"key": "tp2", "return_percent": 20, "point_move": 3.75, "spx_price": 7681.38},
+        {"key": "tp3", "return_percent": 30, "point_move": 5.62, "spx_price": 7679.51},
+    ]
     assert bearish["contract_cost"] == 750
     assert bearish["absolute_delta"] == 0.4
     assert bearish["fallback_used"] is True
@@ -1173,8 +1173,7 @@ def test_setup_replay_overlays_latest_completed_hero_bars(client, monkeypatch):
             "session_id": "2026-08-19",
             "generated_at": "2026-08-19T15:15:00-04:00",
             "components": {
-                name: {"as_of": "2026-08-19T15:15:00-04:00"}
-                for name in ("spot", "bars", "gamma")
+                name: {"as_of": "2026-08-19T15:15:00-04:00"} for name in ("spot", "bars", "gamma")
             },
         },
         "market_structure_snapshot": {"local_flip": 100, "put_wall": 95, "call_wall": 105},
@@ -1233,20 +1232,21 @@ def test_setup_replay_keeps_cached_bars_when_live_overlay_fails(client, monkeypa
             "session_id": "2026-08-19",
             "generated_at": "2026-08-19T15:15:00-04:00",
             "components": {
-                name: {"as_of": "2026-08-19T15:15:00-04:00"}
-                for name in ("spot", "bars", "gamma")
+                name: {"as_of": "2026-08-19T15:15:00-04:00"} for name in ("spot", "bars", "gamma")
             },
         },
         "market_structure_snapshot": {"local_flip": 100, "put_wall": 95, "call_wall": 105},
         "playbook_quote": {"day_high": 102, "day_low": 94},
         "gamma_snapshot": {"computed_at": "2026-08-19T15:15:00-04:00"},
-        "execution_chart": {"strategy_bars_5m": [
-            _bar("09:30", open_=100, high=101, low=99, close=100),
-            _bar("09:35", open_=100, high=102, low=99.5, close=99.8),
-            _bar("09:40", open_=99.8, high=101.5, low=99.6, close=99.7),
-            _bar("09:45", open_=99.7, high=100.5, low=98, close=99),
-            _bar("09:50", open_=99, high=99, low=94, close=95),
-        ]},
+        "execution_chart": {
+            "strategy_bars_5m": [
+                _bar("09:30", open_=100, high=101, low=99, close=100),
+                _bar("09:35", open_=100, high=102, low=99.5, close=99.8),
+                _bar("09:40", open_=99.8, high=101.5, low=99.6, close=99.7),
+                _bar("09:45", open_=99.7, high=100.5, low=98, close=99),
+                _bar("09:50", open_=99, high=99, low=94, close=95),
+            ]
+        },
     }
     core._market_pulse_context_response_cache.clear()
     core._market_pulse_context_response_cache["SPX"] = snapshot
@@ -1262,9 +1262,7 @@ def test_setup_replay_keeps_cached_bars_when_live_overlay_fails(client, monkeypa
     with client.application.app_context():
         result = core._market_pulse_setup_replay_source_snapshot(now, ticker="SPX")
 
-    assert result["execution_chart"]["strategy_bars_5m"][-1]["ts"].startswith(
-        "2026-08-19T09:50:00"
-    )
+    assert result["execution_chart"]["strategy_bars_5m"][-1]["ts"].startswith("2026-08-19T09:50:00")
     core._market_pulse_context_response_cache.clear()
 
 
@@ -1281,20 +1279,21 @@ def test_setup_replay_historical_request_never_uses_current_hero_bars(client, mo
             "session_id": "2026-08-19",
             "generated_at": "2026-08-19T15:15:00-04:00",
             "components": {
-                name: {"as_of": "2026-08-19T15:15:00-04:00"}
-                for name in ("spot", "bars", "gamma")
+                name: {"as_of": "2026-08-19T15:15:00-04:00"} for name in ("spot", "bars", "gamma")
             },
         },
         "market_structure_snapshot": {"local_flip": 100, "put_wall": 95, "call_wall": 105},
         "playbook_quote": {"day_high": 102, "day_low": 94},
         "gamma_snapshot": {"computed_at": "2026-08-19T15:15:00-04:00"},
-        "execution_chart": {"strategy_bars_5m": [
-            _bar("09:30", open_=100, high=101, low=99, close=100),
-            _bar("09:35", open_=100, high=102, low=99.5, close=99.8),
-            _bar("09:40", open_=99.8, high=101.5, low=99.6, close=99.7),
-            _bar("09:45", open_=99.7, high=100.5, low=98, close=99),
-            _bar("09:50", open_=99, high=99, low=94, close=95),
-        ]},
+        "execution_chart": {
+            "strategy_bars_5m": [
+                _bar("09:30", open_=100, high=101, low=99, close=100),
+                _bar("09:35", open_=100, high=102, low=99.5, close=99.8),
+                _bar("09:40", open_=99.8, high=101.5, low=99.6, close=99.7),
+                _bar("09:45", open_=99.7, high=100.5, low=98, close=99),
+                _bar("09:50", open_=99, high=99, low=94, close=95),
+            ]
+        },
     }
     core._market_pulse_context_response_cache.clear()
     core._market_pulse_context_response_cache["SPX"] = snapshot
@@ -1303,7 +1302,9 @@ def test_setup_replay_historical_request_never_uses_current_hero_bars(client, mo
     monkeypatch.setattr(
         tradier_hero_chart_service,
         "get_intraday_bars",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("historical replay fetched live bars")),
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("historical replay fetched live bars")
+        ),
     )
 
     with client.application.app_context():
@@ -1313,9 +1314,7 @@ def test_setup_replay_historical_request_never_uses_current_hero_bars(client, mo
             session_date="2026-08-19",
         )
 
-    assert result["execution_chart"]["strategy_bars_5m"][-1]["ts"].startswith(
-        "2026-08-19T09:50:00"
-    )
+    assert result["execution_chart"]["strategy_bars_5m"][-1]["ts"].startswith("2026-08-19T09:50:00")
     core._market_pulse_context_response_cache.clear()
 
 

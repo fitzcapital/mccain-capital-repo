@@ -20,10 +20,14 @@ def boundaries():
 
 def test_faults_fail_closed_and_recovery_promotes_without_reload():
     for plan in (
-        FaultPlan(fetch="timeout"), FaultPlan(fetch="network"),
-        FaultPlan(fetch="malformed"), FaultPlan(fetch="stale"),
-        FaultPlan(fetch="mixed_generation"), FaultPlan(fetch="older"),
-        FaultPlan(canonical_persistence="io_error"), FaultPlan(worker_adoption="lag"),
+        FaultPlan(fetch="timeout"),
+        FaultPlan(fetch="network"),
+        FaultPlan(fetch="malformed"),
+        FaultPlan(fetch="stale"),
+        FaultPlan(fetch="mixed_generation"),
+        FaultPlan(fetch="older"),
+        FaultPlan(canonical_persistence="io_error"),
+        FaultPlan(worker_adoption="lag"),
         FaultPlan(alert_persistence="io_error"),
     ):
         result = execute_candidate(boundaries(), plan)

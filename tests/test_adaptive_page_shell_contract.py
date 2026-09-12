@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
         ("/dashboard", "wide", "page-dashboard"),
         ("/executive", "wide", "page-executive"),
         ("/market-pulse", "wide", "page-market-pulse"),
-        ("/candle-opens", "wide", "page-candle-opens"),
+        ("/candle-opens", "standard", "page-candle-opens"),
         ("/analytics", "wide", "page-analytics"),
         ("/journal", "standard", "page-journal"),
         ("/profile", "standard", "page-profile"),

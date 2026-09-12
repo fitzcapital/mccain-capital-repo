@@ -99,7 +99,11 @@ def scheduled_early_closes(year: int) -> dict[date, str]:
     if christmas_eve.weekday() < 5:
         candidates[christmas_eve] = "Christmas Eve early close"
     holidays = market_holidays(year)
-    return {day: reason for day, reason in candidates.items() if day.weekday() < 5 and day not in holidays}
+    return {
+        day: reason
+        for day, reason in candidates.items()
+        if day.weekday() < 5 and day not in holidays
+    }
 
 
 def session_window(

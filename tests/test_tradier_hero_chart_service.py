@@ -235,9 +235,7 @@ def test_get_hero_levels_uses_shared_snapshot_regime_without_reclassification(mo
         lambda force_refresh=False, now_et=None: {
             "quotes": [{"symbol": "SPX", "provider": "market_snapshot"}],
             "spx_quote": {"symbol": "SPX", "provider": "market_snapshot"},
-            "gamma_snapshot": {
-                "last_successful_compute": "2026-04-08T15:54:00-04:00"
-            },
+            "gamma_snapshot": {"last_successful_compute": "2026-04-08T15:54:00-04:00"},
             "execution_model": {"posture_summary": "Shared snapshot summary"},
             "market_structure_snapshot": {
                 "snapshot_timestamp": "2026-04-08T15:55:00-04:00",

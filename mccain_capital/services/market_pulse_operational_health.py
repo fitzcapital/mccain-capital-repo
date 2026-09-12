@@ -455,11 +455,11 @@ def reliability_history(
     incidents = [_row_event(row) for row in event_rows]
     open_incident = next((row for row in incidents if not row.get("recovered_at")), None)
     current = {
-        "verdict": "Locked"
-        if open_incident and open_incident.get("status") == "locked"
-        else "Degraded"
-        if open_incident
-        else "Verified",
+        "verdict": (
+            "Locked"
+            if open_incident and open_incident.get("status") == "locked"
+            else "Degraded" if open_incident else "Verified"
+        ),
         "reason": open_incident.get("reason") if open_incident else "no_open_incident",
         "generation_id": open_incident.get("generation_id") if open_incident else "",
         "evidence": "durable_incident_state",

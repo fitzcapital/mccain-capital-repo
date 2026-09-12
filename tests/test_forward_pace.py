@@ -55,9 +55,9 @@ def test_forward_pace_projection_calculates_tax_and_schedule(client):
     assert len(projection["schedule"]) == 4
     assert projection["schedule"][0]["start"] == "2026-05-02"
     assert projection["window"]["sessions"] == 20
-    assert projection["scenarios"][1]["projected_balance"] == projection["totals"][
-        "projected_balance"
-    ]
+    assert (
+        projection["scenarios"][1]["projected_balance"] == projection["totals"]["projected_balance"]
+    )
 
 
 def test_forward_pace_pdf_download(client):
@@ -119,9 +119,9 @@ def test_forward_pace_date_target_reports_required_pace_and_scenarios():
     assert projection["target"]["required_daily"] == 200
     assert projection["target"]["required_weekly"] == 1000
     assert [row["multiplier"] for row in projection["scenarios"]] == [0.75, 1.0, 1.25]
-    assert projection["scenarios"][1]["projected_balance"] == projection["totals"][
-        "projected_balance"
-    ]
+    assert (
+        projection["scenarios"][1]["projected_balance"] == projection["totals"]["projected_balance"]
+    )
     assert projection["target"]["projected_gap"] == round(
         projection["totals"]["projected_balance"] - 52000, 2
     )
@@ -189,9 +189,7 @@ def test_evaluation_lifecycle_uses_ten_percent_target():
         "Current Balance",
         "Pass Evaluation",
     ]
-    assert not {"buffer", "loss", "protected"} & {
-        row["key"] for row in lifecycle["milestones"]
-    }
+    assert not {"buffer", "loss", "protected"} & {row["key"] for row in lifecycle["milestones"]}
 
 
 def test_performance_lifecycle_locks_limit_and_protects_payout():

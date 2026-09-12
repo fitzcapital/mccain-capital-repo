@@ -29,7 +29,7 @@ def test_watchdog_has_accessible_native_disclosure_and_responsive_contract():
     body = TEMPLATE.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
     assert '<details class="marketPulseWatchdog' in body
-    assert '<summary>' in body
+    assert "<summary>" in body
     assert 'class="marketPulseWatchdogExpand"' in body
     assert "watchdog.open = true" not in body
     assert ".marketPulseWatchdogDetails" in css
@@ -56,7 +56,10 @@ def test_header_timestamp_always_describes_the_last_completed_candle():
             "const refreshMarketPulseContext"
         )
     ]
-    assert 'setCanonicalText("marketPulseHeaderSnapshot", `Last candle · ${updatedAt}`)' in canonical_commit
+    assert (
+        'setCanonicalText("marketPulseHeaderSnapshot", `Last candle · ${updatedAt}`)'
+        in canonical_commit
+    )
     assert ': "Planning"' in canonical_commit
     assert '.replace(/^(Live|Last valid)\\s*·\\s*/i, "Last candle · ")' in body
 
@@ -139,14 +142,10 @@ def test_automatic_poll_rejects_cache_after_a_new_five_minute_bar_completes():
         "stale_required_components": [],
     }
     stale = {
-        "market_structure_snapshot": {
-            "last_completed_candle_time": "2026-08-25T14:00:00-04:00"
-        }
+        "market_structure_snapshot": {"last_completed_candle_time": "2026-08-25T14:00:00-04:00"}
     }
     current = {
-        "market_structure_snapshot": {
-            "last_completed_candle_time": "2026-08-25T14:05:00-04:00"
-        }
+        "market_structure_snapshot": {"last_completed_candle_time": "2026-08-25T14:05:00-04:00"}
     }
 
     assert not _market_pulse_cached_context_is_current(freshness, now_et, stale)
@@ -162,9 +161,7 @@ def test_automatic_poll_allows_brief_provider_grace_at_candle_boundary():
         "stale_required_components": [],
     }
     context = {
-        "market_structure_snapshot": {
-            "last_completed_candle_time": "2026-08-25T14:00:00-04:00"
-        }
+        "market_structure_snapshot": {"last_completed_candle_time": "2026-08-25T14:00:00-04:00"}
     }
 
     assert _market_pulse_cached_context_is_current(freshness, now_et, context)

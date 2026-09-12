@@ -67,7 +67,10 @@ def test_candle_opens_workflow_styles_define_hierarchy_and_accessibility():
     styles = STYLES.read_text(encoding="utf-8")
 
     assert "/* Candle Opens calendar-first workflow modernization. */" in styles
-    assert "/* Match the density of the main command pages without sacrificing calendar width. */" in styles
+    assert (
+        "/* Match the density of the main command pages without sacrificing calendar width. */"
+        in styles
+    )
     assert "body.page-candle-opens .candleCell{ min-height:92px" in styles
     assert "min-height:56px; padding:7px 10px" in styles
     assert '[data-candle-workflow-region="calendar"]{ order:3; }' in styles

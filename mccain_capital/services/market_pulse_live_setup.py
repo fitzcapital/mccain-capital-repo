@@ -256,12 +256,13 @@ def _freeze_event_facts(
 
     frozen = dict(record)
     same_event = bool(
-        record.get("setup_event_id")
-        and record.get("setup_event_id") == event.get("setup_event_id")
+        record.get("setup_event_id") and record.get("setup_event_id") == event.get("setup_event_id")
     )
     supporting_levels = copy.deepcopy(record.get("supporting_levels") or [])
     known_support = {
-        str(dict(level).get("key") or "") for level in supporting_levels if isinstance(level, Mapping)
+        str(dict(level).get("key") or "")
+        for level in supporting_levels
+        if isinstance(level, Mapping)
     }
     for level in event.get("supporting_levels") or []:
         key = str(dict(level).get("key") or "") if isinstance(level, Mapping) else ""
@@ -285,8 +286,7 @@ def _freeze_event_facts(
                 "grade": event.get("grade") or "—",
                 "trigger": event.get("confirmation") or "Confirmation recorded",
                 "invalidation": event.get("invalidation") or "Review invalidation unavailable",
-                "target": (event.get("target") or {}).get("label")
-                or "Review target unavailable",
+                "target": (event.get("target") or {}).get("label") or "Review target unavailable",
                 "strat_pattern": copy.deepcopy(event.get("strat_pattern") or {}),
                 "trigger_evidence": copy.deepcopy(event.get("trigger_evidence") or {}),
                 "evidence_at": event.get("signal_time"),
@@ -312,7 +312,8 @@ def _reconcile_event_lifecycles(
 
     ordered_bars = sorted(
         (dict(row) for row in bars if isinstance(row, Mapping)),
-        key=lambda row: _parse_timestamp(row.get("ts") or row.get("timestamp")) or datetime.min.replace(tzinfo=ET),
+        key=lambda row: _parse_timestamp(row.get("ts") or row.get("timestamp"))
+        or datetime.min.replace(tzinfo=ET),
     )
     reconciled: list[dict[str, Any]] = []
     setups = ledger.setdefault("setups", {})
@@ -417,18 +418,22 @@ def _persist_setup_events(
         if state not in TERMINAL_STATES:
             state = "CONFIRMED"
         first_seen_at = str(previous.get("first_seen_at") or now_et.isoformat())
-        record = _freeze_event_facts({
-            **previous,
-            "setup_id": setup_id,
-            "revision": int(previous.get("revision") or 0) or 1,
-            "state": state,
-            "first_seen_at": first_seen_at,
-            "state_changed_at": str(previous.get("state_changed_at") or first_seen_at),
-            "late_review_only": late_review_only,
-            "alert_eligible": False,
-            "alert_status": "late_review_only" if late_review_only else "recorded",
-            "acknowledged_at": previous.get("acknowledged_at"),
-        }, event, generation_id=generation_id)
+        record = _freeze_event_facts(
+            {
+                **previous,
+                "setup_id": setup_id,
+                "revision": int(previous.get("revision") or 0) or 1,
+                "state": state,
+                "first_seen_at": first_seen_at,
+                "state_changed_at": str(previous.get("state_changed_at") or first_seen_at),
+                "late_review_only": late_review_only,
+                "alert_eligible": False,
+                "alert_status": "late_review_only" if late_review_only else "recorded",
+                "acknowledged_at": previous.get("acknowledged_at"),
+            },
+            event,
+            generation_id=generation_id,
+        )
         setups[setup_id] = record
         persisted.append(record)
         if not previous:

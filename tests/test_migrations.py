@@ -77,10 +77,10 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0012_full_trading_host_coverage",
             "0013_multi_account_ledgers",
             "0014_account_broker_metrics",
-                "0015_broker_equity_source",
-                "0016_market_pulse_setup_events",
-                "0017_market_pulse_reliability_events",
-                "0018_market_pulse_reliability_history_index",
-            ]
+            "0015_broker_equity_source",
+            "0016_market_pulse_setup_events",
+            "0017_market_pulse_reliability_events",
+            "0018_market_pulse_reliability_history_index",
+        ]
     finally:
         conn.close()

@@ -107,9 +107,7 @@ def test_market_pulse_preserves_primary_controls_and_hooks(client):
 
 def test_five_second_tape_reuses_shared_stream_with_poll_fallback_and_stays_isolated():
     chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
-    context_script = (ROOT / "static/js/market_pulse_gamma_context.js").read_text(
-        encoding="utf-8"
-    )
+    context_script = (ROOT / "static/js/market_pulse_gamma_context.js").read_text(encoding="utf-8")
     workflow_script = (ROOT / "static/js/market_pulse_gamma_workflow.js").read_text(
         encoding="utf-8"
     )
@@ -126,7 +124,9 @@ def test_five_second_tape_reuses_shared_stream_with_poll_fallback_and_stays_isol
     assert "MicroTape" not in workflow_script
     assert "payload.refresh_contract" in chart_script
     assert "marketPhase: nextPhase" in chart_script
-    assert 'addEventListener("market-pulse-canonical-update", syncStreamLifecycle)' in context_script
+    assert (
+        'addEventListener("market-pulse-canonical-update", syncStreamLifecycle)' in context_script
+    )
     assert 'dispatchStreamStatus("Market closed"' in context_script
 
 
@@ -159,10 +159,7 @@ def test_playbook_uses_one_labeled_canonical_refresh_control(client):
     assert "Auto-refresh delayed · showing last valid data" not in body
     assert "AUTO_REFRESH_INTERVAL_MS = 15000" in body
     assert "INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS = 1" in body
-    assert (
-        'scheduleCanonicalCheck(INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS, "refresh")'
-        in body
-    )
+    assert 'scheduleCanonicalCheck(INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS, "refresh")' in body
     assert "bootstrapRefreshDelaySeconds" not in body
     assert 'document.addEventListener("visibilitychange"' in body
     assert 'window.addEventListener("focus"' in body
@@ -182,7 +179,10 @@ def test_playbook_uses_one_labeled_canonical_refresh_control(client):
     assert "window.location.assign(nextUrl.toString())" not in body
     assert "saveCanonicalUiState" not in body
     assert "refreshMarketPulseContext(true, false)" in body
-    assert 'if (automatic && currentGenerationId) url.searchParams.set("generation", currentGenerationId)' in body
+    assert (
+        'if (automatic && currentGenerationId) url.searchParams.set("generation", currentGenerationId)'
+        in body
+    )
     assert '"If-None-Match"' in body
     assert "response.status === 304" in body
     assert body.index("stageCanonicalPayload(payload)") < body.index(
@@ -213,7 +213,9 @@ def test_playbook_canonical_refresh_has_stable_in_place_targets(client):
 def test_playbook_data_lock_diagnostics_are_collapsed_canonical_and_noncompeting(client):
     body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
 
-    assert '<details class="marketPulseDiagnostics marketPulseTrustCenter marketPulseSection' in body
+    assert (
+        '<details class="marketPulseDiagnostics marketPulseTrustCenter marketPulseSection' in body
+    )
     assert 'id="marketPulseDataLockDiagnostics"' in body
     assert 'id="marketPulseDataLockDiagnostics" open' not in body
     diagnostics = body[
@@ -267,8 +269,9 @@ def test_playbook_sticky_summary_is_accessible_persistent_and_default_off(client
 
     styles = (ROOT / "static/css/market_pulse.css").read_text(encoding="utf-8")
     status_metric_rule = styles[
-        styles.index("body.page-market-pulse .marketPulseStatusMetric strong{") :
-        styles.index("body.page-market-pulse .marketPulseStatusMetric.is-spot{")
+        styles.index("body.page-market-pulse .marketPulseStatusMetric strong{") : styles.index(
+            "body.page-market-pulse .marketPulseStatusMetric.is-spot{"
+        )
     ]
     assert "line-height:1.8;" in status_metric_rule
     assert "line-height:1.1;" not in status_metric_rule
@@ -287,7 +290,7 @@ def test_canonical_refresh_rebinds_regime_from_complete_fallback_chain(client):
     assert "gamma.regime" in body
     assert '"marketPulseStatusRegime",\n      canonicalRegimeLabel' in body
     assert 'setCanonicalText("marketPulseHeaderGammaLabel", canonicalRegimeLabel)' in body
-    assert 'headerGammaCard.dataset.gammaState = canonicalRegime.value' in body
+    assert "headerGammaCard.dataset.gammaState = canonicalRegime.value" in body
 
 
 def test_playbook_header_search_popover_is_unclipped_and_header_is_compact(client):
@@ -487,7 +490,7 @@ def test_chart_uses_closed_session_review_mode_and_stops_component_polling():
     chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
 
     assert "SESSION CLOSED · REVIEW ONLY" in template
-    assert 'polling?.automatic_refresh_enabled !== false' in chart_script
+    assert "polling?.automatic_refresh_enabled !== false" in chart_script
     assert "if (!marketIsOpenForPolling()) return;" in chart_script
     start_polling = chart_script[
         chart_script.index("const startPolling") : chart_script.index("const boot")
@@ -509,7 +512,9 @@ def test_market_pulse_lifecycle_revalidates_server_boundaries_without_local_phas
     assert "automaticRefreshEnabled = true" not in template
     initial_validation_start = template.rindex("registerCanonicalRefreshLane();")
     initial_validation = template[
-        initial_validation_start : template.index("armRefreshCountdown();", initial_validation_start)
+        initial_validation_start : template.index(
+            "armRefreshCountdown();", initial_validation_start
+        )
     ]
     assert "if (automaticRefreshEnabled)" in initial_validation
     assert "INITIAL_CANONICAL_VALIDATION_DELAY_SECONDS" in initial_validation
@@ -524,7 +529,9 @@ def test_market_pulse_lifecycle_revalidates_server_boundaries_without_local_phas
 
 def test_trade_decision_uses_an_explicit_five_step_sequence(client):
     body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
-    decision = body[body.index('id="marketPulseTradeReadCard"') : body.index('id="spxPrioritySpotPanel"')]
+    decision = body[
+        body.index('id="marketPulseTradeReadCard"') : body.index('id="spxPrioritySpotPanel"')
+    ]
 
     for label in ("Wait · Location", "Trigger", "Act", "Target", "Cancel"):
         assert label in decision

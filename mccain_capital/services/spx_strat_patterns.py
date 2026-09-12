@@ -47,9 +47,7 @@ def bar_is_at_key_level(bar: Mapping[str, Any], level: float) -> bool:
     return (
         high is not None
         and low is not None
-        and low - SPX_KEY_LEVEL_PROXIMITY_POINTS
-        <= level
-        <= high + SPX_KEY_LEVEL_PROXIMITY_POINTS
+        and low - SPX_KEY_LEVEL_PROXIMITY_POINTS <= level <= high + SPX_KEY_LEVEL_PROXIMITY_POINTS
     )
 
 

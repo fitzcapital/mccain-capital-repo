@@ -83,10 +83,23 @@ def test_server_setup_monitor_health_is_additive_and_truthful(monkeypatch):
 def test_event_ring_allowlists_and_bounds_sensitive_fields():
     clear_reliability_events()
     event = record_reliability_event(
-        at=NOW.isoformat(), event="refresh", ticker="SPX", outcome="healthy",
-        credentials="secret", raw_payload={"account": 123}, reason="ok"
+        at=NOW.isoformat(),
+        event="refresh",
+        ticker="SPX",
+        outcome="healthy",
+        credentials="secret",
+        raw_payload={"account": 123},
+        reason="ok",
     )
-    assert set(event) <= {"at", "event", "ticker", "generation_id", "component", "outcome", "reason"}
+    assert set(event) <= {
+        "at",
+        "event",
+        "ticker",
+        "generation_id",
+        "component",
+        "outcome",
+        "reason",
+    }
     assert "secret" not in str(recent_reliability_events())
 
 

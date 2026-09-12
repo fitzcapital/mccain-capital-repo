@@ -48,9 +48,7 @@ class InProcessMarketPulseRuntimeCoordinator:
         }
         if force_gamma:
             try:
-                payload["gamma_snapshot"] = (
-                    gamma_map_service.run_coordinated_gamma_refresh_once()
-                )
+                payload["gamma_snapshot"] = gamma_map_service.run_coordinated_gamma_refresh_once()
             except Exception:
                 payload["gamma_snapshot"] = gamma_map_service.get_gamma_snapshot()
         return payload

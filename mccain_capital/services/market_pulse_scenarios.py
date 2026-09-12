@@ -193,9 +193,11 @@ def _trigger_evidence(
         if pattern_stamp is not None and stamp is not None and stamp > pattern_stamp:
             later.append(row)
     triggered = any(
-        (_number(row.get(field)) or trigger_price) > trigger_price
-        if direction == "bullish"
-        else (_number(row.get(field)) or trigger_price) < trigger_price
+        (
+            (_number(row.get(field)) or trigger_price) > trigger_price
+            if direction == "bullish"
+            else (_number(row.get(field)) or trigger_price) < trigger_price
+        )
         for row in later
     )
     return {
@@ -203,23 +205,25 @@ def _trigger_evidence(
         "triggered": triggered,
         "trigger_price": trigger_price,
         "trigger_source": "later_confirmation_candle",
-        "triggered_at": next(
-            (
-                str(row.get("ts") or row.get("timestamp") or "")
-                for row in later
-                if ((_number(row.get(field)) or trigger_price) > trigger_price)
-                if direction == "bullish"
-            ),
-            "",
-        )
-        if direction == "bullish"
-        else next(
-            (
-                str(row.get("ts") or row.get("timestamp") or "")
-                for row in later
-                if (_number(row.get(field)) or trigger_price) < trigger_price
-            ),
-            "",
+        "triggered_at": (
+            next(
+                (
+                    str(row.get("ts") or row.get("timestamp") or "")
+                    for row in later
+                    if ((_number(row.get(field)) or trigger_price) > trigger_price)
+                    if direction == "bullish"
+                ),
+                "",
+            )
+            if direction == "bullish"
+            else next(
+                (
+                    str(row.get("ts") or row.get("timestamp") or "")
+                    for row in later
+                    if (_number(row.get(field)) or trigger_price) < trigger_price
+                ),
+                "",
+            )
         ),
     }
 
@@ -401,9 +405,11 @@ def rank_market_scenarios(
             lane = (
                 ScenarioLane.ACTIVE_NOW
                 if triggered
-                else ScenarioLane.ALTERNATIVE
-                if eligible or distance <= near_band
-                else ScenarioLane.DORMANT
+                else (
+                    ScenarioLane.ALTERNATIVE
+                    if eligible or distance <= near_band
+                    else ScenarioLane.DORMANT
+                )
             )
             state = (
                 ScenarioState.LOCKED
@@ -414,9 +420,11 @@ def rank_market_scenarios(
                     else (
                         ScenarioState.TRIGGER_ARMED
                         if eligible
-                        else ScenarioState.ARMED
-                        if lane == ScenarioLane.ALTERNATIVE
-                        else ScenarioState.WATCHING
+                        else (
+                            ScenarioState.ARMED
+                            if lane == ScenarioLane.ALTERNATIVE
+                            else ScenarioState.WATCHING
+                        )
                     )
                 )
             )
@@ -449,15 +457,23 @@ def rank_market_scenarios(
                     if triggered
                     and bullish
                     and trigger.get("trigger_source") == "pattern_signal_candle"
-                    else f"Triggered below {trigger['trigger_price']:,.2f} on {pattern['code']} signal candle"
-                    if triggered and trigger.get("trigger_source") == "pattern_signal_candle"
-                    else f"Triggered above {trigger['trigger_price']:,.2f} after {pattern['code']}"
-                    if triggered and bullish
-                    else f"Triggered below {trigger['trigger_price']:,.2f} after {pattern['code']}"
-                    if triggered
-                    else f"Break the {pattern['code']} trigger candle at {trigger['trigger_price']:,.2f}"
-                    if trigger.get("trigger_price") is not None
-                    else f"Complete {pattern['code']} at {level.label} {level.value:,.0f}"
+                    else (
+                        f"Triggered below {trigger['trigger_price']:,.2f} on {pattern['code']} signal candle"
+                        if triggered and trigger.get("trigger_source") == "pattern_signal_candle"
+                        else (
+                            f"Triggered above {trigger['trigger_price']:,.2f} after {pattern['code']}"
+                            if triggered and bullish
+                            else (
+                                f"Triggered below {trigger['trigger_price']:,.2f} after {pattern['code']}"
+                                if triggered
+                                else (
+                                    f"Break the {pattern['code']} trigger candle at {trigger['trigger_price']:,.2f}"
+                                    if trigger.get("trigger_price") is not None
+                                    else f"Complete {pattern['code']} at {level.label} {level.value:,.0f}"
+                                )
+                            )
+                        )
+                    )
                 )
             candidates.append(
                 {

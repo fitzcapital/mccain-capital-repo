@@ -127,9 +127,7 @@ def test_each_required_component_failure_is_named_and_fails_closed():
     now = datetime(2026, 8, 20, 11, 0, tzinfo=ET)
 
     for failed_component in ("spot", "bars", "gamma"):
-        timestamps = {
-            name: now.isoformat() for name in ("spot", "bars", "gamma")
-        }
+        timestamps = {name: now.isoformat() for name in ("spot", "bars", "gamma")}
         timestamps[failed_component] = ""
         payload = build_canonical_freshness(
             now=now,

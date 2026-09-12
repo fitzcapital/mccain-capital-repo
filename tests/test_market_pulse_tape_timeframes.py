@@ -20,7 +20,12 @@ def test_identical_quote_points_are_not_treated_as_candles() -> None:
     ]
 
     assert has_meaningful_ohlc(rows) is False
-    assert has_meaningful_ohlc([_row(datetime.now(timezone.utc), 100.0), _row(datetime.now(timezone.utc), 101.0)]) is True
+    assert (
+        has_meaningful_ohlc(
+            [_row(datetime.now(timezone.utc), 100.0), _row(datetime.now(timezone.utc), 101.0)]
+        )
+        is True
+    )
 
 
 def test_timeframe_payloads_use_ts_timestamps_for_distinct_windows() -> None:

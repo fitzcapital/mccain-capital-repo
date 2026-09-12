@@ -85,8 +85,13 @@ def resolve_replay_session(
 
     current = now.astimezone(ET) if now.tzinfo else now.replace(tzinfo=ET)
     candidates = _normalized_bars(
-        [row for row in rows if isinstance(row, Mapping) and row.get("complete") is not False
-         and row.get("is_complete") is not False],
+        [
+            row
+            for row in rows
+            if isinstance(row, Mapping)
+            and row.get("complete") is not False
+            and row.get("is_complete") is not False
+        ],
         requested_session,
     )
     completed = []
@@ -146,7 +151,12 @@ def _estimated_scalp_targets(
     use_tradier = reference.get("pricing_mode") == "tradier_current_quote"
     contract_cost = _number(reference.get("contract_cost")) if use_tradier else None
     absolute_delta = _number(reference.get("absolute_delta")) if use_tradier else None
-    if contract_cost is None or contract_cost <= 0 or absolute_delta is None or not 0.05 <= absolute_delta <= 0.95:
+    if (
+        contract_cost is None
+        or contract_cost <= 0
+        or absolute_delta is None
+        or not 0.05 <= absolute_delta <= 0.95
+    ):
         use_tradier = False
         contract_cost = ESTIMATED_CONTRACT_COST
         absolute_delta = ESTIMATED_ABSOLUTE_DELTA
@@ -175,7 +185,9 @@ def _estimated_scalp_targets(
         "contract_label": str(reference.get("contract_label") or "") if use_tradier else "",
         "quote_as_of": str(reference.get("as_of") or "") if use_tradier else "",
         "fallback_used": not use_tradier,
-        "fallback_reason": "" if use_tradier else str(reference.get("fallback_reason") or "unavailable"),
+        "fallback_reason": (
+            "" if use_tradier else str(reference.get("fallback_reason") or "unavailable")
+        ),
         "dealer_gamma_used": False,
     }
 
@@ -592,20 +604,17 @@ def _build_intraday_setup_analysis(
         bars_at_signal = rows[: index + 1]
         gamma_observation = _gamma_at_signal(gamma_rows, signal_stamp)
         observation_levels = list((gamma_observation or {}).get("levels") or [])
-        levels_at_signal = _point_in_time_levels(
-            [*level_rows, *observation_levels], bars_at_signal
-        )
+        levels_at_signal = _point_in_time_levels([*level_rows, *observation_levels], bars_at_signal)
         selected_gamma_stamp = _timestamp(
-            {
-                "ts": (
-                    (gamma_observation or {}).get("as_of")
-                    if gamma_rows
-                    else gamma_as_of
-                )
-            }
+            {"ts": ((gamma_observation or {}).get("as_of") if gamma_rows else gamma_as_of)}
         )
         point_in_time_gamma = str((gamma_observation or {}).get("regime") or "")
-        if not gamma_rows and gamma_stamp is not None and signal_stamp is not None and gamma_stamp <= signal_stamp:
+        if (
+            not gamma_rows
+            and gamma_stamp is not None
+            and signal_stamp is not None
+            and gamma_stamp <= signal_stamp
+        ):
             point_in_time_gamma = gamma_regime
         rankings = rank_market_scenarios(
             spot=signal_bar["close"],
@@ -743,7 +752,9 @@ def _build_intraday_setup_analysis(
                 continue
             emitted.add(event_id)
             level = dict(candidate.get("level") or {})
-            score = int(_number(candidate.get("quality_score")) or _number(candidate.get("score")) or 0)
+            score = int(
+                _number(candidate.get("quality_score")) or _number(candidate.get("score")) or 0
+            )
             frozen = {
                 "candidate_id": candidate_id,
                 "setup_event_id": event_id,
@@ -759,14 +770,18 @@ def _build_intraday_setup_analysis(
                 "entry_basis": (
                     "first_pattern_candle_boundary"
                     if pattern.get("family") == "2-2-reversal"
-                    else "inside_candle_boundary"
-                    if pattern.get("family") == "2-1-2"
-                    else "later_confirmation_boundary"
+                    else (
+                        "inside_candle_boundary"
+                        if pattern.get("family") == "2-1-2"
+                        else "later_confirmation_boundary"
+                    )
                 ),
                 "estimated_tp_ladder": _estimated_scalp_targets(
                     trigger_evidence.get("trigger_price") or signal_bar["close"],
                     str(candidate.get("direction") or ""),
-                    dict((option_references or {}).get(str(candidate.get("direction") or "")) or {}),
+                    dict(
+                        (option_references or {}).get(str(candidate.get("direction") or "")) or {}
+                    ),
                 ),
                 "confirmation": candidate.get("plan", {}).get("trigger"),
                 "invalidation": candidate.get("plan", {}).get("cancel"),

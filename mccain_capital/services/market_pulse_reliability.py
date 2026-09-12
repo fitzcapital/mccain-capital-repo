@@ -93,8 +93,12 @@ def promote_shared_context(path: str, payload: dict[str, Any], *, ticker: str) -
         tmp_path = ""
         try:
             with tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8", dir=directory, prefix=".market-pulse-context.",
-                suffix=".tmp", delete=False
+                "w",
+                encoding="utf-8",
+                dir=directory,
+                prefix=".market-pulse-context.",
+                suffix=".tmp",
+                delete=False,
             ) as handle:
                 tmp_path = handle.name
                 json.dump(

@@ -1523,6 +1523,7 @@ def _fetch_chain_from_tradier(symbol: str, expiry_set: set[str]) -> pd.DataFrame
     expiries = sorted(str(expiry) for expiry in expiry_set if str(expiry))
     if not expiries:
         return pd.DataFrame()
+
     def _fetch_expiry(expiry: str) -> Tuple[str, Dict[str, Any] | None]:
         return expiry, _tradier_json(
             "/v1/markets/options/chains",
@@ -3580,9 +3581,7 @@ def _snapshot_compute_time(snapshot: Dict[str, Any]) -> Optional[datetime]:
 def _install_shared_gamma_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     installed = coerce_validated_snapshot(snapshot)
     warning_state = dict(installed.get("warning_state") or {})
-    snapshot_status = str(
-        warning_state.get("snapshot_status") or SnapshotStatus.INVALID.value
-    )
+    snapshot_status = str(warning_state.get("snapshot_status") or SnapshotStatus.INVALID.value)
     runtime_status = "stale" if snapshot_status == SnapshotStatus.STALE.value else "ok"
     with _LOCK:
         current_time = _snapshot_compute_time(_CACHE)
@@ -3697,7 +3696,14 @@ def get_gamma_runtime_diagnostics(*, now: Optional[datetime] = None) -> Dict[str
     computed_at = _snapshot_compute_time(snapshot)
     current = now or datetime.now(timezone.utc)
     age_seconds = (
-        max(0, int((current.astimezone(timezone.utc) - computed_at.astimezone(timezone.utc)).total_seconds()))
+        max(
+            0,
+            int(
+                (
+                    current.astimezone(timezone.utc) - computed_at.astimezone(timezone.utc)
+                ).total_seconds()
+            ),
+        )
         if computed_at is not None
         else -1
     )

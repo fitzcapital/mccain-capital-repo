@@ -231,8 +231,12 @@ def build_projection(raw: Dict[str, Any]) -> Dict[str, Any]:
     equivalent_weeks = session_count / 5
     target_balance = _money(raw.get("target_balance"), 0)
     evaluation_target = base_balance * 1.10
-    performance_buffer = _money(raw.get("performance_buffer"), 52875 if base_balance == 50000 else 0)
-    current_loss_limit = _money(raw.get("current_loss_limit"), 48500 if base_balance == 50000 else 0)
+    performance_buffer = _money(
+        raw.get("performance_buffer"), 52875 if base_balance == 50000 else 0
+    )
+    current_loss_limit = _money(
+        raw.get("current_loss_limit"), 48500 if base_balance == 50000 else 0
+    )
     fixed_loss_limit = _money(raw.get("fixed_loss_limit"), 50375 if base_balance == 50000 else 0)
     safety_cushion = _money(raw.get("safety_cushion"), 1000)
     proposed_payout = _money(raw.get("proposed_payout"), 0)
@@ -245,9 +249,7 @@ def build_projection(raw: Dict[str, Any]) -> Dict[str, Any]:
     state_annual = max(0.0, annual_gross * state_rate)
     weekly_federal = federal_annual / 52
     weekly_state = state_annual / 52
-    weekly_tax = weekly_federal + weekly_state
     weekly_buffer = weekly_gross * buffer_rate
-    weekly_net = max(0.0, weekly_gross - weekly_tax - weekly_buffer)
     # Broker-account progress uses trading profit directly. Tax and reserves apply only to
     # withdrawn payout income and never reduce evaluation or performance milestones.
     weekly_account_profit = daily_profit * trading_days_week
@@ -313,7 +315,9 @@ def build_projection(raw: Dict[str, Any]) -> Dict[str, Any]:
     pace_ratio = daily_net / required_daily if required_daily else 0.0
     target_status = "neutral"
     if target_active:
-        target_status = "ahead" if pace_ratio > 1.02 else "behind" if pace_ratio < 0.98 else "on_track"
+        target_status = (
+            "ahead" if pace_ratio > 1.02 else "behind" if pace_ratio < 0.98 else "on_track"
+        )
     projected_gap = balance - target_balance if target_active else 0.0
     weekly_adjustment = required_weekly - weekly_account_profit if target_active else 0.0
     scenarios = []
@@ -341,9 +345,11 @@ def build_projection(raw: Dict[str, Any]) -> Dict[str, Any]:
                 "multiplier": multiplier,
                 "net": round(scenario_net, 2),
                 "projected_balance": round(current_balance + scenario_net, 2),
-                "gap_to_target": round(current_balance + scenario_net - target_balance, 2)
-                if target_active
-                else 0.0,
+                "gap_to_target": (
+                    round(current_balance + scenario_net - target_balance, 2)
+                    if target_active
+                    else 0.0
+                ),
                 "sessions_to_target": sessions_to_target,
                 "completion_date": completion_date,
             }
@@ -507,8 +513,10 @@ def _build_lifecycle(
         daily_profit=daily_profit,
     )
     next_milestone = evaluation_target if phase == "evaluation" else performance_buffer
-    next_label = "Pass evaluation" if phase == "evaluation" else (
-        "Build protected payout" if buffer_reached else "Reach performance buffer"
+    next_label = (
+        "Pass evaluation"
+        if phase == "evaluation"
+        else ("Build protected payout" if buffer_reached else "Reach performance buffer")
     )
     if phase == "performance" and buffer_reached:
         next_milestone = protected_floor + max(proposed_payout, next_account_cost)
@@ -528,19 +536,21 @@ def _build_lifecycle(
                 "evaluation_date": _milestone_date(
                     start_date, current_balance, evaluation_target, pace
                 ),
-                "buffer_date": _milestone_date(
-                    start_date, current_balance, performance_buffer, pace
-                )
-                if performance_buffer
-                else "",
-                "protected_payout_date": _milestone_date(
-                    start_date,
-                    current_balance,
-                    protected_floor + max(proposed_payout, next_account_cost),
-                    pace,
-                )
-                if applicable_loss_limit
-                else "",
+                "buffer_date": (
+                    _milestone_date(start_date, current_balance, performance_buffer, pace)
+                    if performance_buffer
+                    else ""
+                ),
+                "protected_payout_date": (
+                    _milestone_date(
+                        start_date,
+                        current_balance,
+                        protected_floor + max(proposed_payout, next_account_cost),
+                        pace,
+                    )
+                    if applicable_loss_limit
+                    else ""
+                ),
             }
         )
     if phase == "evaluation":
@@ -575,7 +585,11 @@ def _build_lifecycle(
     else:
         milestones = [
             {"key": "buffer", "label": "Performance Buffer", "value": round(performance_buffer, 2)},
-            {"key": "loss", "label": "Applicable Loss Limit", "value": round(applicable_loss_limit, 2)},
+            {
+                "key": "loss",
+                "label": "Applicable Loss Limit",
+                "value": round(applicable_loss_limit, 2),
+            },
             {"key": "protected", "label": "Protected Floor", "value": round(protected_floor, 2)},
         ]
         steps = [
@@ -679,26 +693,32 @@ def _build_recommendation(
             "decision_amount": round(evaluation_target, 2),
             "required_balance": round(evaluation_target, 2),
             "additional_profit": round(remaining, 2),
-            "sessions_to_ready": math.ceil(remaining / daily_profit) if remaining and daily_profit else 0,
+            "sessions_to_ready": (
+                math.ceil(remaining / daily_profit) if remaining and daily_profit else 0
+            ),
             "ready_date": _milestone_date(
                 start_date, current_balance, evaluation_target, daily_profit
             ),
             "post_action_balance": round(current_balance, 2),
-            "projected_status": "Passes by end date" if passed_by_end else "Below target at end date",
+            "projected_status": (
+                "Passes by end date" if passed_by_end else "Below target at end date"
+            ),
         }
 
     buffer_reached = bool(performance_buffer and current_balance >= performance_buffer)
     desired_payout = proposed_payout
-    payout_required_balance = (
-        fixed_protected_floor + desired_payout if desired_payout > 0 else 0.0
-    )
+    payout_required_balance = fixed_protected_floor + desired_payout if desired_payout > 0 else 0.0
     if not buffer_reached:
         required_balance = max(performance_buffer, payout_required_balance)
         action = "wait"
         decision_amount = desired_payout
         if desired_payout > 0:
-            title = f"Build to ${required_balance:,.0f}, then take the ${desired_payout:,.0f} payout."
-            detail = "That first clears the buffer, then preserves the selected cushion after payout."
+            title = (
+                f"Build to ${required_balance:,.0f}, then take the ${desired_payout:,.0f} payout."
+            )
+            detail = (
+                "That first clears the buffer, then preserves the selected cushion after payout."
+            )
         else:
             title = f"Do not withdraw yet. Build the balance to ${performance_buffer:,.0f}."
             detail = "Reach the performance buffer first so the fixed-limit payout plan applies."
@@ -742,15 +762,15 @@ def _build_recommendation(
         "required_balance": round(required_balance, 2),
         "additional_profit": round(additional_profit, 2),
         "sessions_to_ready": sessions_to_ready,
-        "ready_date": _milestone_date(
-            start_date, current_balance, required_balance, daily_profit
-        ),
+        "ready_date": _milestone_date(start_date, current_balance, required_balance, daily_profit),
         "post_action_balance": round(
             (current_balance if action == "withdraw" else required_balance) - decision_amount,
             2,
         ),
         "projected_status": (
-            "Ready by end date" if projected_balance >= required_balance else "Not ready by end date"
+            "Ready by end date"
+            if projected_balance >= required_balance
+            else "Not ready by end date"
         ),
     }
 

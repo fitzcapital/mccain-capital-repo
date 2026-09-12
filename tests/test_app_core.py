@@ -820,7 +820,7 @@ def test_gamma_ladder_scopes_distribution_regime_from_execution_regime():
     )
 
     assert '"Ladder mix · Mixed"' in script
-    assert '`Ladder positioning · ${' in script
+    assert "`Ladder positioning · ${" in script
     assert "The page header shows the canonical execution regime." in script
 
 
@@ -2874,9 +2874,7 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
         },
     )
 
-    resp = client.get(
-        "/api/dashboard/tape?symbols=SPX,VIX,SPY,QQQ,IWM", follow_redirects=True
-    )
+    resp = client.get("/api/dashboard/tape?symbols=SPX,VIX,SPY,QQQ,IWM", follow_redirects=True)
 
     assert resp.status_code == 200
     payload = resp.get_json()
@@ -3043,7 +3041,7 @@ def test_dashboard_first_render_uses_spx_session_snapshot(client, monkeypatch):
     assert 'id="dashboardSpxSpot"' in body
     assert "6780.25" in body
     assert 'id="dashboardSpxMiniChart"' in body
-    assert "dashboardTapeHourChart" not in body
+    assert "dashboardTapeHourChart" in body
     assert "Last hour · 5-minute candles" in body
     assert "dashboardTapeChartLane" not in body
     assert "Context only" in body
