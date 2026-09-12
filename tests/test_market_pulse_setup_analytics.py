@@ -44,9 +44,9 @@ def setup(
         "signal_time": signal_time,
         "signal_candle_time": signal_time,
         "family": family,
-        "family_label": "Sweep and reject high"
-        if direction == "bearish"
-        else "Sweep and recover low",
+        "family_label": (
+            "Sweep and reject high" if direction == "bearish" else "Sweep and recover low"
+        ),
         "direction": direction,
         "level": {"key": "prior_day_high", "label": "Prior-Day High", "value": 7670},
         "entry_zone": 7668,
@@ -200,7 +200,11 @@ def test_family_occurrences_keep_frozen_prices_and_latest_five(analytics_db):
     family = payload["family_comparison"][0]
     assert family["total_occurrences"] == 7
     assert [event["setup_event_id"] for event in family["occurrences"]] == [
-        "event-6", "event-5", "event-4", "event-3", "event-2"
+        "event-6",
+        "event-5",
+        "event-4",
+        "event-3",
+        "event-2",
     ]
     latest = family["occurrences"][0]
     assert latest["level_value"] == 7670
@@ -275,6 +279,8 @@ def test_setup_analytics_page_contract(client):
     assert 'data-family-cards="all"' in body
     assert 'data-chart="excursion"' in body
     assert "data-analytics-insight" in body
+    assert "data-analytics-leaders" in body
+    assert "What worked best" in body
     assert "data-filter-drawer" in body
     assert 'data-analytics-contracts type="number" min="1" max="1000" step="1" value="3"' in body
     assert "Today’s Live Replay evidence first" in body
@@ -302,6 +308,203 @@ def test_legacy_history_counts_frequency_but_not_performance(analytics_db):
     assert payload["coverage"]["outcome_coverage_percent"] == 50.0
     assert payload["time_heatmap"][0]["total_occurrences"] == 2
     assert payload["time_heatmap"][0]["evaluated_count"] == 1
+
+
+def test_analytics_counts_pattern_aliases_once_and_preserves_best_evidence(analytics_db):
+    weaker = setup(
+        "SPX:2026-09-09:2-1-2D:2026-09-09T11:20:00-04:00:bearish",
+        "2026-09-09T11:20:00-04:00",
+        outcome="invalidated",
+        mfe=None,
+        mae=None,
+    )
+    weaker["strat_pattern"] = {"code": "2-1-2D", "family": "2-1-2-reversal"}
+    weaker["score"] = 65
+    stronger = setup(
+        "SPX:2026-09-09:2-2 REV D:2026-09-09T11:20:00-04:00:bearish",
+        "2026-09-09T11:20:00-04:00",
+        outcome="invalidated",
+        mfe=5.4,
+        mae=5.5,
+    )
+    stronger["score"] = 85
+    analytics.upsert_records([weaker, stronger])
+
+    payload = analytics.analytics_payload({"start_date": "2026-09-09", "end_date": "2026-09-09"})
+
+    assert payload["metrics"]["total_setups"] == 1
+    assert payload["ledger"]["total"] == 1
+    assert payload["ledger"]["rows"][0]["pattern_code"] == "2-2 REV D"
+    assert payload["metrics"]["median_mfe"] == {"value": 5.4, "sample_size": 1}
+    assert payload["coverage"]["duplicate_rows_excluded"] == 1
+    assert payload["charts"]["occurrences_by_session"] == [
+        {"session_date": "2026-09-09", "count": 1}
+    ]
+
+
+def test_analytics_keeps_distinct_candles_levels_and_directions(analytics_db):
+    rows = [
+        setup("one", "2026-09-10T10:00:00-04:00", outcome="target_reached"),
+        setup("two", "2026-09-10T10:05:00-04:00", outcome="target_reached"),
+        setup(
+            "three",
+            "2026-09-10T10:00:00-04:00",
+            direction="bullish",
+            family="failed_low",
+            outcome="target_reached",
+        ),
+    ]
+    rows.append(setup("four", "2026-09-10T10:00:00-04:00", outcome="target_reached"))
+    rows[-1]["level"] = {"key": "put_wall", "label": "Put Wall", "value": 7600}
+    analytics.upsert_records(rows)
+
+    payload = analytics.analytics_payload({"start_date": "2026-09-10", "end_date": "2026-09-10"})
+
+    assert payload["metrics"]["total_setups"] == 4
+    assert payload["coverage"]["duplicate_rows_excluded"] == 0
+
+
+def test_analytics_request_does_not_generate_image_files(analytics_db, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    analytics.upsert_records(
+        [setup("image-free", "2026-09-10T10:00:00-04:00", outcome="target_reached")]
+    )
+
+    analytics.analytics_payload({"start_date": "2026-09-10", "end_date": "2026-09-10"})
+
+    assert not [
+        path
+        for path in tmp_path.rglob("*")
+        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
+    ]
+
+
+def test_history_leaders_prefer_established_evidence_over_tiny_perfect_sample(analytics_db):
+    events = []
+    for index in range(2):
+        event = setup(
+            f"tiny-{index}",
+            f"2026-09-01T12:{30 + index:02d}:00-04:00",
+            family="tiny_family",
+            outcome="target_reached",
+            mfe=4,
+            mae=1,
+        )
+        event["family_label"] = "Tiny perfect setup"
+        events.append(event)
+    for index, outcome in enumerate(
+        ["target_reached", "target_reached", "target_reached", "target_reached", "invalidated"]
+    ):
+        event = setup(
+            f"established-{index}",
+            f"2026-09-02T10:{30 + index:02d}:00-04:00",
+            family="established_family",
+            outcome=outcome,
+            mfe=8,
+            mae=2,
+        )
+        event["family_label"] = "Repeatable setup"
+        events.append(event)
+    analytics.upsert_records(events)
+
+    payload = analytics.analytics_payload({"preset": "all_history"})
+    leader = payload["leaders"]["setup"]
+
+    assert leader["label"] == "Repeatable setup"
+    assert leader["target_reached_count"] == 4
+    assert leader["evaluated_count"] == 5
+    assert leader["evidence"]["label"] == "Established for this sample"
+    assert leader["filter_family"] == "established_family"
+    assert payload["leaders"]["time"]["filter_start_time"] == "10:30"
+    assert payload["leaders"]["combination"]["filter_end_time"] == "10:59"
+    assert payload["leaders"]["horizon_label"] == "All-history leaders"
+
+
+def test_history_leaders_label_early_evidence_and_withhold_empty_winner(analytics_db):
+    analytics.upsert_records(
+        [setup("early", "2026-09-01T11:10:00-04:00", outcome="target_reached")]
+    )
+    early = analytics.analytics_payload({"start_date": "2026-09-01", "end_date": "2026-09-01"})
+    assert early["leaders"]["setup"]["evidence"]["label"] == "Single example"
+
+    empty = analytics.analytics_payload({"start_date": "2026-09-02", "end_date": "2026-09-02"})
+    assert empty["leaders"]["setup"] is None
+    assert "No best-performing setup can be measured yet" in empty["leaders"]["unavailable_reason"]
+
+
+def test_history_leader_ties_are_stable_and_missing_excursions_are_safe():
+    base = {
+        "total_occurrences": 5,
+        "evaluated_count": 5,
+        "target_reached_count": 3,
+        "target_reached_rate": 60.0,
+        "adjusted_target_rate": analytics._wilson_lower_bound(3, 5),
+        "median_mfe": {"value": None, "sample_size": 0},
+        "median_mae": {"value": None, "sample_size": 0},
+        "evidence": analytics._evidence_maturity(5),
+    }
+    winner = analytics._rank_leader(
+        [{**base, "label": "Zulu setup"}, {**base, "label": "Alpha setup"}]
+    )
+
+    assert winner["label"] == "Alpha setup"
+    assert winner["median_mfe"]["value"] is None
+    assert winner["median_mae"]["value"] is None
+
+
+def test_history_leader_does_not_call_zero_percent_established_cohort_best():
+    early = {
+        "label": "Early performer",
+        "total_occurrences": 2,
+        "evaluated_count": 2,
+        "target_reached_count": 2,
+        "adjusted_target_rate": analytics._wilson_lower_bound(2, 2),
+        "median_mfe": {"value": 4.0, "sample_size": 2},
+        "median_mae": {"value": 1.0, "sample_size": 2},
+    }
+    established = {
+        "label": "Established non-performer",
+        "total_occurrences": 7,
+        "evaluated_count": 7,
+        "target_reached_count": 0,
+        "adjusted_target_rate": analytics._wilson_lower_bound(0, 7),
+        "median_mfe": {"value": 1.0, "sample_size": 7},
+        "median_mae": {"value": 5.0, "sample_size": 7},
+    }
+
+    assert analytics._rank_leader([established, early])["label"] == "Early performer"
+
+
+def test_history_leaders_follow_the_same_family_and_time_filters(analytics_db):
+    bearish = setup(
+        "bearish-filtered",
+        "2026-09-01T10:35:00-04:00",
+        family="failed_high",
+        outcome="target_reached",
+    )
+    bullish = setup(
+        "bullish-filtered",
+        "2026-09-01T13:35:00-04:00",
+        family="failed_low",
+        direction="bullish",
+        outcome="target_reached",
+    )
+    analytics.upsert_records([bearish, bullish])
+
+    payload = analytics.analytics_payload(
+        {
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-01",
+            "family": "failed_low",
+            "start_time": "13:30",
+            "end_time": "13:59",
+        }
+    )
+
+    assert payload["metrics"]["total_setups"] == 1
+    assert payload["leaders"]["setup"]["filter_family"] == "failed_low"
+    assert payload["leaders"]["time"]["label"] == "1:30–1:59 PM"
+    assert payload["leaders"]["combination"]["direction"] == "bullish"
 
 
 def test_market_pulse_replay_links_to_analytics(client):

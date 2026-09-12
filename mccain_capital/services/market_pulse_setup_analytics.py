@@ -347,8 +347,55 @@ def _bucket_sort_key(label: str) -> datetime:
     return parsed
 
 
+def _bucket_filter(label: str) -> tuple[str, str]:
+    start = _bucket_sort_key(label)
+    return start.strftime("%H:%M"), (start + timedelta(minutes=29)).strftime("%H:%M")
+
+
 def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator * 100, 1) if denominator else None
+
+
+def _wilson_lower_bound(successes: int, total: int, z: float = 1.96) -> float | None:
+    if total <= 0:
+        return None
+    proportion = successes / total
+    denominator = 1 + (z * z / total)
+    centre = proportion + (z * z / (2 * total))
+    margin = z * math.sqrt((proportion * (1 - proportion) + z * z / (4 * total)) / total)
+    return round((centre - margin) / denominator * 100, 1)
+
+
+def _evidence_maturity(completed: int) -> dict[str, Any]:
+    if completed >= 5:
+        return {"key": "established", "label": "Established for this sample", "rank": 3}
+    if completed >= 2:
+        return {"key": "early", "label": "Early evidence", "rank": 2}
+    if completed == 1:
+        return {"key": "single", "label": "Single example", "rank": 1}
+    return {"key": "unavailable", "label": "Unavailable", "rank": 0}
+
+
+def _leader_rank(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    favorable = _float(_mapping(row.get("median_mfe")).get("value"))
+    adverse = _float(_mapping(row.get("median_mae")).get("value"))
+    movement_quality = (favorable or 0.0) / max(adverse or 0.0, 0.25)
+    return (
+        float(row.get("adjusted_target_rate") or 0.0),
+        int(row.get("evaluated_count") or 0) >= 5,
+        movement_quality,
+        int(row.get("evaluated_count") or 0),
+    )
+
+
+def _rank_leader(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    eligible = [row for row in rows if int(row.get("evaluated_count") or 0) > 0]
+    if not eligible:
+        return None
+    best = max(eligible, key=_leader_rank)
+    tied = [row for row in eligible if _leader_rank(row) == _leader_rank(best)]
+    best = min(tied, key=lambda row: str(row.get("label") or "").casefold())
+    return dict(best)
 
 
 def _ranked_insight(rows: list[dict[str, Any]], label_key: str) -> dict[str, Any] | None:
@@ -384,6 +431,45 @@ def _row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         f"#marketPulseSetupReplay"
     )
     return payload
+
+
+def _actionable_setup_key(row: Mapping[str, Any]) -> tuple[str, ...]:
+    signal = _timestamp(row.get("signal_candle_time")) or _timestamp(row.get("signal_time"))
+    level_key = _text(row.get("level_key") or row.get("level_label")).casefold()
+    if not level_key:
+        level_value = _float(row.get("level_value"))
+        level_key = f"value:{level_value:.2f}" if level_value is not None else "unavailable"
+    return (
+        _text(row.get("session_date")),
+        signal.isoformat() if signal else _text(row.get("signal_time")),
+        _text(row.get("family")).casefold(),
+        _text(row.get("direction")).casefold(),
+        level_key,
+    )
+
+
+def _canonical_evidence_rank(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    state = _text(row.get("outcome_state")).lower()
+    excursion_count = sum(row.get(key) is not None for key in ("mfe", "mae"))
+    is_reversal = _text(row.get("pattern_code")).upper().startswith("2-2 REV")
+    return (
+        OUTCOME_RANK.get(state, 0),
+        excursion_count,
+        int(_float(row.get("score")) or 0),
+        int(_float(row.get("source_revision")) or 0),
+        is_reversal,
+        _text(row.get("setup_event_id")),
+    )
+
+
+def _canonicalize_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    canonical: dict[tuple[str, ...], dict[str, Any]] = {}
+    for row in rows:
+        key = _actionable_setup_key(row)
+        existing = canonical.get(key)
+        if existing is None or _canonical_evidence_rank(row) > _canonical_evidence_rank(existing):
+            canonical[key] = row
+    return list(canonical.values()), len(rows) - len(canonical)
 
 
 def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
@@ -426,14 +512,15 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
                 params,
             ).fetchall()
         ]
-    rows = []
+    filtered_rows = []
     for row in raw_rows:
         parsed = _timestamp(row["signal_time"])
         if parsed is None:
             continue
         clock = parsed.strftime("%H:%M")
         if filters["start_time"] <= clock <= filters["end_time"]:
-            rows.append(row)
+            filtered_rows.append(row)
+    rows, duplicate_rows_excluded = _canonicalize_rows(filtered_rows)
     total = len(rows)
     sessions = sorted({row["session_date"] for row in rows})
     terminal = [row for row in rows if row["outcome_state"] in TERMINAL_OUTCOMES]
@@ -442,49 +529,88 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
     by_session = Counter(row["session_date"] for row in rows)
     by_time: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_family: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_combination: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    family_filter_values: dict[str, str] = {}
     for row in rows:
-        by_time[_bucket_label(row["signal_time"])].append(row)
-        by_family[row["family_label"] or row["family"]].append(row)
+        bucket = _bucket_label(row["signal_time"])
+        family_label = row["family_label"] or row["family"]
+        by_time[bucket].append(row)
+        by_family[family_label].append(row)
+        by_combination[(family_label, bucket)].append(row)
+        family_filter_values.setdefault(family_label, row["family"])
 
     def comparison(label: str, group: list[dict[str, Any]], label_key: str) -> dict[str, Any]:
         evaluated = [row for row in group if row["outcome_state"] in TERMINAL_OUTCOMES]
         targets = sum(row["outcome_state"] == "target_reached" for row in evaluated)
         invalidated = sum(row["outcome_state"] == "invalidated" for row in evaluated)
-        return {
+        result = {
             label_key: label,
+            "label": label,
             "total_occurrences": len(group),
             "evaluated_count": len(evaluated),
             "target_reached_count": targets,
             "invalidated_count": invalidated,
             "open_count": sum(row["outcome_state"] == "open" for row in group),
             "unavailable_count": sum(row["outcome_state"] == "unavailable" for row in group),
-            "direction": next(iter({row["direction"] for row in group}), "mixed")
-            if len({row["direction"] for row in group}) == 1
-            else "mixed",
+            "direction": (
+                next(iter({row["direction"] for row in group}), "mixed")
+                if len({row["direction"] for row in group}) == 1
+                else "mixed"
+            ),
             "target_reached_rate": _rate(targets, len(evaluated)),
             "outcome_coverage_percent": _rate(len(evaluated), len(group)),
             "median_mfe": _median(evaluated, "mfe"),
             "median_mae": _median(evaluated, "mae"),
         }
+        result["adjusted_target_rate"] = _wilson_lower_bound(targets, len(evaluated))
+        result["evidence"] = _evidence_maturity(len(evaluated))
+        return result
 
     time_heatmap = [
         comparison(label, by_time[label], "bucket")
         for label in sorted(by_time, key=_bucket_sort_key)
     ]
     family_comparison = [comparison(label, group, "family") for label, group in by_family.items()]
+    for item in time_heatmap:
+        item["filter_start_time"], item["filter_end_time"] = _bucket_filter(item["bucket"])
+    for item in family_comparison:
+        item["filter_family"] = family_filter_values.get(item["family"], "")
     for item in family_comparison:
         latest = sorted(by_family[item["family"]], key=lambda row: row["signal_time"], reverse=True)
         item["occurrences"] = [
-            {key: row[key] for key in (
-                "setup_event_id", "signal_time", "direction", "pattern_code", "level_label",
-                "level_value", "entry_value", "target_label", "target_value", "outcome_state",
-                "resolution_time",
-            )}
+            {
+                key: row[key]
+                for key in (
+                    "setup_event_id",
+                    "signal_time",
+                    "direction",
+                    "pattern_code",
+                    "level_label",
+                    "level_value",
+                    "entry_value",
+                    "target_label",
+                    "target_value",
+                    "outcome_state",
+                    "resolution_time",
+                )
+            }
             for row in latest[:5]
         ]
     family_comparison.sort(
         key=lambda row: (row["evaluated_count"], row["total_occurrences"]), reverse=True
     )
+    combination_comparison = []
+    for (family_label, bucket), group in by_combination.items():
+        item = comparison(f"{family_label} · {bucket}", group, "combination")
+        item.update(
+            {
+                "family": family_label,
+                "bucket": bucket,
+                "filter_family": family_filter_values.get(family_label, ""),
+            }
+        )
+        item["filter_start_time"], item["filter_end_time"] = _bucket_filter(bucket)
+        combination_comparison.append(item)
     page_start = (filters["page"] - 1) * filters["page_size"]
     page_rows = rows[page_start : page_start + filters["page_size"]]
     metrics = {
@@ -501,6 +627,30 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         "median_mfe": _median(rows, "mfe"),
         "median_mae": _median(rows, "mae"),
         "median_target_progress": _median(rows, "target_progress_percent"),
+    }
+    leaders = {
+        "horizon_label": {
+            "today": "Today's leaders",
+            "last_3_sessions": "Last 3 sessions leaders",
+            "this_week": "This week's leaders",
+            "last_20_sessions": "Last 20 sessions leaders",
+            "all_history": "All-history leaders",
+            "custom": "Custom-range leaders",
+        }[filters["preset"]],
+        "setup": _rank_leader(family_comparison),
+        "time": _rank_leader(time_heatmap),
+        "combination": _rank_leader(combination_comparison),
+        "method": (
+            "Ranks completed outcomes by evidence strength, adjusted target rate, then favorable "
+            "versus adverse SPX movement. Estimated option profit is not used."
+        ),
+        "unavailable_reason": (
+            "No best-performing setup can be measured yet. "
+            f"{metrics['open_count']} awaiting resolution; "
+            f"{metrics['unavailable_count']} historical outcomes not captured."
+            if not terminal
+            else ""
+        ),
     }
     payload = {
         "filters": filters,
@@ -544,6 +694,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         },
         "time_heatmap": time_heatmap,
         "family_comparison": family_comparison,
+        "leaders": leaders,
         "profit_estimate_assumptions": {
             "contract_cost": int(ESTIMATED_CONTRACT_COST),
             "absolute_delta": ESTIMATED_ABSOLUTE_DELTA,
@@ -583,6 +734,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
             "missing_excursion_count": sum(
                 row["mfe"] is None or row["mae"] is None for row in rows
             ),
+            "duplicate_rows_excluded": duplicate_rows_excluded,
         },
         "empty": total == 0,
         "interpretation": (

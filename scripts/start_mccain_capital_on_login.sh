@@ -14,14 +14,13 @@ CURL_BIN="${CURL_BIN:-$(command -v curl || echo /usr/bin/curl)}"
 REPAIR_DB_SCRIPT="${REPAIR_DB_SCRIPT:-$ROOT_DIR/scripts/repair_sqlite_mount_db.sh}"
 RUN_SCRIPT="${RUN_SCRIPT:-$ROOT_DIR/scripts/run_podman_app.sh}"
 REPO_STATE_SCRIPT="${REPO_STATE_SCRIPT:-$ROOT_DIR/scripts/podman_image_repo_state.sh}"
+KIND_BIN="${KIND_BIN:-$(command -v kind || true)}"
+KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-mccain-capital}"
+K8S_NODE_NAME="${K8S_NODE_NAME:-${KIND_CLUSTER_NAME}-control-plane}"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 mkdir -p "$DATA_DIR/uploads" "$DATA_DIR/books" "$LOG_DIR"
-
-if [[ -x "$REPAIR_DB_SCRIPT" ]]; then
-  LOG_FILE="$LOG_DIR/launch-agent.log" "$REPAIR_DB_SCRIPT" "$DATA_DIR" || true
-fi
 
 echo "[login-start] $(date '+%Y-%m-%d %H:%M:%S') starting McCain Capital" >> "$LOG_DIR/launch-agent.log"
 
@@ -29,6 +28,29 @@ if ! "$PODMAN_BIN" info >/dev/null 2>&1; then
   echo "[login-start] starting podman machine" >> "$LOG_DIR/launch-agent.log"
   "$PODMAN_BIN" machine start >/dev/null 2>&1 || true
   sleep 3
+fi
+
+if [[ -n "$KIND_BIN" ]] && \
+  KIND_EXPERIMENTAL_PROVIDER=podman "$KIND_BIN" get clusters 2>/dev/null | \
+    "$RG_BIN" -x "$KIND_CLUSTER_NAME" >/dev/null 2>&1; then
+  echo "[login-start] Kubernetes is authoritative; ensuring ${K8S_NODE_NAME} is running" \
+    >> "$LOG_DIR/launch-agent.log"
+  "$PODMAN_BIN" start "$K8S_NODE_NAME" >/dev/null 2>&1 || true
+  for _ in $(seq 1 60); do
+    if "$CURL_BIN" -sf "http://127.0.0.1:${HOST_PORT}/healthz" >/dev/null 2>&1; then
+      echo "[login-start] Kubernetes app healthy on port ${HOST_PORT}" \
+        >> "$LOG_DIR/launch-agent.log"
+      exit 0
+    fi
+    sleep 1
+  done
+  echo "[login-start] Kubernetes app failed to become healthy on port ${HOST_PORT}" \
+    >> "$LOG_DIR/launch-agent.log"
+  exit 1
+fi
+
+if [[ -x "$REPAIR_DB_SCRIPT" ]]; then
+  LOG_FILE="$LOG_DIR/launch-agent.log" "$REPAIR_DB_SCRIPT" "$DATA_DIR" || true
 fi
 
 repo_state="unknown"

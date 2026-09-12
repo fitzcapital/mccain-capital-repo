@@ -78,6 +78,7 @@ class Level:
     key: str
     label: str
     value: float
+    as_of: str = ""
 
 
 def _number(value: Any) -> float | None:
@@ -103,7 +104,14 @@ def normalize_levels(rows: Iterable[Mapping[str, Any]]) -> list[Level]:
         if price_key in seen:
             continue
         seen.add(price_key)
-        result.append(Level(key, str(row.get("label") or LEVEL_LABELS.get(key) or key), value))
+        result.append(
+            Level(
+                key,
+                str(row.get("label") or LEVEL_LABELS.get(key) or key),
+                value,
+                str(row.get("as_of") or ""),
+            )
+        )
     return result
 
 
@@ -413,10 +421,6 @@ def rank_market_scenarios(
                 )
             )
             target = _target(normalized, level.value, "bullish" if bullish else "bearish")
-            cluster = any(
-                other.key != level.key and abs(other.value - level.value) <= 3
-                for other in normalized
-            )
             gamma_key = gamma_regime.lower()
             gamma_aligned = "negative" in gamma_key if continuation else "positive" in gamma_key
             components = {
@@ -462,9 +466,19 @@ def rank_market_scenarios(
                     "family_label": SCENARIO_FAMILY_LABELS[family],
                     "lane": lane.value,
                     "state": state.value,
-                    "level": {"key": level.key, "label": level.label, "value": level.value},
+                    "level": {
+                        "key": level.key,
+                        "label": level.label,
+                        "value": level.value,
+                        **({"as_of": level.as_of} if level.as_of else {}),
+                    },
                     "target_level": (
-                        {"key": target.key, "label": target.label, "value": target.value}
+                        {
+                            "key": target.key,
+                            "label": target.label,
+                            "value": target.value,
+                            **({"as_of": target.as_of} if target.as_of else {}),
+                        }
                         if target
                         else None
                     ),

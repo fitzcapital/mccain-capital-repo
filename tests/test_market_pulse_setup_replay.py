@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 from mccain_capital.services.market_pulse_setup_replay import _outcome
 from mccain_capital.services.market_pulse_setup_replay import _estimated_scalp_targets
+from mccain_capital.services.market_pulse_setup_replay import _gamma_at_signal
+from mccain_capital.services.market_pulse_setup_replay import _next_target
 from mccain_capital.services.market_pulse_setup_replay import _point_in_time_levels
 from mccain_capital.services.market_pulse_setup_replay import build_intraday_setup_events
 from mccain_capital.services.market_pulse_setup_replay import build_intraday_setup_replay
@@ -17,17 +19,76 @@ def test_estimated_scalp_targets_convert_contract_returns_to_spx_prices():
     bearish = _estimated_scalp_targets(7685.13, "bearish")
     bullish = _estimated_scalp_targets(7685.13, "bullish")
 
-    assert bearish == {
-        "targets": [
+    assert bearish["targets"] == [
             {"key": "tp1", "return_percent": 15, "point_move": 2.81, "spx_price": 7682.32},
             {"key": "tp2", "return_percent": 20, "point_move": 3.75, "spx_price": 7681.38},
             {"key": "tp3", "return_percent": 30, "point_move": 5.62, "spx_price": 7679.51},
-        ],
-        "contract_cost": 750,
-        "absolute_delta": 0.4,
-        "dealer_gamma_used": False,
-    }
+        ]
+    assert bearish["contract_cost"] == 750
+    assert bearish["absolute_delta"] == 0.4
+    assert bearish["fallback_used"] is True
+    assert bearish["dealer_gamma_used"] is False
     assert [row["spx_price"] for row in bullish["targets"]] == [7687.94, 7688.88, 7690.76]
+
+
+def test_estimated_scalp_targets_use_tradier_ntm_reference_without_gamma_math():
+    result = _estimated_scalp_targets(
+        5000,
+        "bullish",
+        {
+            "pricing_mode": "tradier_current_quote",
+            "source": "Tradier current options snapshot",
+            "contract_label": "SPXW 2026-08-19 5000C",
+            "contract_cost": 1000,
+            "absolute_delta": 0.50,
+            "as_of": "2026-08-19T14:00:00+00:00",
+        },
+    )
+
+    assert result["targets"][1]["spx_price"] == 5004
+    assert result["pricing_mode"] == "tradier_current_quote"
+    assert result["fallback_used"] is False
+    assert result["contract_label"].endswith("5000C")
+    assert result["dealer_gamma_used"] is False
+
+
+def test_gamma_selector_never_projects_a_future_observation_backward():
+    signal = datetime.fromisoformat("2026-08-19T10:00:00-04:00")
+    selected = _gamma_at_signal(
+        [
+            {"as_of": "2026-08-19T09:45:00-04:00", "regime": "negative_gamma"},
+            {"as_of": "2026-08-19T10:15:00-04:00", "regime": "positive_gamma"},
+        ],
+        signal,
+    )
+
+    assert selected["regime"] == "negative_gamma"
+
+
+def test_runner_is_directional_and_five_points_from_actual_entry():
+    from mccain_capital.services.market_pulse_scenarios import normalize_levels
+
+    levels = normalize_levels(
+        [
+            {"key": "local_flip", "value": 101},
+            {"key": "put_wall", "value": 95},
+            {"key": "prior_day_low", "value": 90},
+        ]
+    )
+
+    target = _next_target(levels, 99.6, "bearish", excluded_keys={"local_flip"})
+
+    assert target["value"] == 90
+
+
+def test_normalized_dynamic_level_preserves_observation_timestamp():
+    from mccain_capital.services.market_pulse_scenarios import normalize_levels
+
+    level = normalize_levels(
+        [{"key": "call_wall", "value": 5010, "as_of": "2026-08-19T09:45:00-04:00"}]
+    )[0]
+
+    assert level.as_of == "2026-08-19T09:45:00-04:00"
 
 
 def _bar(clock: str, *, open_: float, high: float, low: float, close: float):
@@ -392,8 +453,8 @@ def test_replay_qualifies_212_on_third_candle_and_measures_later_outcome():
     assert setup["entry_zone"] == 99.6
     assert setup["entry_basis"] == "inside_candle_boundary"
     assert setup["trigger_evidence"]["trigger_boundary_source"] == "inside_candle"
-    assert setup["target"]["value"] == 95
-    assert setup["outcome"]["state"] == "target_reached"
+    assert setup["target"] is None
+    assert setup["outcome"]["state"] == "open"
     assert setup["strat_pattern"]["code"] == "2-1-2D"
     assert setup["data_availability"]["gamma_available_at_signal"] is True
     assert result["read_only"] is True
@@ -415,7 +476,7 @@ def test_future_bars_change_outcome_without_changing_signal_eligibility():
     assert after_setup["signal_time"] == before_setup["signal_time"]
     assert after_setup["entry_zone"] == before_setup["entry_zone"] == 99.6
     assert before_setup["outcome"]["state"] == "open"
-    assert after_setup["outcome"]["state"] == "target_reached"
+    assert after_setup["outcome"]["state"] == "open"
 
 
 def test_shared_live_events_match_replay_signal_identity():
@@ -676,7 +737,8 @@ def test_replay_endpoint_and_template_are_read_only_and_discoverable(client):
     assert "row.outcome?.target_progress_percent != null" in body
     assert "+${target.return_percent}% est. → SPX" in body
     assert "Dealer Gamma unavailable at signal" in body
-    assert "not used for TP estimates" in body
+    assert "Gamma is confluence only" in body
+    assert "Tradier NTM" in body
     assert 'kind: "pattern_trigger"' in body
 
     chart = (Path(__file__).resolve().parents[1] / "static/js/spx_hero_chart.js").read_text(
@@ -1091,6 +1153,169 @@ def test_setup_replay_prefers_canonical_context_when_playbook_snapshot_has_no_ba
     payload = response.get_json()["payload"]
     assert payload["bar_count"] == len(bars)
     assert any(row["strat_pattern"]["code"] == "2-1-2D" for row in payload["setups"])
+    core._market_pulse_context_response_cache.clear()
+
+
+def test_setup_replay_overlays_latest_completed_hero_bars(client, monkeypatch):
+    from mccain_capital.services import core
+    from mccain_capital.services import tradier_hero_chart_service
+
+    now = datetime(2026, 8, 19, 15, 21, tzinfo=ET)
+    cached_bars = [
+        _bar("09:30", open_=100, high=101, low=99, close=100),
+        _bar("12:05", open_=100, high=101, low=99, close=100),
+    ]
+    snapshot = {
+        "ticker": "SPX",
+        "canonical_freshness": {
+            "generation_id": "cached-fallback",
+            "symbol": "SPX",
+            "session_id": "2026-08-19",
+            "generated_at": "2026-08-19T15:15:00-04:00",
+            "components": {
+                name: {"as_of": "2026-08-19T15:15:00-04:00"}
+                for name in ("spot", "bars", "gamma")
+            },
+        },
+        "market_structure_snapshot": {"local_flip": 100, "put_wall": 95, "call_wall": 105},
+        "playbook_quote": {"day_high": 102, "day_low": 94},
+        "gamma_snapshot": {"computed_at": "2026-08-19T15:15:00-04:00"},
+        "execution_chart": {"strategy_bars_5m": cached_bars},
+    }
+    live_rows = []
+    for clock in ("09:30", "12:05", "15:15"):
+        stamp = datetime.fromisoformat(f"2026-08-19T{clock}:00").replace(tzinfo=ET)
+        live_rows.append(
+            {
+                "time": int(stamp.timestamp()),
+                "open": 100,
+                "high": 101,
+                "low": 99,
+                "close": 100,
+                "volume": 10,
+            }
+        )
+
+    core._market_pulse_context_response_cache.clear()
+    core._market_pulse_context_response_cache["SPX"] = snapshot
+    monkeypatch.setattr(core, "_market_pulse_cached_playbook_snapshot", lambda *_a, **_k: {})
+    monkeypatch.setattr(core, "_load_market_pulse_playbook_disk_cache", lambda: {})
+    monkeypatch.setattr(core, "_market_pulse_market_hours", lambda _now: True)
+    monkeypatch.setattr(
+        tradier_hero_chart_service,
+        "get_intraday_bars",
+        lambda **_kwargs: {
+            "bars": live_rows,
+            "previous_session_bar_count": 0,
+            "current_session_bar_count": len(live_rows),
+        },
+    )
+
+    with client.application.app_context():
+        result = core._market_pulse_setup_replay_source_snapshot(now, ticker="SPX")
+
+    bars = result["execution_chart"]["strategy_bars_5m"]
+    assert len(bars) == 3
+    assert bars[-1]["ts"].startswith("2026-08-19T15:15:00")
+    core._market_pulse_context_response_cache.clear()
+
+
+def test_setup_replay_keeps_cached_bars_when_live_overlay_fails(client, monkeypatch):
+    from mccain_capital.services import core
+    from mccain_capital.services import tradier_hero_chart_service
+
+    now = datetime(2026, 8, 19, 15, 21, tzinfo=ET)
+    snapshot = {
+        "ticker": "SPX",
+        "canonical_freshness": {
+            "generation_id": "historical-fallback",
+            "symbol": "SPX",
+            "session_id": "2026-08-19",
+            "generated_at": "2026-08-19T15:15:00-04:00",
+            "components": {
+                name: {"as_of": "2026-08-19T15:15:00-04:00"}
+                for name in ("spot", "bars", "gamma")
+            },
+        },
+        "market_structure_snapshot": {"local_flip": 100, "put_wall": 95, "call_wall": 105},
+        "playbook_quote": {"day_high": 102, "day_low": 94},
+        "gamma_snapshot": {"computed_at": "2026-08-19T15:15:00-04:00"},
+        "execution_chart": {"strategy_bars_5m": [
+            _bar("09:30", open_=100, high=101, low=99, close=100),
+            _bar("09:35", open_=100, high=102, low=99.5, close=99.8),
+            _bar("09:40", open_=99.8, high=101.5, low=99.6, close=99.7),
+            _bar("09:45", open_=99.7, high=100.5, low=98, close=99),
+            _bar("09:50", open_=99, high=99, low=94, close=95),
+        ]},
+    }
+    core._market_pulse_context_response_cache.clear()
+    core._market_pulse_context_response_cache["SPX"] = snapshot
+    monkeypatch.setattr(core, "_market_pulse_cached_playbook_snapshot", lambda *_a, **_k: {})
+    monkeypatch.setattr(core, "_load_market_pulse_playbook_disk_cache", lambda: {})
+    monkeypatch.setattr(core, "_market_pulse_market_hours", lambda _now: True)
+    monkeypatch.setattr(
+        tradier_hero_chart_service,
+        "get_intraday_bars",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("provider unavailable")),
+    )
+
+    with client.application.app_context():
+        result = core._market_pulse_setup_replay_source_snapshot(now, ticker="SPX")
+
+    assert result["execution_chart"]["strategy_bars_5m"][-1]["ts"].startswith(
+        "2026-08-19T09:50:00"
+    )
+    core._market_pulse_context_response_cache.clear()
+
+
+def test_setup_replay_historical_request_never_uses_current_hero_bars(client, monkeypatch):
+    from mccain_capital.services import core
+    from mccain_capital.services import tradier_hero_chart_service
+
+    now = datetime(2026, 8, 20, 15, 21, tzinfo=ET)
+    snapshot = {
+        "ticker": "SPX",
+        "canonical_freshness": {
+            "generation_id": "historical-fallback",
+            "symbol": "SPX",
+            "session_id": "2026-08-19",
+            "generated_at": "2026-08-19T15:15:00-04:00",
+            "components": {
+                name: {"as_of": "2026-08-19T15:15:00-04:00"}
+                for name in ("spot", "bars", "gamma")
+            },
+        },
+        "market_structure_snapshot": {"local_flip": 100, "put_wall": 95, "call_wall": 105},
+        "playbook_quote": {"day_high": 102, "day_low": 94},
+        "gamma_snapshot": {"computed_at": "2026-08-19T15:15:00-04:00"},
+        "execution_chart": {"strategy_bars_5m": [
+            _bar("09:30", open_=100, high=101, low=99, close=100),
+            _bar("09:35", open_=100, high=102, low=99.5, close=99.8),
+            _bar("09:40", open_=99.8, high=101.5, low=99.6, close=99.7),
+            _bar("09:45", open_=99.7, high=100.5, low=98, close=99),
+            _bar("09:50", open_=99, high=99, low=94, close=95),
+        ]},
+    }
+    core._market_pulse_context_response_cache.clear()
+    core._market_pulse_context_response_cache["SPX"] = snapshot
+    monkeypatch.setattr(core, "_market_pulse_cached_playbook_snapshot", lambda *_a, **_k: {})
+    monkeypatch.setattr(core, "_load_market_pulse_playbook_disk_cache", lambda: {})
+    monkeypatch.setattr(
+        tradier_hero_chart_service,
+        "get_intraday_bars",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("historical replay fetched live bars")),
+    )
+
+    with client.application.app_context():
+        result = core._market_pulse_setup_replay_source_snapshot(
+            now,
+            ticker="SPX",
+            session_date="2026-08-19",
+        )
+
+    assert result["execution_chart"]["strategy_bars_5m"][-1]["ts"].startswith(
+        "2026-08-19T09:50:00"
+    )
     core._market_pulse_context_response_cache.clear()
 
 

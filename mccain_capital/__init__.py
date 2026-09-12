@@ -15,6 +15,18 @@ from mccain_capital import runtime
 from mccain_capital.routes import register_all_routes
 
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_RUNTIME_ROLES = {"standalone", "web", "worker"}
+
+
+def runtime_role() -> str:
+    """Return the validated process role; default keeps legacy standalone behavior."""
+
+    role = str(os.environ.get("MCCAIN_RUNTIME_ROLE") or "standalone").strip().lower()
+    if role not in _RUNTIME_ROLES:
+        raise RuntimeError(
+            f"Unsupported MCCAIN_RUNTIME_ROLE={role!r}; expected standalone, web, or worker."
+        )
+    return role
 
 
 def _csrf_enabled(app) -> bool:
@@ -39,6 +51,7 @@ def _ensure_csrf_token() -> str:
 
 def create_app():
     """Return configured Flask app with all routes registered."""
+    role = runtime_role()
     app = core.app
     # Keep modular runtime helpers on the same storage paths as legacy app_core.
     runtime.DB_PATH = core.DB_PATH
@@ -191,7 +204,7 @@ def create_app():
         app.config["SAFE_MODE_ERROR"] = str(e)
     if app.config.get("SAFE_MODE"):
         return app
-    if not getattr(app, "_auto_sync_worker_started", False):
+    if role == "standalone" and not getattr(app, "_auto_sync_worker_started", False):
         from mccain_capital.services import trades_sync as trades_service
 
         trades_service.prepare_sync_runtime_state()
@@ -201,5 +214,6 @@ def create_app():
         start_server_setup_monitor_once,
     )
 
-    start_server_setup_monitor_once(app)
+    if role == "standalone":
+        start_server_setup_monitor_once(app)
     return app

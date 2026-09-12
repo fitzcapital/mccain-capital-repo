@@ -1,6 +1,7 @@
 from collections import deque
 from datetime import date
 from datetime import datetime
+from datetime import timedelta
 
 from mccain_capital.services import market_data_service
 from mccain_capital.services import market_worker
@@ -177,6 +178,40 @@ def test_get_intraday_uses_short_lived_curve_cache(monkeypatch):
     assert len(first) == 25
     assert first == second
     assert first is not second
+
+
+def test_tradier_intraday_window_pages_full_regular_session(monkeypatch):
+    calls = []
+    start = datetime(2026, 9, 11, 9, 30, tzinfo=app_runtime.TZ)
+    end = start + timedelta(hours=6, minutes=30)
+
+    monkeypatch.setattr(market_data_service, "_tradier_api_key", lambda: "token")
+
+    def fake_tradier_json(_path, params):
+        calls.append(dict(params))
+        return {
+            "series": {
+                "data": {
+                    "time": params["start"],
+                    "open": 100,
+                    "high": 101,
+                    "low": 99,
+                    "close": 100,
+                    "volume": 10,
+                }
+            }
+        }
+
+    monkeypatch.setattr(market_data_service, "_tradier_json", fake_tradier_json)
+
+    rows = market_data_service._tradier_intraday_rows_for_window("SPX", start, end)
+
+    assert len(calls) == 2
+    assert calls[0]["start"] == "2026-09-11 09:30"
+    assert calls[0]["end"] == "2026-09-11 13:00"
+    assert calls[1]["start"] == "2026-09-11 13:01"
+    assert calls[1]["end"] == "2026-09-11 16:00"
+    assert len(rows) == 2
 
 
 def test_get_intraday_uses_same_day_market_stream_when_tradier_empty(monkeypatch):

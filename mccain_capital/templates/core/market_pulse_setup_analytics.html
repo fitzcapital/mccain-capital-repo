@@ -26,6 +26,14 @@
     <button type="button" data-preset="all_history" aria-pressed="false">All History</button>
   </nav>
 
+  <section class="card setupAnalyticsLeaders" data-analytics-leaders aria-live="polite">
+    <header>
+      <div><span class="setupAnalyticsKicker">What worked best</span><h2>Loading leaders…</h2></div>
+      <button type="button" class="setupAnalyticsTextButton" data-clear-leader hidden>Clear leader filter</button>
+    </header>
+    <div class="setupAnalyticsLeaderGrid" data-analytics-leader-grid></div>
+  </section>
+
   <details class="card setupAnalyticsFilterDrawer" data-filter-drawer>
     <summary><span>Filters</span><small data-filter-summary>Today · all setups</small></summary>
     <form class="setupAnalyticsFilters" data-analytics-filters>

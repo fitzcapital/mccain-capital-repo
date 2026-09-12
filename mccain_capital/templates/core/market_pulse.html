@@ -3150,7 +3150,10 @@
       ).join(" · ");
       const estimateCopy = document.createElement("p");
       estimateCopy.className = "marketPulseReplayOutcomeMetrics";
-      estimateCopy.textContent = `Est. $${Number(row.estimated_tp_ladder?.contract_cost || 750).toFixed(0)} contract · |Δ| ${Number(row.estimated_tp_ladder?.absolute_delta || 0.40).toFixed(2)} · ${gammaLabel} · not used for TP estimates`;
+      const tpSource = row.estimated_tp_ladder?.fallback_used
+        ? "Fallback pricing"
+        : `Tradier NTM ${row.estimated_tp_ladder?.contract_label || "contract"} · ${replayTime(row.estimated_tp_ladder?.quote_as_of)}`;
+      estimateCopy.textContent = `${tpSource} · $${Number(row.estimated_tp_ladder?.contract_cost || 750).toFixed(0)} · |Δ| ${Number(row.estimated_tp_ladder?.absolute_delta || 0.40).toFixed(2)} · ${gammaLabel}; Gamma is confluence only`;
       signal.append(signalTitle, signalCopy, riskCopy, tpCopy, estimateCopy);
       const after = document.createElement("section");
       const afterTitle = document.createElement("small");

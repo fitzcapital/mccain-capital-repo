@@ -14,11 +14,27 @@ const styles = fs.readFileSync(
 
 test("setup analytics keeps one filter query for every panel", () => {
   assert.match(source, /query\(\)\.forEach/);
-  assert.match(source, /renderInsight\(payload\.insights/);
+  assert.match(source, /renderInsight\(\{best_time_bucket: payload\.leaders\.time\}/);
   assert.match(source, /renderKpis\(payload\.metrics/);
   assert.match(source, /renderCharts\(payload\)/);
   assert.match(source, /renderLedger\(payload\.ledger\)/);
   assert.match(source, /renderCoverage\(payload\)/);
+  assert.match(source, /renderLeaders\(payload\.leaders\)/);
+});
+
+test("history leaders explain evidence and drill into the existing filters", () => {
+  assert.match(source, /Best setup \+ time/);
+  assert.match(source, /\$\{leader\.target_reached_count\}\/\$\{leader\.evaluated_count\}/);
+  assert.match(source, /Median favorable/);
+  assert.match(source, /Median adverse/);
+  assert.match(source, /Study these setups/);
+  assert.match(source, /data-study-leader/);
+  assert.match(source, /form\.elements\.family\.value/);
+  assert.match(source, /form\.elements\.start_time\.value/);
+  assert.match(source, /form\.elements\.end_time\.value/);
+  assert.match(source, /data-clear-leader/);
+  assert.match(styles, /setupAnalyticsLeaderGrid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(styles, /overflow-wrap:anywhere/);
 });
 
 test("setup analytics opens on today and keeps historical filters available", () => {
@@ -38,7 +54,9 @@ test("setup analytics separates legacy frequency from performance evidence", () 
   assert.doesNotMatch(source, /No outcomes/);
   assert.match(source, /renderHeatmap/);
   assert.match(source, /renderFamilyCards/);
-  assert.match(source, /early evidence/);
+  assert.match(source, /insight\.evidence\.label/);
+  assert.match(source, /duplicate_rows_excluded/);
+  assert.match(source, /duplicate .* excluded/);
 });
 
 test("setup analytics uses tabbed views and compact event rows", () => {
@@ -57,6 +75,16 @@ test("setup analytics charts preserve complete labels", () => {
   assert.match(styles, /data-analytics-view=timing\]\{grid-template-columns:1fr/);
   assert.match(styles, /data-analytics-view=overview\]\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(styles, /setupAnalyticsFamilyCards\.is-preview\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
+
+test("timing chart stays compact and handles every returned time bucket", () => {
+  assert.match(source, /--bucket-count:\$\{rows\.length\}/);
+  assert.match(source, /const result = rate === null \? "—" : percent\(rate\)/);
+  assert.match(source, /Hover a bar for its sample details/);
+  assert.match(source, /setupAnalyticsChartHelp/);
+  assert.doesNotMatch(source, /resolved ·/);
+  assert.match(styles, /repeat\(var\(--bucket-count\),minmax\(0,1fr\)\)/);
+  assert.match(styles, /setupAnalyticsChartHelp p\{position:absolute/);
 });
 
 test("family analysis explains denominators and SPX-point units", () => {

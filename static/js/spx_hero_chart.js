@@ -100,7 +100,7 @@
   };
   const INTERVAL_VISIBLE_BARS = {
     "1min": 90,
-    "5min": 60,
+    "5min": 78,
     "15min": 48,
     "30min": 40,
     "1h": 32,
@@ -194,7 +194,9 @@
   const LEGACY_HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
   const HERO_CHART_PREFS_KEY = `mc_hero_chart_display_prefs_${symbol}`;
   const HERO_CHART_DRAWINGS_KEY = `mc_hero_chart_drawings_${symbol}`;
-  const STRAT_MARKER_LIMIT = 96;
+  // Directional Strat candles render two marker objects (arrow + number).
+  // Keep enough room for a full regular session even on the 1-minute view.
+  const STRAT_MARKER_LIMIT = 800;
   const LEVEL_RAIL_MIN_GAP = 38;
 
   const priceScaleWidth = 112;

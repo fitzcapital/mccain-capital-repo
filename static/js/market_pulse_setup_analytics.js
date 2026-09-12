@@ -42,9 +42,35 @@
   function renderInsight(insights, coverage) {
     const insight = insights.best_time_bucket;
     const copy = root.querySelector("[data-analytics-insight]");
-    copy.innerHTML = insight ? `<span class="setupAnalyticsKicker">Best window in this sample</span><strong>${escapeHtml(insight.label)}</strong><p>${percent(insight.target_reached_rate)} target · ${insight.target_reached_count}/${insight.evaluated_count} evaluated${insight.early_evidence ? " · <em>early evidence</em>" : ""}</p>` : `<span class="setupAnalyticsKicker">Best window</span><strong>Evidence still building</strong><p>Frequency is available; outcomes are incomplete.</p>`;
+    copy.innerHTML = insight ? `<span class="setupAnalyticsKicker">Best evidence-adjusted window</span><strong>${escapeHtml(insight.label)}</strong><p>${percent(insight.target_reached_rate)} target · ${insight.target_reached_count}/${insight.evaluated_count} completed · <em>${escapeHtml(insight.evidence.label)}</em></p>` : `<span class="setupAnalyticsKicker">Best window</span><strong>Evidence still building</strong><p>Frequency is available; outcomes are incomplete.</p>`;
     const coveragePercent = coverage.outcome_coverage_percent || 0;
     root.querySelector("[data-analytics-gauge]").innerHTML = `<div class="setupAnalyticsGaugeRing" style="--coverage:${coveragePercent * 3.6}deg"><strong>${percent(coverage.outcome_coverage_percent)}</strong></div><span>Outcome coverage<small>${coverage.complete_outcome_count} of ${coverage.complete_outcome_count + coverage.missing_outcome_count} setups evaluated</small></span>`;
+  }
+
+  function leaderCard(kind, title, leader) {
+    if (!leader) return `<article class="setupAnalyticsLeaderCard is-empty"><span>${escapeHtml(title)}</span><strong>Not measurable yet</strong><p>Completed outcomes are required.</p></article>`;
+    const filters = [
+      leader.filter_family ? `data-family="${escapeHtml(leader.filter_family)}"` : "",
+      leader.filter_start_time ? `data-start-time="${escapeHtml(leader.filter_start_time)}"` : "",
+      leader.filter_end_time ? `data-end-time="${escapeHtml(leader.filter_end_time)}"` : "",
+    ].filter(Boolean).join(" ");
+    return `<article class="setupAnalyticsLeaderCard is-${escapeHtml(leader.evidence.key)}"><span>${escapeHtml(title)}</span><strong>${escapeHtml(leader.label)}</strong><div><b>${leader.target_reached_count}/${leader.evaluated_count}</b><em>${percent(leader.target_reached_rate)} reached target</em></div><p>${escapeHtml(leader.evidence.label)} · ${leader.total_occurrences} total setups</p><dl><div><dt>Median favorable</dt><dd>${number(leader.median_mfe.value)} SPX pts</dd></div><div><dt>Median adverse</dt><dd>${number(leader.median_mae.value)} SPX pts</dd></div></dl><button type="button" class="setupAnalyticsTextButton" data-study-leader="${kind}" ${filters}>Study these setups →</button></article>`;
+  }
+
+  function renderLeaders(leaders) {
+    const section = root.querySelector("[data-analytics-leaders]");
+    section.querySelector("h2").textContent = leaders.horizon_label;
+    const available = leaders.setup || leaders.time || leaders.combination;
+    section.querySelector("[data-analytics-leader-grid]").innerHTML = available
+      ? [leaderCard("setup", "Best setup", leaders.setup), leaderCard("time", "Best time", leaders.time), leaderCard("combination", "Best setup + time", leaders.combination)].join("")
+      : `<div class="setupAnalyticsLeaderEmpty"><strong>No performance leader yet</strong><p>${escapeHtml(leaders.unavailable_reason)}</p></div>`;
+    let details = section.querySelector("details");
+    if (!details) {
+      details = document.createElement("details");
+      details.innerHTML = `<summary>How leaders are ranked</summary><p></p>`;
+      section.appendChild(details);
+    }
+    details.querySelector("p").textContent = leaders.method;
   }
 
   function renderKpis(metrics, coverage) {
@@ -62,12 +88,18 @@
   function heatmapMarkup(rows) {
     if (!rows.length) return empty("No setup evidence in this range.");
     const maxOccurrences = Math.max(1, ...rows.map((row) => row.total_occurrences));
-    return `<div class="setupAnalyticsProfilePlot">${rows.map((row) => {
+    return `<div class="setupAnalyticsProfilePlot" style="--bucket-count:${rows.length}">${rows.map((row) => {
       const rate = row.target_reached_rate;
       const tone = rate === null ? "unknown" : rate >= 60 ? "strong" : rate >= 40 ? "mixed" : "weak";
       const height = Math.max(12, row.total_occurrences / maxOccurrences * 100);
-      return `<figure class="setupAnalyticsProfileBucket is-${tone}" title="${escapeHtml(row.bucket)} · ${row.total_occurrences} setups · ${row.evaluated_count} completed outcomes"><div class="setupAnalyticsProfileValue"><span>${row.total_occurrences}</span><small>setups</small></div><div class="setupAnalyticsProfileBar"><i style="height:${height}%"></i><b>${rate === null ? "No completed outcomes" : percent(rate)}</b></div><figcaption><span>${escapeHtml(row.bucket)}</span><small>completed ${row.evaluated_count} of ${row.total_occurrences}</small></figcaption></figure>`;
-    }).join("")}</div><div class="setupAnalyticsProfileLegend"><span><i class="is-strong"></i>60%+ target</span><span><i class="is-mixed"></i>40–59%</span><span><i class="is-weak"></i>Below 40%</span><span><i class="is-unknown"></i>No captured outcomes</span></div>`;
+      const hits = row.target_reached_count || 0;
+      const pending = Math.max(0, row.total_occurrences - row.evaluated_count);
+      const result = rate === null ? "—" : percent(rate);
+      const tooltip = rate === null
+        ? `${row.bucket}: ${row.total_occurrences} setup; no completed outcome yet.`
+        : `${row.bucket}: ${hits} of ${row.evaluated_count} completed setups hit target (${percent(rate)}); ${pending} pending.`;
+      return `<figure class="setupAnalyticsProfileBucket is-${tone}" title="${escapeHtml(tooltip)}"><div class="setupAnalyticsProfileValue"><span>${row.total_occurrences}</span></div><div class="setupAnalyticsProfileBar"><i style="height:${height}%"></i><b>${result}</b></div><figcaption><span>${escapeHtml(row.bucket)}</span></figcaption></figure>`;
+    }).join("")}</div><div class="setupAnalyticsProfileFooter"><div class="setupAnalyticsProfileLegend" aria-label="Target-hit-rate colors"><span><i class="is-strong"></i>60%+</span><span><i class="is-mixed"></i>40–59%</span><span><i class="is-weak"></i>Below 40%</span><span><i class="is-unknown"></i>No outcome</span></div><details class="setupAnalyticsChartHelp"><summary>How to read</summary><p><b>Top number:</b> setup count. <b>Bar height:</b> frequency. <b>Percentage:</b> targets reached among completed outcomes only. Hover a bar for its sample details.</p></details></div>`;
   }
 
   function renderHeatmap(rows) {
@@ -176,7 +208,8 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
 
   function renderCoverage(payload) {
     const coverage = payload.coverage;
-    root.querySelector("[data-analytics-coverage]").innerHTML = `<strong>Coverage boundary</strong><span>${coverage.session_count} sessions · ${formatStamp(coverage.earliest_signal_time)} through ${formatStamp(coverage.latest_signal_time)} · evaluated through ${formatStamp(coverage.evaluated_through)}</span><span>${coverage.missing_outcome_count} legacy outcomes · ${coverage.missing_excursion_count} missing excursion samples</span><small>${escapeHtml(payload.interpretation)}</small>`;
+    const duplicateNote = coverage.duplicate_rows_excluded ? ` · ${coverage.duplicate_rows_excluded} duplicate ${coverage.duplicate_rows_excluded === 1 ? "record" : "records"} excluded` : "";
+    root.querySelector("[data-analytics-coverage]").innerHTML = `<strong>Coverage boundary</strong><span>${coverage.session_count} sessions · ${formatStamp(coverage.earliest_signal_time)} through ${formatStamp(coverage.latest_signal_time)} · evaluated through ${formatStamp(coverage.evaluated_through)}</span><span>${coverage.missing_outcome_count} legacy outcomes · ${coverage.missing_excursion_count} missing excursion samples${duplicateNote}</span><small>${escapeHtml(payload.interpretation)}</small>`;
   }
 
   function updateFilterSummary(filters) {
@@ -220,7 +253,8 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
       form.elements.start_date.value = payload.filters.start_date;
       form.elements.end_date.value = payload.filters.end_date;
       form.elements.preset.value = payload.filters.preset;
-      renderInsight(payload.insights, payload.coverage);
+      renderInsight({best_time_bucket: payload.leaders.time}, payload.coverage);
+      renderLeaders(payload.leaders);
       renderKpis(payload.metrics, payload.coverage);
       renderCharts(payload);
       renderLedger(payload.ledger);
@@ -266,5 +300,23 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
   next.addEventListener("click", () => { if (lastPayload && page < lastPayload.ledger.pages) { page += 1; load(); } });
   root.querySelectorAll("[data-analytics-tab]").forEach((button) => button.addEventListener("click", () => selectView(button.dataset.analyticsTab)));
   root.querySelectorAll("[data-open-view]").forEach((button) => button.addEventListener("click", () => selectView(button.dataset.openView, true)));
+  root.querySelector("[data-analytics-leaders]").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-study-leader]");
+    if (!button) return;
+    if (button.dataset.family) form.elements.family.value = button.dataset.family;
+    if (button.dataset.startTime) form.elements.start_time.value = button.dataset.startTime;
+    if (button.dataset.endTime) form.elements.end_time.value = button.dataset.endTime;
+    root.querySelector("[data-clear-leader]").hidden = false;
+    page = 1;
+    load();
+  });
+  root.querySelector("[data-clear-leader]").addEventListener("click", (event) => {
+    form.elements.family.value = "";
+    form.elements.start_time.value = "09:30";
+    form.elements.end_time.value = "16:00";
+    event.currentTarget.hidden = true;
+    page = 1;
+    load();
+  });
   load();
 })();

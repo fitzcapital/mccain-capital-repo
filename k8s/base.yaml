@@ -1,0 +1,212 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mccain-capital
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mccain-capital-data
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: mccain-local
+  hostPath:
+    path: /mnt/mccain-capital-data
+    type: Directory
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mccain-capital-data
+  namespace: mccain-capital
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: mccain-local
+  volumeName: mccain-capital-data
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mccain-capital-web
+  namespace: mccain-capital
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: mccain-capital
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 5001
+      targetPort: http
+      nodePort: 30001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mccain-capital-web
+  namespace: mccain-capital
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mccain-capital
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mccain-capital
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: web
+          image: localhost/mccain-capital-app:k8s
+          imagePullPolicy: Never
+          command: ["sh", "-lc"]
+          args:
+            - >-
+              gunicorn --worker-class gthread --workers 1 --threads 2
+              --max-requests 750 --max-requests-jitter 100 --timeout 180
+              --graceful-timeout 30 -b 0.0.0.0:5001 mccain_capital.wsgi:app
+          envFrom:
+            - secretRef:
+                name: mccain-runtime-env
+          env:
+            - name: MCCAIN_RUNTIME_ROLE
+              value: web
+            - name: PERSISTENT_DATA_DIR
+              value: /data
+            - name: DB_PATH
+              value: /data/journal.db
+            - name: UPLOAD_DIR
+              value: /data/uploads
+            - name: BOOKS_DIR
+              value: /data/books
+            - name: SECRET_KEY_FILE
+              value: /data/.secret_key
+            - name: OPENBLAS_NUM_THREADS
+              value: "1"
+            - name: OMP_NUM_THREADS
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 5001
+          resources:
+            requests:
+              cpu: 300m
+              memory: 512Mi
+            limits:
+              cpu: 1500m
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mccain-capital-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mccain-capital-worker
+  namespace: mccain-capital
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mccain-capital
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mccain-capital
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: localhost/mccain-capital-app:k8s
+          imagePullPolicy: Never
+          command: ["python", "-m", "mccain_capital.worker"]
+          envFrom:
+            - secretRef:
+                name: mccain-runtime-env
+          env:
+            - name: MCCAIN_RUNTIME_ROLE
+              value: worker
+            - name: PERSISTENT_DATA_DIR
+              value: /data
+            - name: DB_PATH
+              value: /data/journal.db
+            - name: UPLOAD_DIR
+              value: /data/uploads
+            - name: BOOKS_DIR
+              value: /data/books
+            - name: SECRET_KEY_FILE
+              value: /data/.secret_key
+            - name: OPENBLAS_NUM_THREADS
+              value: "1"
+            - name: OMP_NUM_THREADS
+              value: "1"
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 750m
+              memory: 768Mi
+          startupProbe:
+            exec:
+              command: ["python", "-m", "mccain_capital.worker", "--check"]
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            exec:
+              command: ["python", "-m", "mccain_capital.worker", "--check"]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["python", "-m", "mccain_capital.worker", "--check"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mccain-capital-data

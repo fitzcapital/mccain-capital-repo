@@ -131,18 +131,33 @@ def _next_target(
     if not candidates:
         return None
     target = min(candidates, key=lambda level: abs(level.value - value))
-    return {"key": target.key, "label": target.label, "value": target.value}
+    return {
+        "key": target.key,
+        "label": target.label,
+        "value": target.value,
+        **({"as_of": target.as_of} if target.as_of else {}),
+    }
 
 
-def _estimated_scalp_targets(entry: Any, direction: str) -> dict[str, Any]:
+def _estimated_scalp_targets(
+    entry: Any, direction: str, option_reference: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    reference = dict(option_reference or {})
+    use_tradier = reference.get("pricing_mode") == "tradier_current_quote"
+    contract_cost = _number(reference.get("contract_cost")) if use_tradier else None
+    absolute_delta = _number(reference.get("absolute_delta")) if use_tradier else None
+    if contract_cost is None or contract_cost <= 0 or absolute_delta is None or not 0.05 <= absolute_delta <= 0.95:
+        use_tradier = False
+        contract_cost = ESTIMATED_CONTRACT_COST
+        absolute_delta = ESTIMATED_ABSOLUTE_DELTA
     entry_value = _number(entry)
     if entry_value is None or direction not in {"bullish", "bearish"}:
-        return {"targets": [], "contract_cost": 750, "absolute_delta": 0.40}
-    premium = ESTIMATED_CONTRACT_COST / 100
+        return {"targets": [], "contract_cost": contract_cost, "absolute_delta": absolute_delta}
+    premium = contract_cost / 100
     sign = 1 if direction == "bullish" else -1
     targets = []
     for index, return_percent in enumerate(ESTIMATED_TP_RETURNS, start=1):
-        point_move = premium * (return_percent / 100) / ESTIMATED_ABSOLUTE_DELTA
+        point_move = premium * (return_percent / 100) / absolute_delta
         targets.append(
             {
                 "key": f"tp{index}",
@@ -153,10 +168,28 @@ def _estimated_scalp_targets(entry: Any, direction: str) -> dict[str, Any]:
         )
     return {
         "targets": targets,
-        "contract_cost": int(ESTIMATED_CONTRACT_COST),
-        "absolute_delta": ESTIMATED_ABSOLUTE_DELTA,
+        "contract_cost": round(contract_cost, 2),
+        "absolute_delta": round(absolute_delta, 4),
+        "pricing_mode": "tradier_current_quote" if use_tradier else "fallback_estimate",
+        "source": reference.get("source") if use_tradier else "Documented planning assumption",
+        "contract_label": str(reference.get("contract_label") or "") if use_tradier else "",
+        "quote_as_of": str(reference.get("as_of") or "") if use_tradier else "",
+        "fallback_used": not use_tradier,
+        "fallback_reason": "" if use_tradier else str(reference.get("fallback_reason") or "unavailable"),
         "dealer_gamma_used": False,
     }
+
+
+def _gamma_at_signal(
+    observations: Iterable[Mapping[str, Any]], signal_stamp: datetime | None
+) -> dict[str, Any] | None:
+    eligible: list[tuple[datetime, dict[str, Any]]] = []
+    for source in observations:
+        row = dict(source)
+        observed_at = _timestamp({"ts": row.get("as_of") or row.get("timestamp")})
+        if observed_at is not None and signal_stamp is not None and observed_at <= signal_stamp:
+            eligible.append((observed_at, row))
+    return max(eligible, key=lambda item: item[0])[1] if eligible else None
 
 
 def _point_in_time_levels(
@@ -469,19 +502,30 @@ def _canonicalize_setups(setups: Iterable[Mapping[str, Any]]) -> list[dict[str, 
             *supporting,
         ]
         available = normalize_levels(primary.pop("_available_levels", []))
+        entry_value = _number(primary.get("entry_zone"))
         target = _next_target(
             available,
-            float(primary_value or 0),
+            float(entry_value if entry_value is not None else primary_value or 0),
             str(primary.get("direction") or ""),
             excluded_keys=excluded_keys,
         )
         primary["target"] = target
         primary["actionable"] = target is not None
         primary["target_diagnostic"] = (
-            "Nearest meaningful directional target beyond the anchor cluster"
+            "Nearest directional level at least 5 points from entry"
             if target
-            else "No directional level beyond the anchor cluster has at least 5 points of space"
+            else "No directional level beyond the anchor cluster is at least 5 points from entry"
         )
+        components = list(primary.get("score_components") or [])
+        for component in components:
+            if component.get("key") == "target_space":
+                component["earned"] = CONFLUENCE_WEIGHTS["target_space"] if target else 0
+                component["status"] = "confirmed" if target else "missing"
+        primary["score_components"] = components
+        score = sum(int(component.get("earned") or 0) for component in components)
+        primary["score"] = score
+        primary["quality_score"] = score
+        primary["grade"] = confluence_grade(score)
         if ignored:
             primary["ignored_anchor_levels"] = ignored
         primary["family_label"] = _contextual_family_label(primary)
@@ -523,12 +567,15 @@ def _build_intraday_setup_analysis(
     strategy: Mapping[str, Any] | None = None,
     gamma_regime: str = "",
     gamma_as_of: Any = None,
+    gamma_observations: Iterable[Mapping[str, Any]] = (),
+    option_references: Mapping[str, Mapping[str, Any]] | None = None,
     include_rejected: bool = False,
 ) -> dict[str, Any]:
     """Replay scenario transitions without exposing future candles to eligibility."""
 
     rows = _normalized_bars(bars, session_date)
     level_rows = [dict(row) for row in levels if isinstance(row, Mapping)]
+    gamma_rows = [dict(row) for row in gamma_observations if isinstance(row, Mapping)]
     gamma_stamp = None
     if gamma_as_of:
         gamma_stamp = _timestamp({"ts": gamma_as_of})
@@ -543,12 +590,23 @@ def _build_intraday_setup_analysis(
         if signal_stamp is not None and signal_stamp.time() > REPLAY_ENTRY_CUTOFF_ET:
             break
         bars_at_signal = rows[: index + 1]
-        levels_at_signal = _point_in_time_levels(level_rows, bars_at_signal)
-        point_in_time_gamma = (
-            gamma_regime
-            if gamma_stamp is not None and signal_stamp is not None and gamma_stamp <= signal_stamp
-            else ""
+        gamma_observation = _gamma_at_signal(gamma_rows, signal_stamp)
+        observation_levels = list((gamma_observation or {}).get("levels") or [])
+        levels_at_signal = _point_in_time_levels(
+            [*level_rows, *observation_levels], bars_at_signal
         )
+        selected_gamma_stamp = _timestamp(
+            {
+                "ts": (
+                    (gamma_observation or {}).get("as_of")
+                    if gamma_rows
+                    else gamma_as_of
+                )
+            }
+        )
+        point_in_time_gamma = str((gamma_observation or {}).get("regime") or "")
+        if not gamma_rows and gamma_stamp is not None and signal_stamp is not None and gamma_stamp <= signal_stamp:
+            point_in_time_gamma = gamma_regime
         rankings = rank_market_scenarios(
             spot=signal_bar["close"],
             levels=levels_at_signal,
@@ -708,6 +766,7 @@ def _build_intraday_setup_analysis(
                 "estimated_tp_ladder": _estimated_scalp_targets(
                     trigger_evidence.get("trigger_price") or signal_bar["close"],
                     str(candidate.get("direction") or ""),
+                    dict((option_references or {}).get(str(candidate.get("direction") or "")) or {}),
                 ),
                 "confirmation": candidate.get("plan", {}).get("trigger"),
                 "invalidation": candidate.get("plan", {}).get("cancel"),
@@ -718,7 +777,7 @@ def _build_intraday_setup_analysis(
                 "strat_pattern": dict(candidate.get("strat_pattern") or {}),
                 "data_availability": {
                     "bars_as_of": signal_bar["ts"],
-                    "gamma_as_of": gamma_stamp.isoformat() if gamma_stamp else "",
+                    "gamma_as_of": selected_gamma_stamp.isoformat() if selected_gamma_stamp else "",
                     "gamma_available_at_signal": bool(point_in_time_gamma),
                     "level_as_of": anchor.get("as_of") or "",
                 },
@@ -759,6 +818,8 @@ def build_intraday_setup_events(
     strategy: Mapping[str, Any] | None = None,
     gamma_regime: str = "",
     gamma_as_of: Any = None,
+    gamma_observations: Iterable[Mapping[str, Any]] = (),
+    option_references: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Return the shared point-in-time eligible event stream for Live and Replay."""
 
@@ -770,6 +831,8 @@ def build_intraday_setup_events(
         strategy=strategy,
         gamma_regime=gamma_regime,
         gamma_as_of=gamma_as_of,
+        gamma_observations=gamma_observations,
+        option_references=option_references,
         include_rejected=False,
     )
     events: list[dict[str, Any]] = []
@@ -789,6 +852,8 @@ def build_intraday_setup_replay(
     strategy: Mapping[str, Any] | None = None,
     gamma_regime: str = "",
     gamma_as_of: Any = None,
+    gamma_observations: Iterable[Mapping[str, Any]] = (),
+    option_references: Mapping[str, Mapping[str, Any]] | None = None,
     include_rejected: bool = False,
 ) -> dict[str, Any]:
     """Return replay outcomes built from the shared point-in-time event analysis."""
@@ -801,5 +866,7 @@ def build_intraday_setup_replay(
         strategy=strategy,
         gamma_regime=gamma_regime,
         gamma_as_of=gamma_as_of,
+        gamma_observations=gamma_observations,
+        option_references=option_references,
         include_rejected=include_rejected,
     )

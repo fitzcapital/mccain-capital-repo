@@ -364,6 +364,89 @@ def _market_pulse_live_setup_ledger_file(ticker: str) -> str:
     return app_runtime.upload_path(f".market_pulse_live_setups_{safe_ticker.lower()}.json")
 
 
+def _market_pulse_gamma_history_file(ticker: str) -> str:
+    safe_ticker = re.sub(r"[^A-Z0-9_-]", "", str(ticker or "SPX").upper()) or "SPX"
+    return app_runtime.upload_path(f".market_pulse_gamma_history_{safe_ticker.lower()}.json")
+
+
+def _market_pulse_gamma_observations(ticker: str, *, session_date: str) -> List[Dict[str, Any]]:
+    try:
+        with open(_market_pulse_gamma_history_file(ticker), "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, TypeError, ValueError):
+        return []
+    return [
+        dict(row)
+        for row in list(payload.get("observations") or [])
+        if isinstance(row, dict) and str(row.get("session") or "") == session_date
+    ]
+
+
+def _market_pulse_record_gamma_observation(ticker: str, payload: Dict[str, Any]) -> bool:
+    """Persist one accepted canonical Gamma generation for later point-in-time replay."""
+
+    freshness = dict(payload.get("canonical_freshness") or {})
+    if freshness.get("execution_locked"):
+        return False
+    structure = dict(payload.get("market_structure_snapshot") or {})
+    gamma = dict(payload.get("gamma_snapshot") or {})
+    observed_at = str(
+        gamma.get("last_successful_compute") or gamma.get("computed_at") or gamma.get("asof") or ""
+    )
+    session_id = str(freshness.get("session_id") or "")
+    generation_id = str(
+        freshness.get("gamma_generation_id") or freshness.get("generation_id") or ""
+    )
+    regime = str(structure.get("gamma_regime") or "")
+    if not observed_at or not session_id or not generation_id or not regime:
+        return False
+    level_fields = {
+        "gamma_flip": "main_flip",
+        "local_flip": "local_flip",
+        "call_wall": "call_wall",
+        "put_wall": "put_wall",
+        "new_call_wall": "next_call_wall",
+        "new_put_wall": "next_put_wall",
+    }
+    levels = []
+    for key, field in level_fields.items():
+        value = _market_pulse_positive_float(structure.get(field))
+        if value is not None:
+            levels.append({"key": key, "value": value, "as_of": observed_at})
+    observation = {
+        "ticker": str(ticker or "SPX").upper(),
+        "session": session_id,
+        "as_of": observed_at,
+        "generation_id": generation_id,
+        "regime": regime,
+        "levels": levels,
+    }
+    path = _market_pulse_gamma_history_file(ticker)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            history = json.load(handle)
+    except (OSError, TypeError, ValueError):
+        history = {}
+    rows = [dict(row) for row in list(history.get("observations") or []) if isinstance(row, dict)]
+    identity = (generation_id, observed_at)
+    if any((str(row.get("generation_id") or ""), str(row.get("as_of") or "")) == identity for row in rows):
+        return False
+    rows.append(observation)
+    sessions = sorted({str(row.get("session") or "") for row in rows if row.get("session")})[-20:]
+    bounded = []
+    for session in sessions:
+        session_rows = sorted(
+            (row for row in rows if str(row.get("session") or "") == session),
+            key=lambda row: str(row.get("as_of") or ""),
+        )[-96:]
+        bounded.extend(session_rows)
+    try:
+        _atomic_dump_market_pulse_json(path, {"version": 1, "observations": bounded})
+    except OSError:
+        return False
+    return True
+
+
 def _market_pulse_durable_level_observations(
     ticker: str, *, session_date: str
 ) -> List[Dict[str, Any]]:
@@ -481,6 +564,10 @@ def _market_pulse_live_setup_monitor(
         strategy=market_structure_snapshot.get("strategy") or {},
         gamma_regime=str(market_structure_snapshot.get("gamma_regime") or ""),
         gamma_as_of=gamma_as_of,
+        gamma_observations=_market_pulse_gamma_observations(
+            ticker,
+            session_date=str(canonical_freshness.get("session_id") or now_et.date().isoformat()),
+        ),
     )
     result = evaluate_live_setup_monitor(
         ticker=ticker,
@@ -1456,6 +1543,77 @@ def _market_pulse_setup_replay_source_snapshot(
 
     disk = _load_market_pulse_playbook_disk_cache() or {}
     candidates = [canonical_context, playbook_snapshot, disk.get("payload")]
+
+    # Live Replay and the visible chart must use the same completed 5-minute
+    # candles. Cached context can lag the hero feed during the session, so add
+    # an overlaid candidate without mutating the durable snapshots. Historical
+    # requests remain frozen to their requested session.
+    if not str(session_date or "").strip():
+        try:
+            from mccain_capital.services import tradier_hero_chart_service
+
+            bars_payload = tradier_hero_chart_service.get_intraday_bars(
+                symbol=selected_ticker,
+                interval="5min",
+            )
+            all_bars = list(bars_payload.get("bars") or [])
+            previous_count = max(0, int(bars_payload.get("previous_session_bar_count") or 0))
+            current_count = max(0, int(bars_payload.get("current_session_bar_count") or 0))
+            live_bars = []
+            for row in all_bars[previous_count : previous_count + current_count]:
+                if not isinstance(row, dict):
+                    continue
+                raw_time = row.get("time")
+                stamp = (
+                    datetime.fromtimestamp(int(raw_time), tz=app_runtime.TZ)
+                    if isinstance(raw_time, (int, float))
+                    else _parse_iso_et(raw_time)
+                )
+                values = {
+                    key: _market_pulse_positive_float(row.get(key))
+                    for key in ("open", "high", "low", "close")
+                }
+                if (
+                    stamp is None
+                    or stamp.date() != now_et.date()
+                    or stamp + timedelta(minutes=5) > now_et
+                    or not ((9, 30) <= (stamp.hour, stamp.minute) < (16, 0))
+                    or any(value is None for value in values.values())
+                    or values["high"] < max(values["open"], values["close"])
+                    or values["low"] > min(values["open"], values["close"])
+                ):
+                    continue
+                live_bars.append(
+                    {
+                        "ts": stamp.isoformat(),
+                        **values,
+                        "v": values["close"],
+                        "volume": int(row.get("volume") or 0),
+                    }
+                )
+            if live_bars:
+                for candidate in list(candidates):
+                    if not isinstance(candidate, dict):
+                        continue
+                    overlaid = copy.deepcopy(candidate)
+                    chart = dict(overlaid.get("execution_chart") or {})
+                    cached_bars = list(chart.get("strategy_bars_5m") or [])
+                    merged_bars = {}
+                    for row in cached_bars:
+                        if not isinstance(row, dict):
+                            continue
+                        cached_stamp = _parse_iso_et(row.get("ts"))
+                        if cached_stamp is None or cached_stamp.date() != now_et.date():
+                            continue
+                        merged_bars[cached_stamp.isoformat()] = dict(row)
+                    merged_bars.update({str(row["ts"]): row for row in live_bars})
+                    chart["strategy_bars_5m"] = [
+                        merged_bars[key] for key in sorted(merged_bars)
+                    ]
+                    overlaid["execution_chart"] = chart
+                    candidates.append(overlaid)
+        except Exception as exc:
+            current_app.logger.warning("Replay completed-bar overlay unavailable: %s", exc)
     compatible = []
     for candidate in candidates:
         if not isinstance(candidate, dict):
@@ -16089,6 +16247,7 @@ def market_pulse_context_api():
                     if not freshness.get("execution_locked") and not current_app.config.get(
                         "TESTING"
                     ):
+                        _market_pulse_record_gamma_observation(selected_ticker, payload)
                         promoted = promote_shared_context(
                             _market_pulse_context_cache_file(selected_ticker),
                             payload,
@@ -16186,6 +16345,12 @@ def market_pulse_setup_replay_api():
         {"key": "current_day_low", "value": quote.get("day_low")},
     ]
     levels.extend(_market_pulse_durable_level_observations(ticker, session_date=session_date))
+    gamma_observations = _market_pulse_gamma_observations(ticker, session_date=session_date)
+    option_references: Dict[str, Dict[str, Any]] = {}
+    if session_date == now_et.date().isoformat():
+        from mccain_capital.services.market_pulse_option_projection import premium_anchors
+
+        option_references = premium_anchors(now=now_et)
     payload = build_intraday_setup_replay(
         ticker=ticker,
         session_date=session_date,
@@ -16194,6 +16359,8 @@ def market_pulse_setup_replay_api():
         strategy=structure.get("strategy") or {},
         gamma_regime=str(structure.get("gamma_regime") or ""),
         gamma_as_of=gamma_as_of,
+        gamma_observations=gamma_observations,
+        option_references=option_references,
         include_rejected=include_rejected,
     )
     payload.update({key: value for key, value in review.items() if key != "bars"})

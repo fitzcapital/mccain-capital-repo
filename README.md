@@ -107,6 +107,26 @@ python -m mccain_capital.cli
 
 Open: `http://localhost:5001`
 
+Podman image storage is managed conservatively. Status and cleanup preview are read-only:
+
+```bash
+./scripts/manage_podman_storage.sh
+./scripts/manage_podman_storage.sh cleanup
+```
+
+Apply cleanup only after reviewing the preview:
+
+```bash
+./scripts/manage_podman_storage.sh cleanup --apply
+./scripts/manage_podman_storage.sh cleanup --retention-hours 24 --apply
+```
+
+Cleanup removes only dangling images (zero-hour retention by default). It
+does not remove containers, volumes, tagged images, or anything under `persistent-data/`. Set a
+positive `--retention-hours` value when temporary dangling build history is desired. A normal
+deployment preserves the previous application image as `localhost/mccain-capital-app:rollback` and
+runs conservative cleanup only after the new container passes `/healthz`.
+
 ## 🖥️ Fitz CLI
 
 The repo now exposes an installable `fitz` command for terminal tools.
@@ -160,6 +180,43 @@ cd /mccain-capital-repo
 ```
 
 Open: `http://localhost:5001`
+
+### Local Kubernetes (kind + FreeLens)
+
+This is the recommended managed local runtime. It keeps one web pod and one background-worker pod,
+uses one shared image, and continues to serve the app at `http://localhost:5001`.
+
+```bash
+./scripts/install_local_k8s.sh       # one-time tools: kubectl, kind, FreeLens
+./scripts/deploy_local_k8s.sh        # build, deploy, verify, and cut over safely
+./scripts/local_k8s_status.sh        # pods, limits, worker heartbeat, health, and disk
+```
+
+In FreeLens, add the kubeconfig context `kind-mccain-capital`, then use **Workloads → Pods** to
+inspect logs and restarts. The web pod is limited to 1 CPU/GiB-class memory and the worker to a
+smaller background budget; both remain single replicas to avoid duplicate schedulers. The database,
+uploads, and books remain in the host's `persistent-data/` directory through a Retain-policy volume.
+
+```bash
+kubectl -n mccain-capital logs deployment/mccain-capital-web --tail=100
+kubectl -n mccain-capital logs deployment/mccain-capital-worker --tail=100
+kubectl -n mccain-capital rollout restart deployment/mccain-capital-web
+./scripts/manage_podman_storage.sh cleanup --apply
+./scripts/rollback_local_k8s.sh      # delete cluster and restore standalone Podman
+./scripts/teardown_local_k8s.sh      # delete cluster only; persistent-data is retained
+```
+
+Do not scale the worker above one replica. If `kubectl top` is unavailable, declared limits still
+apply; FreeLens usage charts require a metrics provider. Never run broad Podman volume/system prune
+commands—the kind node is a managed container and the application data is intentionally external.
+The existing macOS login watcher detects `kind-mccain-capital` and starts that cluster; the legacy
+standalone launcher refuses to compete unless `rollback_local_k8s.sh` intentionally removes K8s.
+
+Monitor laptop disk use, memory pressure, repository data, Podman images, and Kubernetes budgets:
+
+```bash
+./scripts/monitor_laptop_resources.sh
+```
 
 ### Local Netdata Monitoring
 

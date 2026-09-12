@@ -509,6 +509,38 @@ def test_durable_level_recovery_includes_frozen_event_target(tmp_path, monkeypat
     }
 
 
+def test_canonical_gamma_history_is_durable_bounded_and_deduplicated(tmp_path, monkeypatch):
+    from mccain_capital.services import core
+
+    history_path = tmp_path / "gamma-history.json"
+    monkeypatch.setattr(core, "_market_pulse_gamma_history_file", lambda ticker: history_path)
+    payload = {
+        "canonical_freshness": {
+            "session_id": "2026-09-01",
+            "generation_id": "generation-1",
+            "gamma_generation_id": "gamma-1",
+            "execution_locked": False,
+        },
+        "gamma_snapshot": {"computed_at": "2026-09-01T11:15:00-04:00"},
+        "market_structure_snapshot": {
+            "gamma_regime": "negative_gamma",
+            "main_flip": 7680,
+            "call_wall": 7700,
+        },
+    }
+
+    assert core._market_pulse_record_gamma_observation("SPX", payload) is True
+    assert core._market_pulse_record_gamma_observation("SPX", payload) is False
+    observations = core._market_pulse_gamma_observations(
+        "SPX", session_date="2026-09-01"
+    )
+
+    assert len(observations) == 1
+    assert observations[0]["regime"] == "negative_gamma"
+    assert observations[0]["generation_id"] == "gamma-1"
+    assert observations[0]["levels"][0]["as_of"] == "2026-09-01T11:15:00-04:00"
+
+
 def test_client_contract_rejects_mixed_and_out_of_order_monitor_revisions():
     template = (
         Path(__file__).resolve().parents[1] / "mccain_capital/templates/core/market_pulse.html"

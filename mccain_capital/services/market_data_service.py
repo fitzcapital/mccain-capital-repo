@@ -331,6 +331,22 @@ def _tradier_intraday_rows_for_window(
     start_et: datetime,
     end_et: datetime,
 ) -> List[Dict[str, Any]]:
+    # Tradier timesales responses are capped at roughly 240 one-minute rows.
+    # Page longer requests into smaller time windows so an afternoon refresh
+    # cannot silently discard the opening half of the regular session.
+    max_window = timedelta(minutes=210)
+    if end_et - start_et > max_window:
+        rows_by_timestamp: Dict[str, Dict[str, Any]] = {}
+        window_start = start_et
+        while window_start <= end_et:
+            window_end = min(window_start + max_window, end_et)
+            for row in _tradier_intraday_rows_for_window(symbol, window_start, window_end):
+                timestamp = str(row.get("ts") or "").strip()
+                if timestamp:
+                    rows_by_timestamp[timestamp] = row
+            window_start = window_end + timedelta(minutes=1)
+        return [rows_by_timestamp[key] for key in sorted(rows_by_timestamp)]
+
     key = _tradier_api_key()
     if not key:
         return []
