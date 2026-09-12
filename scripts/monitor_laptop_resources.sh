@@ -6,25 +6,33 @@ CLUSTER_NAME="${KIND_CLUSTER_NAME:-mccain-capital}"
 NAMESPACE="${K8S_NAMESPACE:-mccain-capital}"
 KUBE_CONTEXT="kind-${CLUSTER_NAME}"
 WATCH=0
-INTERVAL=10
+INTERVAL=30
+AUTO_CLEAN=1
+AUTO_CLEAN_MIN_DANGLING="${LAPTOP_AUTO_CLEAN_MIN_DANGLING:-3}"
+AUTO_CLEAN_COOLDOWN_SECONDS="${LAPTOP_AUTO_CLEAN_COOLDOWN_SECONDS:-3600}"
+LAST_CLEANUP_EPOCH=0
 DISK_WARN_PERCENT="${LAPTOP_DISK_WARN_PERCENT:-85}"
 MEMORY_WARN_FREE_PERCENT="${LAPTOP_MEMORY_WARN_FREE_PERCENT:-10}"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/monitor_laptop_resources.sh [--watch] [--interval SECONDS]
+Usage: ./scripts/monitor_laptop_resources.sh [--watch] [--interval SECONDS] [--no-auto-clean]
 
-  --watch              Refresh continuously until Ctrl-C.
-  --interval SECONDS   Refresh interval for watch mode (default: 10).
+  --watch              Refresh continuously; enables conservative auto-cleanup.
+  --interval SECONDS   Refresh interval for watch mode (default: 30).
+  --no-auto-clean      Disable automatic dangling-image cleanup.
   -h, --help           Show this help.
 
-This command is read-only. It never removes images, volumes, or application data.
+Auto-cleanup only removes dangling images when at least three accumulate, or when
+disk use reaches its warning threshold. It never removes volumes, tagged images,
+containers, or application data. One-shot mode is always read-only.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --watch) WATCH=1 ;;
+    --no-auto-clean) AUTO_CLEAN=0 ;;
     --interval)
       [[ $# -ge 2 ]] || { echo "--interval requires seconds" >&2; exit 2; }
       INTERVAL="$2"
@@ -39,6 +47,7 @@ done
 [[ "$INTERVAL" =~ ^[1-9][0-9]*$ ]] || { echo "Interval must be a positive integer" >&2; exit 2; }
 
 warnings=()
+cleanup_note=""
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   RESET=$'\033[0m'
   BOLD=$'\033[1m'
@@ -73,6 +82,7 @@ meter() {
 
 render() {
   warnings=()
+  cleanup_note=""
   if [[ "$WATCH" -eq 1 ]]; then
     printf '\033[H\033[J'
   fi
@@ -113,7 +123,34 @@ render() {
 
   section "🐳  PODMAN STORAGE"
   if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    dangling_count="$(podman images --filter dangling=true --format '{{.ID}}' | awk 'NF {count++} END {print count+0}')"
+    current_epoch="$(date +%s)"
+    cleanup_due=0
+    if [[ "$WATCH" -eq 1 && "$AUTO_CLEAN" -eq 1 && "$dangling_count" -gt 0 ]]; then
+      if (( dangling_count >= AUTO_CLEAN_MIN_DANGLING || disk_used >= DISK_WARN_PERCENT )); then
+        if (( current_epoch - LAST_CLEANUP_EPOCH >= AUTO_CLEAN_COOLDOWN_SECONDS )); then
+          cleanup_due=1
+        fi
+      fi
+    fi
+    if [[ "$cleanup_due" -eq 1 ]]; then
+      if "$REPO_ROOT/scripts/manage_podman_storage.sh" auto >/dev/null 2>&1; then
+        LAST_CLEANUP_EPOCH="$current_epoch"
+        cleanup_note="Removed ${dangling_count} dangling image(s) safely."
+      else
+        warnings+=("Automatic dangling-image cleanup could not complete.")
+      fi
+    fi
     podman system df
+    if [[ "$WATCH" -eq 1 && "$AUTO_CLEAN" -eq 1 ]]; then
+      printf '%s🧹 Auto-clean armed%s · trigger: %s dangling images or %s%% disk · 1h cooldown\n' \
+        "$GREEN" "$RESET" "$AUTO_CLEAN_MIN_DANGLING" "$DISK_WARN_PERCENT"
+    elif [[ "$WATCH" -eq 1 ]]; then
+      printf '%sAuto-clean disabled%s\n' "$DIM" "$RESET"
+    else
+      printf '%sOne-shot mode · no cleanup performed%s\n' "$DIM" "$RESET"
+    fi
+    [[ -z "$cleanup_note" ]] || printf '%s✅ %s%s\n' "$GREEN" "$cleanup_note" "$RESET"
   else
     printf '%s● OFFLINE%s Podman is not running\n' "$YELLOW" "$RESET"
   fi

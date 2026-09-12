@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANAGER = ROOT / "scripts" / "manage_podman_storage.sh"
 DEPLOY = ROOT / "scripts" / "run_podman_app.sh"
+MONITOR = ROOT / "scripts" / "monitor_laptop_resources.sh"
 
 
 def _fake_podman(tmp_path: Path) -> tuple[Path, Path]:
@@ -120,3 +121,16 @@ def test_deploy_preserves_rollback_and_cleans_only_after_health() -> None:
     assert "the healthy container remains running" in script
     assert 'DATA_DIR="${DATA_DIR:-$ROOT_DIR/persistent-data}"' in script
     assert '-v "$DATA_DIR:/data"' in script
+
+
+def test_live_monitor_auto_cleanup_is_conservative_and_throttled() -> None:
+    script = MONITOR.read_text()
+
+    assert "INTERVAL=30" in script
+    assert "AUTO_CLEAN_MIN_DANGLING" in script
+    assert "AUTO_CLEAN_COOLDOWN_SECONDS" in script
+    assert '"$REPO_ROOT/scripts/manage_podman_storage.sh" auto' in script
+    assert '[[ "$WATCH" -eq 1 && "$AUTO_CLEAN" -eq 1' in script
+    assert "--no-auto-clean" in script
+    assert "podman system prune" not in script
+    assert "podman volume prune" not in script

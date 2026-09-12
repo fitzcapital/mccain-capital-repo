@@ -216,8 +216,13 @@ Monitor laptop disk use, memory pressure, repository data, Podman images, and Ku
 
 ```bash
 ./scripts/monitor_laptop_resources.sh
-./scripts/monitor_laptop_resources.sh --watch --interval 10
+./scripts/monitor_laptop_resources.sh --watch
+./scripts/monitor_laptop_resources.sh --watch --interval 30 --no-auto-clean
 ```
+
+Watch mode refreshes every 30 seconds and automatically invokes the conservative image manager
+when three dangling images accumulate or laptop disk use reaches 85%. Cleanup has a one-hour
+cooldown and never removes volumes, containers, tagged images, or `persistent-data/`.
 
 ### Local Netdata Monitoring
 
