@@ -190,6 +190,7 @@ uses one shared image, and continues to serve the app at `http://localhost:5001`
 ./scripts/install_local_k8s.sh       # one-time tools: kubectl, kind, FreeLens
 ./scripts/deploy_local_k8s.sh        # build, deploy, verify, and cut over safely
 ./scripts/local_k8s_status.sh        # pods, limits, worker heartbeat, health, and disk
+./scripts/run_k8s_storage_maintenance.sh  # manual PVC check and allowlisted scratch cleanup
 ```
 
 In FreeLens, add the kubeconfig context `kind-mccain-capital`, then use **Workloads → Pods** to

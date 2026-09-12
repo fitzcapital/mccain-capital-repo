@@ -22,6 +22,15 @@ echo "[local-k8s] current usage (available after metrics-server is ready)"
 "$KUBECTL_BIN" --context "kind-${CLUSTER_NAME}" -n "$NAMESPACE" top pods 2>/dev/null || \
   echo "metrics are not ready yet"
 echo
+echo "[local-k8s] storage maintenance"
+"$KUBECTL_BIN" --context "kind-${CLUSTER_NAME}" -n "$NAMESPACE" get cronjob \
+  mccain-capital-storage-maintenance \
+  -o custom-columns='NAME:.metadata.name,SCHEDULE:.spec.schedule,LAST_RUN:.status.lastScheduleTime,ACTIVE:.status.active[*].name'
+"$KUBECTL_BIN" --context "kind-${CLUSTER_NAME}" -n "$NAMESPACE" get jobs \
+  -l app.kubernetes.io/component=storage-maintenance --sort-by=.metadata.creationTimestamp \
+  -o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[-1].type,STARTED:.status.startTime,FINISHED:.status.completionTime' | tail -4
+echo "manual run: ./scripts/run_k8s_storage_maintenance.sh"
+echo
 echo "[local-k8s] worker heartbeat"
 "$KUBECTL_BIN" --context "kind-${CLUSTER_NAME}" -n "$NAMESPACE" exec \
   deployment/mccain-capital-worker -- python -m mccain_capital.worker --check

@@ -135,6 +135,62 @@ spec:
           persistentVolumeClaim:
             claimName: mccain-capital-data
 ---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mccain-capital-storage-maintenance
+  namespace: mccain-capital
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mccain-capital
+            app.kubernetes.io/component: storage-maintenance
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: storage-maintenance
+              image: localhost/mccain-capital-app:k8s
+              imagePullPolicy: Never
+              command: ["python", "/app/mccain_capital/storage_maintenance.py"]
+              env:
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+                - name: STORAGE_MAINTENANCE_DATA_ROOT
+                  value: /data
+                - name: STORAGE_MAINTENANCE_SCRATCH_ROOTS
+                  value: tmp,cache
+                - name: STORAGE_MAINTENANCE_RETENTION_HOURS
+                  value: "168"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 50m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: mccain-capital-data
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

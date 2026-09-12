@@ -16,10 +16,12 @@ MANIFEST_TEXT = MANIFEST.read_text()
 
 
 def _document(kind: str, name: str) -> str:
-    pattern = rf"(?ms)^apiVersion: .*?^kind: {re.escape(kind)}\n.*?^  name: {re.escape(name)}\n.*?(?=^---$|\Z)"
-    match = re.search(pattern, MANIFEST_TEXT)
-    assert match, f"missing {kind}/{name}"
-    return match.group(0)
+    for document in MANIFEST_TEXT.split("\n---\n"):
+        if re.search(rf"(?m)^kind: {re.escape(kind)}$", document) and re.search(
+            rf"(?m)^  name: {re.escape(name)}$", document
+        ):
+            return document
+    raise AssertionError(f"missing {kind}/{name}")
 
 
 @pytest.mark.parametrize("role", ["standalone", "web", "worker"])
@@ -95,6 +97,43 @@ def test_storage_and_localhost_port_are_retained() -> None:
     assert "nodePort: 30001" in service
     assert "hostPort: 5001" in template
     assert "__PERSISTENT_DATA_PATH__" in template
+
+
+def test_storage_maintenance_is_scheduled_bounded_and_allowlisted() -> None:
+    cronjob = _document("CronJob", "mccain-capital-storage-maintenance")
+
+    for contract in (
+        'schedule: "*/30 * * * *"',
+        "concurrencyPolicy: Forbid",
+        "successfulJobsHistoryLimit: 2",
+        "failedJobsHistoryLimit: 2",
+        "activeDeadlineSeconds: 120",
+        "cpu: 10m",
+        "cpu: 50m",
+        "memory: 32Mi",
+        "memory: 64Mi",
+        "value: tmp,cache",
+        'value: "168"',
+        "claimName: mccain-capital-data",
+        "allowPrivilegeEscalation: false",
+        'command: ["python", "/app/mccain_capital/storage_maintenance.py"]',
+    ):
+        assert contract in cronjob
+    for protected in ("journal.db", "uploads", "books", "backups", "podman.sock"):
+        assert protected not in cronjob
+
+
+def test_storage_maintenance_is_visible_and_manually_runnable() -> None:
+    status = (ROOT / "scripts" / "local_k8s_status.sh").read_text()
+    manual = (ROOT / "scripts" / "run_k8s_storage_maintenance.sh").read_text()
+
+    assert "get cronjob" in status
+    assert "LAST_RUN" in status
+    assert "get jobs" in status
+    assert "--from=cronjob/mccain-capital-storage-maintenance" in manual
+    assert "status.succeeded" in manual
+    assert "status.failed" in manual
+    assert 'logs "job/$JOB_NAME"' in manual
 
 
 def test_lifecycle_scripts_preserve_data_and_gate_cutover() -> None:
