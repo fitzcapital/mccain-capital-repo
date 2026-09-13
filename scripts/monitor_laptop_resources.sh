@@ -83,11 +83,13 @@ meter() {
 render() {
   warnings=()
   cleanup_note=""
-  if [[ "$WATCH" -eq 1 ]]; then
-    printf '\033[H\033[J'
-  fi
   printf '%s%s🚀 McCAIN CAPITAL · LIVE RESOURCE MONITOR%s\n' "$BOLD" "$PURPLE" "$RESET"
-  printf '%sUpdated %s · read-only%s\n' "$DIM" "$(date '+%b %d, %Y  %I:%M:%S %p %Z')" "$RESET"
+  if [[ "$WATCH" -eq 1 && "$AUTO_CLEAN" -eq 1 ]]; then
+    monitor_mode="safe auto-clean armed"
+  else
+    monitor_mode="read-only"
+  fi
+  printf '%sUpdated %s · %s%s\n' "$DIM" "$(date '+%b %d, %Y  %I:%M:%S %p %Z')" "$monitor_mode" "$RESET"
 
   section "💾  LAPTOP DISK"
   disk_line="$(df -h / | awk 'NR == 2 {print}')"
@@ -196,13 +198,21 @@ render() {
   printf '%s%-23s%s %s\n' "$BLUE" "Detailed K8s status" "$RESET" "./scripts/local_k8s_status.sh"
 }
 
+FRAME_FILE=""
 if [[ "$WATCH" -eq 1 && -t 1 ]]; then
+  FRAME_FILE="$(mktemp -t mccain-resource-monitor.XXXXXX)"
   printf '\033[?25l'
-  trap 'printf "\033[?25h\n"' EXIT INT TERM
+  trap 'rm -f "$FRAME_FILE"; printf "\033[?25h\n"' EXIT INT TERM
 fi
 
 while true; do
-  render
+  if [[ "$WATCH" -eq 1 && -n "$FRAME_FILE" ]]; then
+    render > "$FRAME_FILE"
+    printf '\033[H\033[J'
+    command cat "$FRAME_FILE"
+  else
+    render
+  fi
   [[ "$WATCH" -eq 1 ]] || break
   for ((remaining=INTERVAL; remaining>0; remaining--)); do
     printf '\r%s⟳ Next refresh in %2ss · Ctrl-C to stop%s' "$DIM" "$remaining" "$RESET"

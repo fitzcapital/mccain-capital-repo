@@ -138,3 +138,7 @@ def test_live_monitor_auto_cleanup_is_conservative_and_throttled() -> None:
     assert "podman volume prune" not in script
     assert '$3 == "Succeeded" || $3 == "Completed" {next}' in script
     assert "active Kubernetes pods" in script
+    assert 'monitor_mode="safe auto-clean armed"' in script
+    assert 'render > "$FRAME_FILE"' in script
+    assert "command cat" in script
+    assert script.index('render > "$FRAME_FILE"') < script.index("printf '\\033[H\\033[J'")
