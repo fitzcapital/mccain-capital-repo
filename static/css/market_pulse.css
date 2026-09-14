@@ -1441,6 +1441,11 @@ body.page-market-pulse .marketPulseTriggerItem.is-active{
   background:rgba(8, 22, 24, .36);
 }
 
+body.page-market-pulse .marketPulseTriggerItem.is-result{
+  border-color:rgba(92, 169, 255, .24);
+  background:rgba(10, 24, 42, .46);
+}
+
 body.page-market-pulse .marketPulseTriggerCopy strong{
   font-size:.82rem;
 }

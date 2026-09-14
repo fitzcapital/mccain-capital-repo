@@ -29,6 +29,7 @@
   page density, chart, ladder, navigation, providers, and existing working controls.
 - [x] 3.4 Add explicit contract assertions that no risk-control, calculator, daily-loss,
   account-locking, or contract-sizing UI appears in the SPX Playbook change.
+- [x] 3.5 Clarify checklist progress as five ordered evidence checks plus the setup-ready result.
 
 ## 4. Automated Verification
 

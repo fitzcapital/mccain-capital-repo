@@ -110,6 +110,8 @@ and MUST NOT cause malformed JSON rendering or a runtime error.
 The SPX Playbook SHALL show exactly the strategy checklist items Location reached, Liquidity swept,
 Five-minute close back inside, Five-minute 2-2 confirmed, Trigger broken, and Setup ready. Each item
 SHALL display Pending, Confirmed, Failed, or Unavailable from the state-engine result.
+The progress indicator SHALL count the first five evidence items only. Setup ready SHALL remain the
+sixth checklist item but SHALL be presented as the resulting state, not as independent evidence.
 
 #### Scenario: Partial ordered progress
 - **WHEN** location, sweep, and close-back-inside are confirmed but no five-minute 2-2 exists

@@ -1016,7 +1016,13 @@
   ('trigger_break', 'Trigger broken'),
   ('setup_ready', 'Setup ready')
 ] %}
-{% set confirmed_count = strategy_checklist.values()|select('equalto', 'Confirmed')|list|length %}
+{% set evidence_step_keys = ['location', 'sweep', 'close_back_inside_5m', 'reversal_2_2_5m', 'trigger_break'] %}
+{% set evidence_progress = namespace(confirmed=0) %}
+{% for key in evidence_step_keys %}
+  {% if strategy_checklist.get(key) == 'Confirmed' %}
+    {% set evidence_progress.confirmed = evidence_progress.confirmed + 1 %}
+  {% endif %}
+{% endfor %}
 <section class="card stack12 marketPulseSection marketPulseTriggerValidationShell" id="marketPulseEntryChecklist">
   <div class="toolbar">
     <div class="pillRow marketPulseTriggerTopline">
@@ -1025,17 +1031,17 @@
     </div>
     <div class="marketPulseTriggerProgressShell" aria-label="Reversal checklist progress">
       <div class="marketPulseTriggerProgressBar" aria-hidden="true">
-        <span class="marketPulseTriggerProgressFill" id="marketPulseTriggerProgressFill" style="width: {{ '%.2f'|format((confirmed_count / 6) * 100) }}%;"></span>
+        <span class="marketPulseTriggerProgressFill" id="marketPulseTriggerProgressFill" style="width: {{ '%.2f'|format((evidence_progress.confirmed / 5) * 100) }}%;"></span>
       </div>
       <div class="marketPulseTriggerProgressMeta">
-        <strong id="marketPulseTriggerProgressLabel">{{ confirmed_count }}/6 confirmed</strong>
+        <strong id="marketPulseTriggerProgressLabel">{{ evidence_progress.confirmed }}/5 evidence confirmed</strong>
         <span id="marketPulseTriggerProgressNext">{{ strategy.get('missing_evidence') or 'Strategy evidence unavailable.' }}</span>
       </div>
     </div>
     <div class="marketPulseTriggerChecklist">
       {% for key, label in strategy_steps %}
         {% set step_status = strategy_checklist.get(key) or 'Unavailable' %}
-        <div class="marketPulseTriggerItem{% if step_status == 'Confirmed' %} is-active{% endif %}" data-trigger-step="{{ key }}" data-trigger-status="{{ step_status|lower }}">
+        <div class="marketPulseTriggerItem{% if step_status == 'Confirmed' %} is-active{% endif %}{% if key == 'setup_ready' %} is-result{% endif %}" data-trigger-step="{{ key }}" data-trigger-status="{{ step_status|lower }}">
           <span class="marketPulseTriggerIndex" aria-hidden="true">{{ loop.index }}</span>
           <div class="marketPulseTriggerCopy">
             <span class="marketPulseTriggerStepState">{{ step_status }}</span>
@@ -2914,10 +2920,11 @@
       const statusNode = item.querySelector(".marketPulseTriggerStepState");
       if (statusNode) statusNode.textContent = status;
     });
-    const completed = triggerItems.filter((item) => item.classList.contains("is-active")).length;
+    const evidenceItems = triggerItems.filter((item) => item.dataset.triggerStep !== "setup_ready");
+    const completed = evidenceItems.filter((item) => item.classList.contains("is-active")).length;
     const progressFill = document.getElementById("marketPulseTriggerProgressFill");
-    if (progressFill) progressFill.style.width = `${triggerItems.length ? (completed / triggerItems.length) * 100 : 0}%`;
-    setCanonicalText("marketPulseTriggerProgressLabel", `${completed}/${triggerItems.length || 6} confirmed`);
+    if (progressFill) progressFill.style.width = `${evidenceItems.length ? (completed / evidenceItems.length) * 100 : 0}%`;
+    setCanonicalText("marketPulseTriggerProgressLabel", `${completed}/${evidenceItems.length || 5} evidence confirmed`);
 
     setCanonicalText("marketPulseCanonicalDecision", staged.decision);
     setCanonicalText("marketPulseCanonicalDecisionDetail", staged.detail);

@@ -45,6 +45,9 @@ def test_spx_playbook_renders_failed_sweep_decision_and_six_step_checklist(clien
     ):
         assert label in body
     assert body.count('data-trigger-step="') == 6
+    assert '5 evidence confirmed' in body
+    assert 'data-trigger-step="setup_ready"' in body
+    assert 'is-result' in body
     assert "Risk Calculator" not in body
     assert "Daily Loss Panel" not in body
     assert "Account Locking" not in body

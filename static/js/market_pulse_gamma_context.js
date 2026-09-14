@@ -2304,13 +2304,14 @@
   const syncTriggerChecklistUi = () => {
     if (!triggerChecklistItems.length) return;
     const activeItems = triggerChecklistItems.filter((item) => item.classList.contains("is-active"));
-    const completeCount = activeItems.length;
+    const evidenceItems = triggerChecklistItems.filter((item) => item.dataset.triggerStep !== "setup_ready");
+    const completeCount = evidenceItems.filter((item) => item.classList.contains("is-active")).length;
     const nextItem = triggerChecklistItems.find((item) => !item.classList.contains("is-active"));
     if (triggerProgressFill) {
-      triggerProgressFill.style.width = `${(completeCount / triggerChecklistItems.length) * 100}%`;
+      triggerProgressFill.style.width = `${(completeCount / evidenceItems.length) * 100}%`;
     }
     if (triggerProgressLabel) {
-      triggerProgressLabel.textContent = `${completeCount}/${triggerChecklistItems.length} complete`;
+      triggerProgressLabel.textContent = `${completeCount}/${evidenceItems.length} evidence confirmed`;
     }
     if (triggerProgressNext) {
       if (!triggerProgressNext.textContent) {
