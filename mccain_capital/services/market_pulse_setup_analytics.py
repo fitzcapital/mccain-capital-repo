@@ -12,6 +12,11 @@ from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 from mccain_capital.runtime import db
+from mccain_capital.services.market_pulse_gamma_context import (
+    NAMED_GAMMA_REGIMES,
+    VALID_GAMMA_REGIMES,
+    signal_gamma_context,
+)
 from mccain_capital.services.market_pulse_option_projection import premium_anchors
 from mccain_capital.services.market_session_calendar import is_session_day
 
@@ -110,6 +115,7 @@ def canonical_record(source: Mapping[str, Any]) -> dict[str, Any] | None:
     target = _mapping(source.get("target"), source.get("target_level"))
     pattern = _mapping(source.get("strat_pattern"))
     outcome = _outcome_payload(source)
+    gamma_context = signal_gamma_context(source, signal_dt)
     evidence = {
         "entry_basis": source.get("entry_basis"),
         "confirmation": source.get("confirmation") or source.get("trigger"),
@@ -118,6 +124,7 @@ def canonical_record(source: Mapping[str, Any]) -> dict[str, Any] | None:
         "trigger_evidence": source.get("trigger_evidence") or {},
         "supporting_levels": source.get("supporting_levels") or [],
         "location_event": source.get("location_event"),
+        "gamma_context": gamma_context,
     }
     return {
         "setup_event_id": event_id,
@@ -145,6 +152,7 @@ def canonical_record(source: Mapping[str, Any]) -> dict[str, Any] | None:
         "mfe": outcome["mfe"],
         "mae": outcome["mae"],
         "target_progress_percent": outcome["target_progress_percent"],
+        **gamma_context,
         "evidence_json": json.dumps(evidence, separators=(",", ":"), default=str),
         "source_revision": int(_float(source.get("revision")) or 1),
     }
@@ -159,7 +167,8 @@ def upsert_records(sources: Iterable[Mapping[str, Any]]) -> int:
     with db() as conn:
         for record in records:
             existing = conn.execute(
-                "SELECT outcome_state, source_revision FROM market_pulse_setup_events "
+                "SELECT outcome_state, source_revision, gamma_regime "
+                "FROM market_pulse_setup_events "
                 "WHERE setup_event_id = ?",
                 (record["setup_event_id"],),
             ).fetchone()
@@ -187,6 +196,16 @@ def upsert_records(sources: Iterable[Mapping[str, Any]]) -> int:
                     evaluated_through = CASE WHEN ? != '' THEN ? ELSE evaluated_through END,
                     outcome_state = ?, mfe = COALESCE(?, mfe), mae = COALESCE(?, mae),
                     target_progress_percent = COALESCE(?, target_progress_percent),
+                    gamma_regime = CASE
+                        WHEN gamma_regime = 'unavailable' AND ? != 'unavailable' THEN ?
+                        ELSE gamma_regime END,
+                    gamma_as_of = CASE
+                        WHEN gamma_regime = 'unavailable' AND ? != '' THEN ? ELSE gamma_as_of END,
+                    gamma_source = CASE
+                        WHEN gamma_regime = 'unavailable' AND ? != '' THEN ? ELSE gamma_source END,
+                    gamma_status = CASE
+                        WHEN gamma_regime = 'unavailable' AND ? = 'captured' THEN ?
+                        ELSE gamma_status END,
                     source_revision = ?, updated_at = ?
                 WHERE setup_event_id = ?
                 """,
@@ -199,6 +218,14 @@ def upsert_records(sources: Iterable[Mapping[str, Any]]) -> int:
                     record["mfe"],
                     record["mae"],
                     record["target_progress_percent"],
+                    record["gamma_regime"],
+                    record["gamma_regime"],
+                    record["gamma_as_of"],
+                    record["gamma_as_of"],
+                    record["gamma_source"],
+                    record["gamma_source"],
+                    record["gamma_status"],
+                    record["gamma_status"],
                     max(int(existing["source_revision"] or 1), record["source_revision"]),
                     now,
                     record["setup_event_id"],
@@ -295,6 +322,9 @@ def normalize_filters(values: Mapping[str, Any]) -> dict[str, Any]:
     outcome = _text(values.get("outcome")).lower()
     if outcome and outcome not in VALID_OUTCOMES:
         raise AnalyticsFilterError("Invalid outcome.")
+    gamma = _text(values.get("gamma")).lower()
+    if gamma and gamma not in VALID_GAMMA_REGIMES:
+        raise AnalyticsFilterError("Invalid signal-time Gamma regime.")
     sort = _text(values.get("sort") or "signal_desc")
     if sort not in VALID_SORTS:
         raise AnalyticsFilterError("Invalid sort.")
@@ -318,6 +348,7 @@ def normalize_filters(values: Mapping[str, Any]) -> dict[str, Any]:
         "level": _text(values.get("level")),
         "grade": _text(values.get("grade")),
         "outcome": outcome,
+        "gamma": gamma,
         "sort": sort,
         "page": page,
         "page_size": page_size,
@@ -484,6 +515,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         ("level", "level_key"),
         ("grade", "grade"),
         ("outcome", "outcome_state"),
+        ("gamma", "gamma_regime"),
     ):
         if filters[field]:
             clauses.append(f"{column} = ?")
@@ -530,6 +562,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
     by_time: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_family: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_combination: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    by_gamma: dict[str, list[dict[str, Any]]] = defaultdict(list)
     family_filter_values: dict[str, str] = {}
     for row in rows:
         bucket = _bucket_label(row["signal_time"])
@@ -537,6 +570,8 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         by_time[bucket].append(row)
         by_family[family_label].append(row)
         by_combination[(family_label, bucket)].append(row)
+        if row["gamma_regime"] in NAMED_GAMMA_REGIMES:
+            by_gamma[row["gamma_regime"]].append(row)
         family_filter_values.setdefault(family_label, row["family"])
 
     def comparison(label: str, group: list[dict[str, Any]], label_key: str) -> dict[str, Any]:
@@ -611,6 +646,12 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         )
         item["filter_start_time"], item["filter_end_time"] = _bucket_filter(bucket)
         combination_comparison.append(item)
+    gamma_comparison = [
+        comparison(regime.replace("_", " ").title(), group, "gamma_regime")
+        for regime, group in sorted(by_gamma.items())
+    ]
+    for item in gamma_comparison:
+        item["filter_gamma"] = item["gamma_regime"].lower().replace(" ", "_")
     page_start = (filters["page"] - 1) * filters["page_size"]
     page_rows = rows[page_start : page_start + filters["page_size"]]
     metrics = {
@@ -694,6 +735,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         },
         "time_heatmap": time_heatmap,
         "family_comparison": family_comparison,
+        "gamma_comparison": gamma_comparison,
         "leaders": leaders,
         "profit_estimate_assumptions": {
             "contract_cost": int(ESTIMATED_CONTRACT_COST),
@@ -722,6 +764,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
             "patterns": sorted({row["pattern_code"] for row in rows if row["pattern_code"]}),
             "levels": sorted({row["level_key"] for row in rows if row["level_key"]}),
             "grades": sorted({row["grade"] for row in rows if row["grade"]}),
+            "gamma_regimes": [*NAMED_GAMMA_REGIMES, "unavailable"],
         },
         "coverage": {
             "session_count": len(sessions),
@@ -735,11 +778,18 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
                 row["mfe"] is None or row["mae"] is None for row in rows
             ),
             "duplicate_rows_excluded": duplicate_rows_excluded,
+            "gamma_captured_count": sum(row["gamma_regime"] in NAMED_GAMMA_REGIMES for row in rows),
+            "gamma_unavailable_count": sum(row["gamma_regime"] == "unavailable" for row in rows),
+            "gamma_coverage_percent": _rate(
+                sum(row["gamma_regime"] in NAMED_GAMMA_REGIMES for row in rows), total
+            ),
         },
         "empty": total == 0,
         "interpretation": (
             "SPX setup outcomes measure underlying price movement. Potential-profit figures are "
             "planning estimates, not option fills, actual contract returns, or realized profit."
+            " Gamma is frozen signal-time context; unavailable history is never inferred from "
+            "current snapshots."
         ),
     }
     with _CACHE_LOCK:

@@ -6,7 +6,10 @@ import sqlite3
 
 import pytest
 
-from mccain_capital.migrations import _migration_0016_market_pulse_setup_events
+from mccain_capital.migrations import (
+    _migration_0016_market_pulse_setup_events,
+    _migration_0019_market_pulse_setup_gamma_context,
+)
 from mccain_capital.services import market_pulse_setup_analytics as analytics
 
 
@@ -18,6 +21,7 @@ def analytics_db(tmp_path, monkeypatch):
         conn = sqlite3.connect(path)
         conn.row_factory = sqlite3.Row
         _migration_0016_market_pulse_setup_events(conn)
+        _migration_0019_market_pulse_setup_gamma_context(conn)
         return conn
 
     monkeypatch.setattr(analytics, "db", connect)
@@ -35,9 +39,11 @@ def setup(
     target: float = 7650,
     mfe: float | None = 4,
     mae: float | None = 2,
+    gamma_regime: str = "",
+    gamma_as_of: str = "",
 ) -> dict:
     terminal_at = signal_time.replace("10:44", "10:55") if outcome != "open" else ""
-    return {
+    record = {
         "setup_event_id": event_id,
         "ticker": "SPX",
         "session_date": signal_time[:10],
@@ -63,6 +69,16 @@ def setup(
             "target_progress_percent": 50 if mfe is not None else None,
         },
     }
+    if gamma_regime:
+        record.update(
+            {
+                "gamma_regime": gamma_regime,
+                "gamma_as_of": gamma_as_of or signal_time,
+                "gamma_source": "gamma-history",
+                "gamma_status": "captured",
+            }
+        )
+    return record
 
 
 def test_upsert_freezes_signal_facts_and_advances_terminal_monotonically(analytics_db):
@@ -90,6 +106,102 @@ def test_upsert_freezes_signal_facts_and_advances_terminal_monotonically(analyti
     assert row["target_value"] == 7650
     assert row["outcome_state"] == "target_reached"
     assert row["mfe"] == 10
+
+
+def test_gamma_context_is_validated_persisted_and_immutable(analytics_db):
+    first = setup(
+        "gamma-event",
+        "2026-09-01T10:44:00-04:00",
+        gamma_regime="negative_gamma",
+        gamma_as_of="2026-09-01T10:40:00-04:00",
+    )
+    analytics.upsert_records([first])
+    update = setup(
+        "gamma-event",
+        "2026-09-01T10:44:00-04:00",
+        outcome="target_reached",
+        gamma_regime="positive_gamma",
+        gamma_as_of="2026-09-01T10:43:00-04:00",
+    )
+    analytics.upsert_records([update])
+
+    with analytics_db() as conn:
+        row = conn.execute(
+            "SELECT gamma_regime, gamma_as_of, gamma_source, gamma_status "
+            "FROM market_pulse_setup_events WHERE setup_event_id = 'gamma-event'"
+        ).fetchone()
+    assert tuple(row) == (
+        "negative",
+        "2026-09-01T10:40:00-04:00",
+        "gamma-history",
+        "captured",
+    )
+
+    future = setup(
+        "future-gamma",
+        "2026-09-01T10:44:00-04:00",
+        gamma_regime="positive_gamma",
+        gamma_as_of="2026-09-01T10:45:00-04:00",
+    )
+    assert analytics.canonical_record(future)["gamma_regime"] == "unavailable"
+
+
+def test_same_event_can_enrich_only_previously_unavailable_gamma(analytics_db):
+    source = setup("enriched-gamma", "2026-09-01T10:44:00-04:00")
+    analytics.upsert_records([source])
+    source.update(
+        {
+            "gamma_regime": "positive_gamma",
+            "gamma_as_of": "2026-09-01T10:40:00-04:00",
+            "gamma_source": "gamma-history",
+            "gamma_status": "captured",
+        }
+    )
+    analytics.upsert_records([source])
+
+    with analytics_db() as conn:
+        row = conn.execute(
+            "SELECT gamma_regime, gamma_as_of, gamma_source, gamma_status "
+            "FROM market_pulse_setup_events WHERE setup_event_id = 'enriched-gamma'"
+        ).fetchone()
+    assert tuple(row) == (
+        "positive",
+        "2026-09-01T10:40:00-04:00",
+        "gamma-history",
+        "captured",
+    )
+
+
+def test_gamma_filter_coverage_and_named_comparison_exclude_unavailable(analytics_db):
+    analytics.upsert_records(
+        [
+            setup(
+                "negative-gamma",
+                "2026-09-01T10:44:00-04:00",
+                outcome="target_reached",
+                gamma_regime="negative_gamma",
+                gamma_as_of="2026-09-01T10:40:00-04:00",
+            ),
+            setup("legacy-gamma", "2026-09-01T11:10:00-04:00", outcome="invalidated"),
+        ]
+    )
+
+    all_rows = analytics.analytics_payload({"start_date": "2026-09-01", "end_date": "2026-09-01"})
+    assert all_rows["metrics"]["total_setups"] == 2
+    assert all_rows["coverage"]["gamma_captured_count"] == 1
+    assert all_rows["coverage"]["gamma_unavailable_count"] == 1
+    assert all_rows["coverage"]["gamma_coverage_percent"] == 50.0
+    assert [row["filter_gamma"] for row in all_rows["gamma_comparison"]] == ["negative"]
+
+    filtered = analytics.analytics_payload(
+        {
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-01",
+            "gamma": "negative",
+        }
+    )
+    assert filtered["metrics"]["total_setups"] == 1
+    assert filtered["ledger"]["rows"][0]["gamma_regime"] == "negative"
 
 
 def test_backfill_is_idempotent_and_preserves_unavailable_fields(analytics_db, tmp_path):
@@ -182,6 +294,7 @@ def test_filtered_metrics_time_bucket_and_pagination_are_consistent(analytics_db
         {"start_date": "2026-01-01", "end_date": "2026-09-01"},
         {"start_time": "15:00", "end_time": "10:00"},
         {"outcome": "winner"},
+        {"gamma": "today_guess"},
         {"page_size": "201"},
     ],
 )
@@ -287,6 +400,8 @@ def test_setup_analytics_page_contract(client):
     assert 'data-today="' in body
     assert 'data-analytics-tab="overview"' in body
     assert 'data-analytics-tab="ledger"' in body
+    assert '<select name="gamma">' in body
+    assert "Gamma at signal" in body
     assert "setupAnalyticsLedgerRows" in body
     assert "<table" not in body
     assert "not option fills, returns, or realized profit" in body
@@ -530,7 +645,10 @@ def test_setup_analytics_api_is_bounded_and_read_only(client):
     assert valid.status_code == 200
     payload = valid.get_json()["payload"]
     assert {"metrics", "charts", "ledger", "coverage"}.issubset(payload)
-    assert payload["interpretation"].endswith("realized profit.")
+    assert (
+        "not option fills, actual contract returns, or realized profit" in payload["interpretation"]
+    )
+    assert "Gamma is frozen signal-time context" in payload["interpretation"]
     assumptions = payload["profit_estimate_assumptions"]
     assert {
         key: assumptions[key]

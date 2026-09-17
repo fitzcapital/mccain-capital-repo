@@ -1097,6 +1097,26 @@ def _migration_0018_market_pulse_reliability_history_index(conn: sqlite3.Connect
     )
 
 
+def _migration_0019_market_pulse_setup_gamma_context(conn: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in conn.execute("PRAGMA table_info(market_pulse_setup_events)").fetchall()
+    }
+    additions = {
+        "gamma_regime": "TEXT NOT NULL DEFAULT 'unavailable'",
+        "gamma_as_of": "TEXT NOT NULL DEFAULT ''",
+        "gamma_source": "TEXT NOT NULL DEFAULT ''",
+        "gamma_status": "TEXT NOT NULL DEFAULT 'unavailable'",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE market_pulse_setup_events ADD COLUMN {name} {definition}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mp_setup_events_gamma_regime "
+        "ON market_pulse_setup_events(gamma_regime)"
+    )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -1119,6 +1139,7 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
         "0018_market_pulse_reliability_history_index",
         _migration_0018_market_pulse_reliability_history_index,
     ),
+    ("0019_market_pulse_setup_gamma_context", _migration_0019_market_pulse_setup_gamma_context),
 ]
 
 

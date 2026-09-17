@@ -8,6 +8,7 @@ import math
 from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
+from mccain_capital.services.market_pulse_gamma_context import signal_gamma_context
 from mccain_capital.services.market_pulse_scenarios import (
     CONFLUENCE_WEIGHTS,
     confluence_grade,
@@ -588,9 +589,6 @@ def _build_intraday_setup_analysis(
     rows = _normalized_bars(bars, session_date)
     level_rows = [dict(row) for row in levels if isinstance(row, Mapping)]
     gamma_rows = [dict(row) for row in gamma_observations if isinstance(row, Mapping)]
-    gamma_stamp = None
-    if gamma_as_of:
-        gamma_stamp = _timestamp({"ts": gamma_as_of})
     emitted: set[str] = set()
     observed_patterns: set[str] = set()
     setups: list[dict[str, Any]] = []
@@ -605,17 +603,21 @@ def _build_intraday_setup_analysis(
         gamma_observation = _gamma_at_signal(gamma_rows, signal_stamp)
         observation_levels = list((gamma_observation or {}).get("levels") or [])
         levels_at_signal = _point_in_time_levels([*level_rows, *observation_levels], bars_at_signal)
-        selected_gamma_stamp = _timestamp(
-            {"ts": ((gamma_observation or {}).get("as_of") if gamma_rows else gamma_as_of)}
+        gamma_source = gamma_observation
+        if not gamma_rows and gamma_as_of:
+            gamma_source = {
+                "as_of": gamma_as_of,
+                "regime": gamma_regime,
+                "source": "session_snapshot",
+            }
+        gamma_context = signal_gamma_context(
+            gamma_source,
+            signal_stamp,
+            default_source="gamma_history",
         )
-        point_in_time_gamma = str((gamma_observation or {}).get("regime") or "")
-        if (
-            not gamma_rows
-            and gamma_stamp is not None
-            and signal_stamp is not None
-            and gamma_stamp <= signal_stamp
-        ):
-            point_in_time_gamma = gamma_regime
+        point_in_time_gamma = (
+            gamma_context["gamma_regime"] if gamma_context["gamma_regime"] != "unavailable" else ""
+        )
         rankings = rank_market_scenarios(
             spot=signal_bar["close"],
             levels=levels_at_signal,
@@ -790,10 +792,11 @@ def _build_intraday_setup_analysis(
                 "grade": confluence_grade(score),
                 "score_components": list(candidate.get("score_components") or []),
                 "strat_pattern": dict(candidate.get("strat_pattern") or {}),
+                **gamma_context,
                 "data_availability": {
                     "bars_as_of": signal_bar["ts"],
-                    "gamma_as_of": selected_gamma_stamp.isoformat() if selected_gamma_stamp else "",
-                    "gamma_available_at_signal": bool(point_in_time_gamma),
+                    "gamma_as_of": gamma_context["gamma_as_of"],
+                    "gamma_available_at_signal": gamma_context["gamma_status"] == "captured",
                     "level_as_of": anchor.get("as_of") or "",
                 },
                 "label": "Potential setup · not recorded execution",

@@ -3,6 +3,8 @@ from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from mccain_capital.services.market_pulse_setup_replay import _outcome
 from mccain_capital.services.market_pulse_setup_replay import _estimated_scalp_targets
 from mccain_capital.services.market_pulse_setup_replay import _gamma_at_signal
@@ -65,6 +67,70 @@ def test_gamma_selector_never_projects_a_future_observation_backward():
     assert selected["regime"] == "negative_gamma"
 
 
+@pytest.mark.parametrize(
+    ("source", "expected_regime", "expected_status"),
+    [
+        (
+            {
+                "as_of": "2026-08-19T09:45:00-04:00",
+                "regime": "negative_gamma",
+                "generation_id": "gamma-1",
+            },
+            "negative",
+            "captured",
+        ),
+        ({}, "unavailable", "unavailable"),
+        (
+            {"as_of": "not-a-time", "regime": "positive_gamma"},
+            "unavailable",
+            "unavailable",
+        ),
+        (
+            {"as_of": "2026-08-19T10:15:00-04:00", "regime": "positive_gamma"},
+            "unavailable",
+            "future_observation",
+        ),
+    ],
+)
+def test_signal_gamma_context_rejects_missing_malformed_and_future_evidence(
+    source, expected_regime, expected_status
+):
+    from mccain_capital.services.market_pulse_gamma_context import signal_gamma_context
+
+    context = signal_gamma_context(source, "2026-08-19T10:00:00-04:00")
+
+    assert context["gamma_regime"] == expected_regime
+    assert context["gamma_status"] == expected_status
+
+
+def test_replay_freezes_selected_gamma_context_on_setup():
+    result = _replay(
+        [
+            _bar("09:30", open_=99, high=100, low=98, close=99),
+            _bar("09:35", open_=99, high=102, low=98.5, close=101.5),
+            _bar("09:40", open_=101.5, high=101.8, low=97.5, close=99),
+        ],
+        levels=[
+            {"key": "prior_day_high", "label": "Prior-Day High", "value": 101},
+            {"key": "prior_day_low", "label": "Prior-Day Low", "value": 90},
+        ],
+        gamma_observations=[
+            {
+                "as_of": "2026-08-19T09:35:00-04:00",
+                "regime": "negative_gamma",
+                "generation_id": "gamma-1",
+            },
+            {"as_of": "2026-08-19T10:15:00-04:00", "regime": "positive_gamma"},
+        ],
+    )
+
+    frozen = result["setups"][0]
+    assert frozen["gamma_regime"] == "negative"
+    assert frozen["gamma_status"] == "captured"
+    assert frozen["gamma_source"] == "gamma-1"
+    assert frozen["gamma_as_of"].endswith("09:35:00-04:00")
+
+
 def test_runner_is_directional_and_five_points_from_actual_entry():
     from mccain_capital.services.market_pulse_scenarios import normalize_levels
 
@@ -108,6 +174,7 @@ def _replay(
     gamma_as_of="2026-08-19T09:30:00-04:00",
     include_rejected=False,
     levels=None,
+    gamma_observations=(),
 ):
     replay_levels = levels or [
         {"key": "local_flip", "label": "Local Flip", "value": 100},
@@ -140,6 +207,7 @@ def _replay(
         levels=replay_levels,
         gamma_regime="negative_gamma",
         gamma_as_of=gamma_as_of,
+        gamma_observations=gamma_observations,
         include_rejected=include_rejected,
     )
 

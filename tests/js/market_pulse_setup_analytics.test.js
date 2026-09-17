@@ -22,6 +22,16 @@ test("setup analytics keeps one filter query for every panel", () => {
   assert.match(source, /renderLeaders\(payload\.leaders\)/);
 });
 
+test("setup analytics explains and filters frozen signal-time Gamma", () => {
+  assert.match(source, /Gamma at signal/);
+  assert.match(source, /gamma_coverage_percent/);
+  assert.match(source, /gamma_captured_count/);
+  assert.match(source, /gamma_unavailable_count/);
+  assert.match(source, /row\.gamma_as_of/);
+  assert.match(source, /row\.gamma_source/);
+  assert.match(source, /filters\.gamma/);
+});
+
 test("history leaders explain evidence and drill into the existing filters", () => {
   assert.match(source, /Best setup \+ time/);
   assert.match(source, /\$\{leader\.target_reached_count\}\/\$\{leader\.evaluated_count\}/);
