@@ -293,6 +293,15 @@ def test_setup_analytics_page_contract(client):
     assert "Setup Analytics</span>" in body
 
 
+def test_tools_menu_has_prominent_setup_analytics_quick_link(client):
+    body = client.get("/market-pulse/setup-analytics?ticker=SPX").get_data(as_text=True)
+
+    assert '<div class="menuTitle">Quick Links</div>' in body
+    assert 'class="btn menuQuickLink active"' in body
+    assert 'href="/market-pulse/setup-analytics?ticker=SPX"' in body
+    assert "SPX Setup Analytics</span>" in body
+
+
 def test_legacy_history_counts_frequency_but_not_performance(analytics_db):
     analytics.upsert_records(
         [

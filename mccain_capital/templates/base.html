@@ -511,12 +511,14 @@
                 </span>
               </a>
             {% endif %}
+            <div class="menuTitle">Quick Links</div>
+            <a class="btn menuQuickLink {% if request.path == '/market-pulse/setup-analytics' %}active{% endif %}" href="/market-pulse/setup-analytics?ticker=SPX"><span class="menuItemIcon">{{ app_icon('analytics') }}</span><span>SPX Setup Analytics</span></a>
+            <div class="hr"></div>
             <div class="menuTitle">Core</div>
             <a class="btn {% if active=='executive' %}active{% endif %}" href="/executive"><span class="menuItemIcon">{{ app_icon('executive') }}</span><span>Executive</span></a>
             <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">{{ app_icon('dashboard') }}</span><span>Trading Dashboard</span></a>
             <a class="btn {% if active=='the-plan' %}active{% endif %}" href="/the-plan"><span class="menuItemIcon">{{ app_icon('plan') }}</span><span>The Plan</span></a>
             <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
-            <a class="btn {% if request.path == '/market-pulse/setup-analytics' %}active{% endif %}" href="/market-pulse/setup-analytics?ticker=SPX"><span class="menuItemIcon">{{ app_icon('analytics') }}</span><span>Setup Analytics</span></a>
             <a class="btn {% if request.path == '/market-pulse/reliability' %}active{% endif %}" href="/market-pulse/reliability?ticker=SPX"><span class="menuItemIcon">{{ app_icon('analytics') }}</span><span>Reliability</span></a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat"><span class="menuItemIcon">{{ app_icon('strategy') }}</span><span>The Strat</span></a>
             <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook"><span class="menuItemIcon">{{ app_icon('playbook') }}</span><span>Playbook</span></a>
