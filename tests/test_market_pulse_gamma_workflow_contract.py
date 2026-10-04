@@ -121,6 +121,7 @@ def test_five_second_tape_reuses_shared_stream_with_poll_fallback_and_stays_isol
     assert 'addEventListener("market-pulse-stream-payload"' in chart_script
     assert "LightweightCharts.createChart(fastTapeCanvas" in chart_script
     assert "fastTapeChart.timeScale().fitContent()" in chart_script
+    assert 'timeZone: "America/New_York"' in chart_script
     assert "chart.timeScale().applyOptions({secondsVisible: false})" in chart_script
     assert "new EventSource" not in chart_script
     assert "micro-tape" not in chart_script

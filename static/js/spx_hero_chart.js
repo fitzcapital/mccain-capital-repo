@@ -281,6 +281,14 @@
       fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
       fontSize: 9,
     },
+    localization: {
+      timeFormatter: (timestamp) => new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZone: "America/New_York",
+      }).format(new Date(Number(timestamp) * 1000)),
+    },
     grid: {
       vertLines: {color: "rgba(99,179,255,.06)"},
       horzLines: {color: "rgba(99,179,255,.08)"},
@@ -1097,7 +1105,7 @@
       { label: "PW", value: fmtCompactLevel(levels.put_wall, 0) },
     ]);
     setText("marketPulseTitle", `${symbol} PLAYBOOK`);
-    setText("marketPulseHeaderSnapshot", `Last candle · ${snapshotLabel}`);
+    setText("marketPulseHeaderSnapshot", `Last completed 5m · ${snapshotLabel}`);
     const gammaDisplayLabel = regimeDisplayLabel(gammaState, levels.gamma_regime_label || "REGIME UNAVAILABLE");
     setText("marketPulseHeaderGammaLabel", gammaDisplayLabel);
     setText("marketPulseHeaderGammaSummary", levels.hero_summary || `${gammaDisplayLabel || "Regime unavailable"}, ${(levels.bias_summary_label || levels.bias_label || "wait for cleaner structure").toLowerCase()}.`);

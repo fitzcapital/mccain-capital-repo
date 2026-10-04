@@ -7,6 +7,8 @@ CLUSTER_NAME="${KIND_CLUSTER_NAME:-mccain-capital}"
 CONTEXT="kind-${CLUSTER_NAME}"
 NAMESPACE="${K8S_NAMESPACE:-mccain-capital}"
 IMAGE_NAME="${K8S_IMAGE_NAME:-localhost/mccain-capital-app:k8s}"
+METRICS_SERVER_IMAGE="${METRICS_SERVER_IMAGE:-registry.k8s.io/metrics-server/metrics-server:v0.9.0}"
+METRICS_SERVER_MANIFEST="${METRICS_SERVER_MANIFEST:-$ROOT_DIR/k8s/metrics-server.yaml}"
 CONTAINER_NAME="${CONTAINER_NAME:-mccain-capital-app}"
 DATA_DIR="${DATA_DIR:-$ROOT_DIR/persistent-data}"
 PODMAN_BIN="${PODMAN_BIN:-$(command -v podman || echo /opt/homebrew/bin/podman)}"
@@ -71,6 +73,13 @@ echo "[local-k8s] building one shared image: $IMAGE_NAME"
 KIND_EXPERIMENTAL_PROVIDER=podman "$KIND_BIN" load docker-image \
   --name "$CLUSTER_NAME" "$IMAGE_NAME"
 
+if ! "$PODMAN_BIN" image exists "$METRICS_SERVER_IMAGE"; then
+  echo "[local-k8s] pulling pinned Metrics Server image: $METRICS_SERVER_IMAGE"
+  "$PODMAN_BIN" pull "$METRICS_SERVER_IMAGE"
+fi
+KIND_EXPERIMENTAL_PROVIDER=podman "$KIND_BIN" load docker-image \
+  --name "$CLUSTER_NAME" "$METRICS_SERVER_IMAGE"
+
 "$KUBECTL_BIN" create namespace "$NAMESPACE" --dry-run=client -o yaml | "$KUBECTL_BIN" apply -f -
 if [[ -f "$ROOT_DIR/.env" ]]; then
   "$KUBECTL_BIN" -n "$NAMESPACE" create secret generic mccain-runtime-env \
@@ -81,6 +90,8 @@ else
 fi
 
 "$KUBECTL_BIN" apply -f "$ROOT_DIR/k8s/base.yaml"
+"$KUBECTL_BIN" apply -f "$METRICS_SERVER_MANIFEST"
+"$KUBECTL_BIN" -n kube-system rollout status deployment/metrics-server --timeout=3m
 revision="$(date -u +%Y%m%dT%H%M%SZ)"
 for deployment in mccain-capital-web mccain-capital-worker; do
   "$KUBECTL_BIN" -n "$NAMESPACE" patch deployment "$deployment" --type merge \
@@ -94,6 +105,21 @@ echo
   test -f /data/journal.db
 "$KUBECTL_BIN" -n "$NAMESPACE" exec deployment/mccain-capital-worker -- \
   python -m mccain_capital.worker --check
+
+metrics_ready=0
+for _attempt in {1..18}; do
+  if "$KUBECTL_BIN" -n "$NAMESPACE" top pods >/dev/null 2>&1; then
+    metrics_ready=1
+    break
+  fi
+  sleep 5
+done
+if [[ "$metrics_ready" -ne 1 ]]; then
+  echo "[local-k8s] Metrics Server deployed but live pod metrics are unavailable" >&2
+  "$KUBECTL_BIN" -n kube-system logs deployment/metrics-server --tail=80 >&2 || true
+  exit 1
+fi
+"$KUBECTL_BIN" -n "$NAMESPACE" top pods
 
 "$PODMAN_BIN" rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 "$PODMAN_BIN" exec "${CLUSTER_NAME}-control-plane" crictl rmi --prune >/dev/null 2>&1 || true

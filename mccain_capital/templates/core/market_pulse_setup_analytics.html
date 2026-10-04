@@ -34,6 +34,21 @@
     <div class="setupAnalyticsLeaderGrid" data-analytics-leader-grid></div>
   </section>
 
+  <section class="card setupAnalyticsWeekdays" data-analytics-weekdays aria-live="polite">
+    <header>
+      <div>
+        <span class="setupAnalyticsKicker">Performance by New York session day</span>
+        <h2>Weekday study</h2>
+      </div>
+      <button type="button" class="setupAnalyticsTextButton" data-clear-weekday hidden>Clear weekday</button>
+    </header>
+    <div class="setupAnalyticsWeekdayGrid" data-weekday-grid></div>
+    <details class="setupAnalyticsWeekdayHelp">
+      <summary>How weekday leaders are ranked</summary>
+      <p data-weekday-method></p>
+    </details>
+  </section>
+
   <details class="card setupAnalyticsFilterDrawer" data-filter-drawer>
     <summary><span>Filters</span><small data-filter-summary>Today · all setups</small></summary>
     <form class="setupAnalyticsFilters" data-analytics-filters>
@@ -42,6 +57,7 @@
       <label>To<input type="date" name="end_date" value="{{ analytics_today }}"></label>
       <label>Start time<input type="time" name="start_time" value="09:30"></label>
       <label>End time<input type="time" name="end_time" value="16:00"></label>
+      <label>Weekday<select name="weekday"><option value="">All weekdays</option><option value="monday">Monday</option><option value="tuesday">Tuesday</option><option value="wednesday">Wednesday</option><option value="thursday">Thursday</option><option value="friday">Friday</option></select></label>
       <label>Direction<select name="direction"><option value="">All</option><option value="bullish">Bullish</option><option value="bearish">Bearish</option></select></label>
       <label>Setup<select name="family"><option value="">All families</option></select></label>
       <label>Pattern<select name="pattern"><option value="">All patterns</option></select></label>

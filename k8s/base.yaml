@@ -97,6 +97,14 @@ spec:
               value: "1"
             - name: OMP_NUM_THREADS
               value: "1"
+            - name: MCCAIN_WORKER_TASK_WARNING
+              value: "300"
+            - name: MCCAIN_WORKER_TASK_CRITICAL
+              value: "400"
+            - name: MCCAIN_WORKER_TASK_CRITICAL_SAMPLES
+              value: "3"
+            - name: GAMMA_PNG_EXPORT_ENABLED
+              value: "0"
           ports:
             - name: http
               containerPort: 5001

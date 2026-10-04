@@ -392,7 +392,7 @@ def evaluate_failed_liquidity_sweep(
         else (
             "Rejection confirmed"
             if state == StrategyState.REVERSAL_READY
-            else "Neither confirmed — wait"
+            else "No direction confirmed — wait"
         )
     )
     return {

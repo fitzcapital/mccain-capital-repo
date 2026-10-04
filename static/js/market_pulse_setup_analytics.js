@@ -73,6 +73,36 @@
     details.querySelector("p").textContent = leaders.method;
   }
 
+  function weekdayCard(row) {
+    const completed = row.evaluated_count > 0;
+    const setup = row.leaders.setup;
+    const time = row.leaders.time;
+    const combination = row.leaders.combination;
+    const gamma = row.gamma_coverage;
+    const combinationFilters = combination ? [
+      combination.filter_family ? `data-family="${escapeHtml(combination.filter_family)}"` : "",
+      combination.filter_start_time ? `data-start-time="${escapeHtml(combination.filter_start_time)}"` : "",
+      combination.filter_end_time ? `data-end-time="${escapeHtml(combination.filter_end_time)}"` : "",
+    ].filter(Boolean).join(" ") : "";
+    const result = completed
+      ? `<strong>${percent(row.target_reached_rate)}</strong><span>${row.target_reached_count}/${row.evaluated_count} reached target</span>`
+      : `<strong>—</strong><span>No completed outcomes</span>`;
+    const evidence = completed ? row.evidence.label : "Evidence unavailable";
+    const gammaLabel = gamma.sufficient
+      ? `${percent(gamma.coverage_percent)} captured`
+      : `Insufficient · ${gamma.captured_count}/${row.total_occurrences} captured`;
+    return `<article class="setupAnalyticsWeekdayCard is-${escapeHtml(row.evidence.key)}"><header><div><small>${row.session_count} ${row.session_count === 1 ? "session" : "sessions"}</small><h3>${escapeHtml(row.weekday)}</h3></div><button type="button" class="setupAnalyticsTextButton" data-study-weekday="${escapeHtml(row.weekday_key)}">Study day</button></header><div class="setupAnalyticsWeekdayRate">${result}</div><dl><div><dt>Best setup</dt><dd>${setup ? escapeHtml(setup.label) : "Not measurable yet"}</dd></div><div><dt>Best time</dt><dd>${time ? escapeHtml(time.label) : "Not measurable yet"}</dd></div></dl><p>${escapeHtml(evidence)} · ${row.total_occurrences} total setups</p>${combination ? `<button type="button" class="setupAnalyticsWeekdayCombination" data-study-weekday="${escapeHtml(row.weekday_key)}" ${combinationFilters}>View combo <span aria-hidden="true">→</span></button>` : ""}<details><summary>Evidence details</summary><p>Median favorable ${number(row.median_mfe.value)} SPX pts · median adverse ${number(row.median_mae.value)} SPX pts.</p><p>${row.open_count} awaiting · ${row.unavailable_count} unavailable. Gamma: ${escapeHtml(gammaLabel)}.</p></details></article>`;
+  }
+
+  function renderWeekdayStudy(study) {
+    const section = root.querySelector("[data-analytics-weekdays]");
+    section.querySelector("[data-weekday-grid]").innerHTML = study.rows.length
+      ? study.rows.map(weekdayCard).join("")
+      : empty("No weekday evidence in this range.");
+    section.querySelector("[data-weekday-method]").textContent = study.method;
+    section.querySelector("[data-clear-weekday]").hidden = !study.selected_weekday;
+  }
+
   function renderKpis(metrics, coverage) {
     const cards = [
       ["Setups", metrics.total_setups, `${metrics.covered_sessions} sessions`, "frequency"],
@@ -213,7 +243,7 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
   }
 
   function updateFilterSummary(filters) {
-    const active = [filters.family, filters.pattern, filters.direction, filters.outcome, filters.gamma].filter(Boolean);
+    const active = [filters.weekday, filters.family, filters.pattern, filters.direction, filters.outcome, filters.gamma].filter(Boolean);
     const presetLabels = {today: "Today", last_3_sessions: "Last 3 sessions", this_week: "This week", last_20_sessions: "Last 20 sessions", all_history: "All history", custom: "Custom"};
     const dateLabel = filters.preset !== "custom" ? (presetLabels[filters.preset] || "Custom")
       : filters.start_date === root.dataset.today && filters.end_date === root.dataset.today
@@ -253,8 +283,10 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
       form.elements.start_date.value = payload.filters.start_date;
       form.elements.end_date.value = payload.filters.end_date;
       form.elements.preset.value = payload.filters.preset;
+      form.elements.weekday.value = payload.filters.weekday || "";
       renderInsight({best_time_bucket: payload.leaders.time}, payload.coverage);
       renderLeaders(payload.leaders);
+      renderWeekdayStudy(payload.weekday_study);
       renderKpis(payload.metrics, payload.coverage);
       renderCharts(payload);
       renderLedger(payload.ledger);
@@ -265,7 +297,7 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
     } catch (error) {
       status.classList.add("is-error");
       status.innerHTML = `${escapeHtml(error.message)} <button class="btn" type="button" data-retry>Retry</button>`;
-      root.querySelectorAll(".setupAnalyticsChart,.setupAnalyticsTimeline,.setupAnalyticsFamilyCards").forEach((node) => { node.innerHTML = empty("Analytics unavailable — retry when ready."); });
+      root.querySelectorAll(".setupAnalyticsChart,.setupAnalyticsTimeline,.setupAnalyticsFamilyCards,[data-weekday-grid]").forEach((node) => { node.innerHTML = empty("Analytics unavailable — retry when ready."); });
       status.querySelector("[data-retry]")?.addEventListener("click", load, {once: true});
     }
   }
@@ -314,6 +346,22 @@ const estimateMarkup = estimate ? `<section class="setupAnalyticsProfitEstimate 
     form.elements.family.value = "";
     form.elements.start_time.value = "09:30";
     form.elements.end_time.value = "16:00";
+    event.currentTarget.hidden = true;
+    page = 1;
+    load();
+  });
+  root.querySelector("[data-analytics-weekdays]").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-study-weekday]");
+    if (!button) return;
+    form.elements.weekday.value = button.dataset.studyWeekday;
+    if (button.dataset.family) form.elements.family.value = button.dataset.family;
+    if (button.dataset.startTime) form.elements.start_time.value = button.dataset.startTime;
+    if (button.dataset.endTime) form.elements.end_time.value = button.dataset.endTime;
+    page = 1;
+    load();
+  });
+  root.querySelector("[data-clear-weekday]").addEventListener("click", (event) => {
+    form.elements.weekday.value = "";
     event.currentTarget.hidden = true;
     page = 1;
     load();

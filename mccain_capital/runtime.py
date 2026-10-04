@@ -160,6 +160,14 @@ class InstrumentedCursor(sqlite3.Cursor):
 
 
 class InstrumentedConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        """Finish the transaction and release the connection deterministically."""
+
+        try:
+            return bool(super().__exit__(exc_type, exc_value, traceback))
+        finally:
+            self.close()
+
     def cursor(self, factory: Optional[type[sqlite3.Cursor]] = None) -> sqlite3.Cursor:
         return super().cursor(factory or InstrumentedCursor)
 

@@ -94,16 +94,19 @@ def run_server_setup_monitor_cycle(
     attempted_at = _iso(now)
     previous = get_server_setup_monitor_state(now=now)
     _update(last_attempt_at=attempted_at, heartbeat_at=attempted_at)
-    with app.app_context():
-        if evaluator is None:
-            from mccain_capital.services.core import run_market_pulse_server_setup_monitor_cycle
+    from mccain_capital.worker_resources import track_component
 
-            evaluator = run_market_pulse_server_setup_monitor_cycle
-        result = evaluator(
-            now_et=now,
-            clock_discontinuous=clock_discontinuous,
-            previous_candle=str(previous.get("last_evaluated_candle") or ""),
-        )
+    with track_component("setup_monitor"):
+        with app.app_context():
+            if evaluator is None:
+                from mccain_capital.services.core import run_market_pulse_server_setup_monitor_cycle
+
+                evaluator = run_market_pulse_server_setup_monitor_cycle
+            result = evaluator(
+                now_et=now,
+                clock_discontinuous=clock_discontinuous,
+                previous_candle=str(previous.get("last_evaluated_candle") or ""),
+            )
     status = str(result.get("status") or "error")
     success = status in {"healthy", "sleeping", "unchanged"}
     _update(

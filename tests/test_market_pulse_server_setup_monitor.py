@@ -92,7 +92,7 @@ def test_core_cycle_sleeps_outside_session(monkeypatch):
     assert result == {"status": "sleeping", "last_evaluated_candle": ""}
 
 
-def test_core_cycle_skips_unchanged_completed_candle(monkeypatch):
+def test_core_cycle_checks_current_snapshot_before_skipping_unchanged_candle(monkeypatch):
     app = Flask(__name__)
     candle = "2026-09-08T11:25:00-04:00"
     snapshot = {
@@ -102,7 +102,12 @@ def test_core_cycle_skips_unchanged_completed_candle(monkeypatch):
     monkeypatch.setattr(
         core, "_market_pulse_refresh_contract", lambda *_args: {"market_phase": "open"}
     )
-    monkeypatch.setattr(core, "get_or_build_market_pulse_snapshot", lambda **_kwargs: snapshot)
+    builds = []
+    monkeypatch.setattr(
+        core,
+        "get_or_build_market_pulse_snapshot",
+        lambda **_kwargs: builds.append(True) or snapshot,
+    )
     monkeypatch.setattr(
         "mccain_capital.services.market_pulse_runtime.ensure_market_pulse_runtime_started",
         lambda: None,
@@ -115,6 +120,7 @@ def test_core_cycle_skips_unchanged_completed_candle(monkeypatch):
 
     assert result["status"] == "unchanged"
     assert result["last_evaluated_candle"] == candle
+    assert builds == [True]
 
 
 def test_core_cycle_uses_shared_monitor_without_claiming_delivery(monkeypatch):

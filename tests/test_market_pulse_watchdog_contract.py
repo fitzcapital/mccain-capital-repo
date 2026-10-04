@@ -57,11 +57,11 @@ def test_header_timestamp_always_describes_the_last_completed_candle():
         )
     ]
     assert (
-        'setCanonicalText("marketPulseHeaderSnapshot", `Last candle · ${updatedAt}`)'
+        'setCanonicalText("marketPulseHeaderSnapshot", `Last completed 5m · ${updatedAt}`)'
         in canonical_commit
     )
     assert ': "Planning"' in canonical_commit
-    assert '.replace(/^(Live|Last valid)\\s*·\\s*/i, "Last candle · ")' in body
+    assert '.replace(/^(Live|Last valid|Last candle)\\s*·\\s*/i, "Last completed 5m · ")' in body
 
 
 def test_initial_session_label_uses_current_market_hours_not_cached_chart_mode():
@@ -98,7 +98,7 @@ def test_partial_refresh_advances_safe_completed_candle_label():
     assert 'if (outcomeStatus === "partial")' in body
     assert "const partialStructure = data.payload.market_structure_snapshot || {};" in body
     assert "partialStructure.last_completed_candle_time" in body
-    assert "`Last candle · ${partialCompletedCandleLabel}`" in body
+    assert "`Last completed 5m · ${partialCompletedCandleLabel}`" in body
 
 
 def test_chart_metadata_uses_completed_strategy_bar_when_display_points_are_empty():
@@ -115,6 +115,21 @@ def test_chart_metadata_uses_completed_strategy_bar_when_display_points_are_empt
 
     assert result["bars_as_of"] == completed_at
     assert result["chart_state"] == "live_session"
+
+
+def test_chart_metadata_prefers_completed_bar_over_forming_display_point():
+    completed_at = "2026-08-25T13:55:00-04:00"
+
+    result = _market_pulse_chart_source_viewmodel(
+        execution_chart={
+            "mode": "live_session",
+            "points": [{"ts": "2026-08-25T14:01:00-04:00", "price": 7668.0}],
+            "strategy_bars_5m": [{"ts": completed_at, "close": 7667.25}],
+        },
+        session_mode="regular",
+    )
+
+    assert result["bars_as_of"] == completed_at
 
 
 def test_levels_poll_preserves_canonical_completed_candle_timestamp():

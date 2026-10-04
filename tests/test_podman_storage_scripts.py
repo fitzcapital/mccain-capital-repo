@@ -136,9 +136,16 @@ def test_live_monitor_auto_cleanup_is_conservative_and_throttled() -> None:
     assert "--no-auto-clean" in script
     assert "podman system prune" not in script
     assert "podman volume prune" not in script
-    assert '$3 == "Succeeded" || $3 == "Completed" {next}' in script
+    assert '$2 == "Succeeded" || $2 == "Completed" {next}' in script
     assert "active Kubernetes pods" in script
+    assert 'LAST_REASON:.status.containerStatuses[0].lastState.terminated.reason' in script
+    assert '$4 == "OOMKilled" || $4 == "Error"' in script
+    assert "had an abnormal restart" in script
     assert 'monitor_mode="safe auto-clean armed"' in script
+    assert "Metrics Server is not installed" in script
+    assert "Metrics API is installed but not ready" in script
     assert 'render > "$FRAME_FILE"' in script
     assert "command cat" in script
+    assert "\\033[?1049h" in script
+    assert "\\033[?1049l" in script
     assert script.index('render > "$FRAME_FILE"') < script.index("printf '\\033[H\\033[J'")

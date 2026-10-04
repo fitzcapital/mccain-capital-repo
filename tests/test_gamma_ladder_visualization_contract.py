@@ -312,7 +312,8 @@ def test_gamma_ladder_guidance_is_ranked_selected_and_plain_language():
     assert ".slice(0, 3)" in controller
     assert "const nearestPriority = rankedPriorityRows(payload)[0]" in controller
     assert "if (nearestRow) updateSelectedInspector(nearestRow)" in controller
-    assert '5m close ${movingUp ? "above" : "below"}' in controller
+    assert 'Close ${movingUp ? "above" : "below"}' in controller
+    assert 'Failure: reclaim above ${nearestText}' in controller
     assert "Loss of ${formatNumber(decision, 0)}" in controller
     assert "Crossed ${Number(payload.spot)" in controller
     assert "No prior Gamma snapshot is available." in controller
@@ -347,7 +348,7 @@ def test_positive_gamma_status_uses_regime_specific_glow():
     assert "0 0 24px rgba(93,242,166,.13)" in stylesheet
     assert "text-shadow:none" in stylesheet
     assert 'id="marketPulseStatusUpdated"' not in template
-    assert "Last candle ·" in template
+    assert "Last completed 5m ·" in template
 
 
 def test_execution_read_has_legend_and_quiet_refresh_indicator():

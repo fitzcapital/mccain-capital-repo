@@ -3,11 +3,14 @@ from __future__ import annotations
 import fcntl
 from pathlib import Path
 import re
+import sqlite3
 
 import pytest
 
 from mccain_capital import runtime_role
+from mccain_capital import runtime
 from mccain_capital import worker
+from mccain_capital import worker_resources
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +57,50 @@ def test_worker_heartbeat_and_owner_lock(tmp_path: Path, monkeypatch: pytest.Mon
     finally:
         fcntl.flock(owner.fileno(), fcntl.LOCK_UN)
         owner.close()
+
+
+def test_worker_heartbeat_rejects_unsafe_capacity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    heartbeat = tmp_path / "heartbeat"
+    heartbeat.touch()
+    monkeypatch.setattr(worker, "HEARTBEAT_PATH", heartbeat)
+    monkeypatch.setattr(worker.worker_resources, "capacity_is_safe", lambda: False)
+
+    assert not worker.heartbeat_is_current()
+
+
+def test_worker_resource_monitor_requires_consecutive_critical_samples(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(worker_resources, "STATE_PATH", tmp_path / "resources.json")
+    monkeypatch.setattr(worker_resources, "WARNING_TASKS", 3)
+    monkeypatch.setattr(worker_resources, "CRITICAL_TASKS", 5)
+    monkeypatch.setattr(worker_resources, "CRITICAL_SAMPLES", 2)
+    monkeypatch.setattr(worker_resources, "process_task_count", lambda: 5)
+    monkeypatch.setattr(worker_resources, "process_fd_count", lambda: 7)
+    worker_resources.reset_for_tests()
+
+    first = worker_resources.sample(component="test")
+    second = worker_resources.sample(component="test")
+
+    assert first["status"] == "critical"
+    assert not worker_resources.critical_limit_reached(first)
+    assert worker_resources.critical_limit_reached(second)
+    assert second["baseline_tasks"] == 5
+    assert second["high_water_tasks"] == 5
+
+
+def test_runtime_db_context_closes_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime, "DB_PATH", str(tmp_path / "journal.db"))
+
+    with runtime.db() as conn:
+        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        conn.execute("SELECT 1")
 
 
 def test_two_single_replica_workloads_share_one_image_and_pvc() -> None:

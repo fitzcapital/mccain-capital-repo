@@ -47,6 +47,24 @@ test("history leaders explain evidence and drill into the existing filters", () 
   assert.match(styles, /overflow-wrap:anywhere/);
 });
 
+test("weekday study stays compact, explains evidence, and drives authoritative filters", () => {
+  assert.match(source, /function renderWeekdayStudy/);
+  assert.match(source, /No completed outcomes/);
+  assert.match(source, /Best setup/);
+  assert.match(source, /Best time/);
+  assert.match(source, /Evidence details/);
+  assert.match(source, /View combo/);
+  assert.doesNotMatch(source, /Study best setup \+ time/);
+  assert.match(source, /Gamma: \$\{escapeHtml\(gammaLabel\)\}/);
+  assert.match(source, /data-study-weekday/);
+  assert.match(source, /form\.elements\.weekday\.value/);
+  assert.match(source, /renderWeekdayStudy\(payload\.weekday_study\)/);
+  assert.match(source, /filters\.weekday/);
+  assert.match(styles, /setupAnalyticsWeekdayGrid\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(styles, /@media\(max-width:760px\)\{\.setupAnalyticsWeekdayGrid\{grid-template-columns:1fr\}/);
+  assert.match(styles, /body\.appModernizedPage \.setupAnalyticsWeekdayCombination\{justify-self:start;min-height:0;border:0/);
+});
+
 test("setup analytics opens on today and keeps historical filters available", () => {
   assert.match(source, /filters\.start_date === root\.dataset\.today/);
   assert.match(source, /form\.elements\.start_date\.value = root\.dataset\.today/);

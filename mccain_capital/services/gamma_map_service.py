@@ -69,6 +69,7 @@ EOD_GAMMA_NOTIFY_ENABLED = os.environ.get("EOD_GAMMA_NOTIFY_ENABLED", "1") == "1
 EOD_GAMMA_NOTIFY_TIME_ET = (os.environ.get("EOD_GAMMA_NOTIFY_TIME_ET") or "17:10").strip()
 EOD_GAMMA_NOTIFY_END_ET = (os.environ.get("EOD_GAMMA_NOTIFY_END_ET") or "19:30").strip()
 COLD_CACHE_BOOTSTRAP_RETRY_SECONDS = 15
+GAMMA_PNG_EXPORT_ENABLED = os.environ.get("GAMMA_PNG_EXPORT_ENABLED", "0") == "1"
 
 _LOCK = threading.Lock()
 _REFRESH_GATE = threading.Lock()
@@ -3439,11 +3440,13 @@ def export_outputs(
     png_path = os.path.join(out_dir, PNG_FILENAME)
     expo_df.to_csv(csv_path, index=False)
 
+    if not GAMMA_PNG_EXPORT_ENABLED:
+        return {"csv": csv_path, "png": ""}
     try:
         gex_fig.write_image(png_path, width=1400, height=900, scale=2)
     except Exception:
-        # If kaleido is missing/unavailable, keep the path stable but no crash.
-        pass
+        # PNG is an optional operator artifact; chart JSON remains authoritative.
+        return {"csv": csv_path, "png": ""}
     return {"csv": csv_path, "png": png_path}
 
 

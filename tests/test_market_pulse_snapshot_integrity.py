@@ -4,6 +4,27 @@ from datetime import datetime, timedelta
 from mccain_capital.services import core
 
 
+def test_market_pulse_rows_to_points_preserves_full_regular_session():
+    start = datetime.fromisoformat("2026-09-29T09:30:00-04:00")
+    rows = [
+        {
+            "ts": (start + timedelta(minutes=index)).isoformat(),
+            "open": 7600.0 + index,
+            "high": 7600.5 + index,
+            "low": 7599.5 + index,
+            "close": 7600.25 + index,
+            "volume": index + 1,
+        }
+        for index in range(390)
+    ]
+
+    points = core._market_pulse_rows_to_points(rows)
+
+    assert len(points) == 390
+    assert points[0]["ts"] == "2026-09-29T09:30:00-04:00"
+    assert points[-1]["ts"] == "2026-09-29T15:59:00-04:00"
+
+
 def test_structured_invalidation_resolves_only_validated_named_level():
     levels = {"local_flip": 6815.0, "call_wall": 6900.0}
 

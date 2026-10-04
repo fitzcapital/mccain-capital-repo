@@ -921,17 +921,13 @@
       const targets = ordered.filter((row) => movingUp
         ? Number(row.strike) > nearestStrike
         : Number(row.strike) < nearestStrike);
-      const failures = ordered.filter((row) => movingUp
-        ? Number(row.strike) < nearestStrike
-        : Number(row.strike) > nearestStrike);
       const target = (movingUp ? targets : targets.reverse())[0];
-      const fail = (movingUp ? failures.reverse() : failures)[0];
       const digits = nearestStrike >= 1000 ? 0 : 2;
       const nearestText = formatNumber(nearestStrike, digits);
       setNodeText(executionMapNodes.commandNow, `Testing ${priorityRole(nearest)} ${nearestText}`);
       setNodeText(
         executionMapNodes.commandConfirm,
-        `5m close ${movingUp ? "above" : "below"} ${nearestText} + hold`,
+        `Close ${movingUp ? "above" : "below"} ${nearestText}, then hold ${movingUp ? "above" : "below"}`,
       );
       setNodeText(
         executionMapNodes.commandTarget,
@@ -939,9 +935,9 @@
       );
       setNodeText(
         executionMapNodes.commandFail,
-        fail
-          ? `Reject ${nearestText} → ${formatNumber(fail.strike, digits)}`
-          : `Rejection back through ${nearestText}`,
+        movingUp
+          ? `Failure: close back below ${nearestText}`
+          : `Failure: reclaim above ${nearestText}`,
       );
     }
 

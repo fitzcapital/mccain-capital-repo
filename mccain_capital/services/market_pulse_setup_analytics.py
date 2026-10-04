@@ -25,6 +25,8 @@ TERMINAL_OUTCOMES = {"target_reached", "invalidated", "ambiguous"}
 VALID_OUTCOMES = TERMINAL_OUTCOMES | {"open", "unavailable"}
 OUTCOME_RANK = {"unavailable": 0, "open": 1, "target_reached": 2, "invalidated": 2, "ambiguous": 2}
 VALID_DIRECTIONS = {"bullish", "bearish"}
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday")
+VALID_WEEKDAYS = set(WEEKDAYS)
 VALID_SORTS = {
     "signal_desc": "signal_time DESC",
     "signal_asc": "signal_time ASC",
@@ -272,6 +274,16 @@ def _parse_clock(value: Any, label: str) -> time | None:
         raise AnalyticsFilterError(f"Invalid {label}.") from exc
 
 
+def _weekday_key(value: Any) -> str | None:
+    try:
+        parsed = date.fromisoformat(_text(value))
+    except ValueError:
+        return None
+    if parsed.weekday() >= len(WEEKDAYS):
+        return None
+    return WEEKDAYS[parsed.weekday()]
+
+
 def _session_start(end: date, count: int) -> date:
     found: list[date] = []
     cursor = end
@@ -325,6 +337,9 @@ def normalize_filters(values: Mapping[str, Any]) -> dict[str, Any]:
     gamma = _text(values.get("gamma")).lower()
     if gamma and gamma not in VALID_GAMMA_REGIMES:
         raise AnalyticsFilterError("Invalid signal-time Gamma regime.")
+    weekday = _text(values.get("weekday")).lower()
+    if weekday and weekday not in VALID_WEEKDAYS:
+        raise AnalyticsFilterError("Invalid weekday.")
     sort = _text(values.get("sort") or "signal_desc")
     if sort not in VALID_SORTS:
         raise AnalyticsFilterError("Invalid sort.")
@@ -349,6 +364,7 @@ def normalize_filters(values: Mapping[str, Any]) -> dict[str, Any]:
         "grade": _text(values.get("grade")),
         "outcome": outcome,
         "gamma": gamma,
+        "weekday": weekday,
         "sort": sort,
         "page": page,
         "page_size": page_size,
@@ -550,7 +566,9 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         if parsed is None:
             continue
         clock = parsed.strftime("%H:%M")
-        if filters["start_time"] <= clock <= filters["end_time"]:
+        row_weekday = _weekday_key(row.get("session_date"))
+        weekday_matches = not filters["weekday"] or row_weekday == filters["weekday"]
+        if filters["start_time"] <= clock <= filters["end_time"] and weekday_matches:
             filtered_rows.append(row)
     rows, duplicate_rows_excluded = _canonicalize_rows(filtered_rows)
     total = len(rows)
@@ -652,6 +670,77 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
     ]
     for item in gamma_comparison:
         item["filter_gamma"] = item["gamma_regime"].lower().replace(" ", "_")
+
+    by_weekday: dict[str, list[dict[str, Any]]] = {weekday: [] for weekday in WEEKDAYS}
+    unavailable_weekday_count = 0
+    for row in rows:
+        weekday = _weekday_key(row.get("session_date"))
+        if weekday is None:
+            unavailable_weekday_count += 1
+            continue
+        by_weekday[weekday].append(row)
+
+    weekday_rows = []
+    visible_weekdays = (filters["weekday"],) if filters["weekday"] else WEEKDAYS
+    for weekday in visible_weekdays:
+        group = by_weekday[weekday]
+        weekday_item = comparison(weekday.title(), group, "weekday")
+        weekday_item.update(
+            {
+                "weekday_key": weekday,
+                "filter_weekday": weekday,
+                "session_count": len({row["session_date"] for row in group}),
+            }
+        )
+
+        weekday_families: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        weekday_times: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        weekday_combinations: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+        for row in group:
+            family_label = row["family_label"] or row["family"]
+            bucket = _bucket_label(row["signal_time"])
+            weekday_families[family_label].append(row)
+            weekday_times[bucket].append(row)
+            weekday_combinations[(family_label, bucket)].append(row)
+
+        family_candidates = []
+        for family_label, family_group in weekday_families.items():
+            candidate = comparison(family_label, family_group, "family")
+            candidate["filter_family"] = family_filter_values.get(family_label, "")
+            family_candidates.append(candidate)
+
+        time_candidates = []
+        for bucket, time_group in weekday_times.items():
+            candidate = comparison(bucket, time_group, "bucket")
+            candidate["filter_start_time"], candidate["filter_end_time"] = _bucket_filter(bucket)
+            time_candidates.append(candidate)
+
+        combination_candidates = []
+        for (family_label, bucket), combination_group in weekday_combinations.items():
+            candidate = comparison(f"{family_label} · {bucket}", combination_group, "combination")
+            candidate.update(
+                {
+                    "family": family_label,
+                    "bucket": bucket,
+                    "filter_family": family_filter_values.get(family_label, ""),
+                }
+            )
+            candidate["filter_start_time"], candidate["filter_end_time"] = _bucket_filter(bucket)
+            combination_candidates.append(candidate)
+
+        gamma_captured = sum(row["gamma_regime"] in NAMED_GAMMA_REGIMES for row in group)
+        weekday_item["leaders"] = {
+            "setup": _rank_leader(family_candidates),
+            "time": _rank_leader(time_candidates),
+            "combination": _rank_leader(combination_candidates),
+        }
+        weekday_item["gamma_coverage"] = {
+            "captured_count": gamma_captured,
+            "unavailable_count": len(group) - gamma_captured,
+            "coverage_percent": _rate(gamma_captured, len(group)),
+            "sufficient": gamma_captured >= 5,
+        }
+        weekday_rows.append(weekday_item)
     page_start = (filters["page"] - 1) * filters["page_size"]
     page_rows = rows[page_start : page_start + filters["page_size"]]
     metrics = {
@@ -736,6 +825,24 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
         "time_heatmap": time_heatmap,
         "family_comparison": family_comparison,
         "gamma_comparison": gamma_comparison,
+        "weekday_study": {
+            "rows": weekday_rows,
+            "selected_weekday": filters["weekday"],
+            "unavailable_weekday_count": unavailable_weekday_count,
+            "reconciliation": {
+                "named_weekday_count": sum(len(group) for group in by_weekday.values()),
+                "filtered_total": total,
+                "matches": sum(len(group) for group in by_weekday.values())
+                + unavailable_weekday_count
+                == total,
+                "duplicate_rows_excluded": duplicate_rows_excluded,
+            },
+            "method": (
+                "Target rate uses completed outcomes only. Leaders use the same Wilson-adjusted "
+                "evidence ranking as the all-history study; open and unavailable outcomes are "
+                "reported but excluded from the rate."
+            ),
+        },
         "leaders": leaders,
         "profit_estimate_assumptions": {
             "contract_cost": int(ESTIMATED_CONTRACT_COST),
@@ -765,6 +872,7 @@ def analytics_payload(values: Mapping[str, Any]) -> dict[str, Any]:
             "levels": sorted({row["level_key"] for row in rows if row["level_key"]}),
             "grades": sorted({row["grade"] for row in rows if row["grade"]}),
             "gamma_regimes": [*NAMED_GAMMA_REGIMES, "unavailable"],
+            "weekdays": list(WEEKDAYS),
         },
         "coverage": {
             "session_count": len(sessions),

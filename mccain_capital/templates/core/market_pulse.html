@@ -217,7 +217,7 @@
             </div>
           </div>
         </div>
-        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{% if bootstrap_refresh_required %}Updating · {% endif %}Last candle · {{ structure_snapshot.get('last_completed_candle_time_label') or '—' }}</div>
+        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{% if bootstrap_refresh_required %}Updating · {% endif %}Last completed 5m · {{ structure_snapshot.get('last_completed_candle_time_label') or '—' }}</div>
         <div class="marketPulseStatusReadout" aria-label="Current market status">
           <div class="marketPulseStatusMetric is-spot">
             <span>{{ selected_ticker }} Spot</span>
@@ -791,7 +791,7 @@
           </div>
           <div class="marketPulseFastTape" id="marketPulseFastTape" aria-label="SPX fast visual tape">
             <div class="marketPulseFastTape__meta">
-              <span class="marketPulseFastTape__label">Fast tape</span>
+              <span class="marketPulseFastTape__label">Fast tape · live forming price · ET</span>
               <strong id="marketPulseFastTapePrice">Awaiting SPX</strong>
               <span
                 class="marketPulseMicroTapeStatus is-pending"
@@ -935,12 +935,12 @@
           <summary>
             <span class="marketPulseLiveSetupIdentity">
               <small>Live Setup Monitor</small>
-              <strong id="marketPulseLiveSetupHeadline">{% if live_primary %}{{ live_primary.get('state')|replace('_', ' ')|title }} · {{ live_primary.get('direction')|title }} {{ live_primary.get('level', {}).get('label') }} {{ '%.0f'|format(live_primary.get('level', {}).get('value')) }}{% else %}Watching for a qualified SPX setup{% endif %}</strong>
+              <strong id="marketPulseLiveSetupHeadline">{% if live_primary %}{{ live_primary.get('state')|replace('5M_2_2', '5M_2-2')|replace('_', ' ')|title }} · {{ live_primary.get('direction')|title }} {{ live_primary.get('level', {}).get('label') }} {{ '%.0f'|format(live_primary.get('level', {}).get('value')) }}{% else %}Watching for a qualified SPX setup{% endif %}</strong>
             </span>
             <span class="marketPulseLiveSetupMetrics">
               <b id="marketPulseLiveSetupGrade">{{ live_primary.get('grade') or '—' }}</b>
               {% set live_setup_age = live_primary.get('state_age_seconds', 0)|int %}
-              <span id="marketPulseLiveSetupAge">{% if live_setup_age >= 86400 %}{{ live_setup_age // 86400 }}d {{ (live_setup_age % 86400) // 3600 }}h{% elif live_setup_age >= 3600 %}{{ live_setup_age // 3600 }}h {{ (live_setup_age % 3600) // 60 }}m{% elif live_setup_age >= 60 %}{{ live_setup_age // 60 }}m{% else %}{{ live_setup_age }}s{% endif %}</span>
+              <span id="marketPulseLiveSetupAge">Watching for {% if live_setup_age >= 86400 %}{{ live_setup_age // 86400 }}d {{ (live_setup_age % 86400) // 3600 }}h{% elif live_setup_age >= 3600 %}{{ live_setup_age // 3600 }}h {{ (live_setup_age % 3600) // 60 }}m{% elif live_setup_age >= 60 %}{{ live_setup_age // 60 }}m{% else %}{{ live_setup_age }}s{% endif %}</span>
               <span id="marketPulseLiveSetupFreshness">{{ 'Paused' if live_monitor.get('paused') else 'Fresh' if live_monitor.get('fresh') else 'Waiting' }}</span>
               <span id="marketPulseLiveSetupCountdown">Next check soon</span>
             </span>
@@ -1014,7 +1014,7 @@
   ('close_back_inside_5m', 'Five-minute close back inside'),
   ('reversal_2_2_5m', 'Five-minute 2-2 confirmed'),
   ('trigger_break', 'Trigger broken'),
-  ('setup_ready', 'Setup ready')
+  ('setup_ready', 'Result · Setup ready')
 ] %}
 {% set evidence_step_keys = ['location', 'sweep', 'close_back_inside_5m', 'reversal_2_2_5m', 'trigger_break'] %}
 {% set evidence_progress = namespace(confirmed=0) %}
@@ -1042,7 +1042,7 @@
       {% for key, label in strategy_steps %}
         {% set step_status = strategy_checklist.get(key) or 'Unavailable' %}
         <div class="marketPulseTriggerItem{% if step_status == 'Confirmed' %} is-active{% endif %}{% if key == 'setup_ready' %} is-result{% endif %}" data-trigger-step="{{ key }}" data-trigger-status="{{ step_status|lower }}">
-          <span class="marketPulseTriggerIndex" aria-hidden="true">{{ loop.index }}</span>
+          <span class="marketPulseTriggerIndex" aria-hidden="true">{{ 'R' if key == 'setup_ready' else loop.index }}</span>
           <div class="marketPulseTriggerCopy">
             <span class="marketPulseTriggerStepState">{{ step_status }}</span>
             <strong>{{ label }}</strong>
@@ -1052,7 +1052,7 @@
       {% endfor %}
     </div>
     <div class="marketPulseTriggerFooter" id="marketPulseTriggerFooter">
-      <strong id="marketPulseTriggerStatus">{{ strategy.get('rejection_acceptance_status') or 'Neither confirmed — wait' }}</strong>
+      <strong id="marketPulseTriggerStatus">{{ strategy.get('rejection_acceptance_status') or 'No direction confirmed — wait' }}</strong>
       <span id="marketPulseTriggerFooterLine">{{ strategy.get('gamma_interpretation') or 'Gamma regime unavailable.' }}</span>
     </div>
   </div>
@@ -2401,6 +2401,7 @@
   };
 
   const liveSetupStateLabel = (value) => String(value || "WATCHING")
+    .replace(/5M_2_2/gi, "5m_2-2")
     .replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
   const readLiveSetupDeliveries = () => {
     try {
@@ -2445,7 +2446,7 @@
       ? `${liveSetupStateLabel(primary.state)} · ${liveSetupStateLabel(primary.direction)} ${level.label || "level"}${Number.isFinite(levelValue) ? ` ${levelValue.toFixed(0)}` : ""}`
       : "Watching for a qualified SPX setup");
     setCanonicalText("marketPulseLiveSetupGrade", primary.grade || "—");
-    setCanonicalText("marketPulseLiveSetupAge", window.MarketPulseLiveSetup.formatElapsed(primary.state_age_seconds));
+    setCanonicalText("marketPulseLiveSetupAge", `Watching for ${window.MarketPulseLiveSetup.formatElapsed(primary.state_age_seconds)}`);
     setCanonicalText("marketPulseLiveSetupFreshness", monitor.paused ? "Paused" : monitor.fresh ? "Fresh" : "Waiting");
     setCanonicalText("marketPulseLiveSetupLocation", primary.location || "Waiting for a valid location");
     setCanonicalText("marketPulseLiveSetupTrigger", primary.trigger || "Completed-candle confirmation required");
@@ -2723,7 +2724,7 @@
     }
     const target = Number(window.marketPulseLiveSetupNextEvaluationAt || 0);
     const seconds = target ? window.MarketPulseLiveSetup.secondsUntil(new Date(target).toISOString()) : null;
-    node.textContent = seconds !== null ? `Next check ${seconds}s` : "Next check pending";
+    node.textContent = seconds === 0 ? "Checking…" : seconds !== null ? `Next check ${seconds}s` : "Next check pending";
   };
   const armLiveSetupCountdown = () => {
     if (liveSetupCountdownTimer) return;
@@ -2805,7 +2806,7 @@
     setCanonicalText("marketPulseHeaderSpot", staged.spot);
     setCanonicalText("marketPulseGammaDeckSpot", staged.spot);
     setCanonicalText("marketPulseStructurePrimarySpot", staged.spot);
-    setCanonicalText("marketPulseHeaderSnapshot", `Last candle · ${updatedAt}`);
+    setCanonicalText("marketPulseHeaderSnapshot", `Last completed 5m · ${updatedAt}`);
     const operationalBlockers = Array.isArray(staged.payload.operational_health?.blocking_components)
       ? staged.payload.operational_health.blocking_components
       : [];
@@ -2893,7 +2894,7 @@
     setCanonicalText("marketPulseAlternativeScore", alternativeScenario ? `${alternativeScenario.score || 0}/100 confluence · not active` : "");
     setCanonicalText("marketPulseDormantCount", `${(scenarioDecision.rankings.dormant || []).length} scenarios`);
     setCanonicalText("marketPulseTriggerHeaderLine", humanizeMarketState(strategy.state));
-    setCanonicalText("marketPulseTriggerStatus", strategy.rejection_acceptance_status || "Neither confirmed — wait");
+    setCanonicalText("marketPulseTriggerStatus", strategy.rejection_acceptance_status || "No direction confirmed — wait");
     setCanonicalText("marketPulseTriggerFooterLine", strategy.gamma_interpretation || "Gamma regime unavailable.");
     setCanonicalText("marketPulseTriggerProgressNext", strategy.missing_evidence || "Strategy evidence unavailable.");
 
@@ -2969,7 +2970,7 @@
             const snapshotNode = document.getElementById("marketPulseHeaderSnapshot");
             if (snapshotNode) {
               snapshotNode.textContent = String(snapshotNode.textContent || "")
-                .replace(/^(Live|Last valid)\s*·\s*/i, "Last candle · ");
+                .replace(/^(Live|Last valid|Last candle)\s*·\s*/i, "Last completed 5m · ");
             }
             setCanonicalText("marketPulseStatusSession", "Planning");
             setDiagnosticsSyncState("Market closed · last valid session retained");
@@ -3002,7 +3003,7 @@
           if (partialCompletedCandleLabel) {
             setCanonicalText(
               "marketPulseHeaderSnapshot",
-              `Last candle · ${partialCompletedCandleLabel}`,
+              `Last completed 5m · ${partialCompletedCandleLabel}`,
             );
           }
           const message = blockers

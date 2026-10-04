@@ -13,6 +13,8 @@ AUTO_CLEAN_COOLDOWN_SECONDS="${LAPTOP_AUTO_CLEAN_COOLDOWN_SECONDS:-3600}"
 LAST_CLEANUP_EPOCH=0
 DISK_WARN_PERCENT="${LAPTOP_DISK_WARN_PERCENT:-85}"
 MEMORY_WARN_FREE_PERCENT="${LAPTOP_MEMORY_WARN_FREE_PERCENT:-10}"
+K8S_NODE_PID_WARN="${K8S_NODE_PID_WARN:-900}"
+K8S_NODE_PID_CRITICAL="${K8S_NODE_PID_CRITICAL:-1200}"
 
 usage() {
   cat <<'EOF'
@@ -159,16 +161,40 @@ render() {
 
   section "☸️   KUBERNETES"
   if command -v kubectl >/dev/null 2>&1 && kubectl config get-contexts "$KUBE_CONTEXT" >/dev/null 2>&1; then
-    pod_rows="$(kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods --no-headers 2>/dev/null || true)"
+    node_container="${CLUSTER_NAME}-control-plane"
+    node_tasks=""
+    if command -v podman >/dev/null 2>&1; then
+      node_tasks="$(podman exec "$node_container" sh -lc \
+        'set -- /proc/[0-9]*/task/[0-9]*; echo "$#"' 2>/dev/null || true)"
+    fi
+    if [[ "$node_tasks" =~ ^[0-9]+$ ]]; then
+      if (( node_tasks >= K8S_NODE_PID_CRITICAL )); then
+        printf '%s🔴 NODE TASKS %s · critical at %s%s\n' \
+          "$RED" "$node_tasks" "$K8S_NODE_PID_CRITICAL" "$RESET"
+        warnings+=("Kubernetes node task usage is critical: ${node_tasks} tasks.")
+      elif (( node_tasks >= K8S_NODE_PID_WARN )); then
+        printf '%s🟠 NODE TASKS %s · warning at %s%s\n' \
+          "$YELLOW" "$node_tasks" "$K8S_NODE_PID_WARN" "$RESET"
+        warnings+=("Kubernetes node task usage is elevated: ${node_tasks} tasks.")
+      else
+        printf '%s🟢 NODE TASKS %s%s · healthy · per-pod ceiling 512\n' \
+          "$GREEN" "$node_tasks" "$RESET"
+      fi
+    else
+      printf '%s⚪ NODE TASKS unavailable%s\n' "$DIM" "$RESET"
+    fi
+    pod_rows="$(kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods \
+      -o custom-columns='READY:.status.containerStatuses[0].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,LAST_REASON:.status.containerStatuses[0].lastState.terminated.reason,LAST_EXIT:.status.containerStatuses[0].lastState.terminated.exitCode' \
+      --no-headers 2>/dev/null || true)"
     if [[ -z "$pod_rows" ]]; then
       warnings+=("No Kubernetes pods were found in namespace $NAMESPACE.")
     elif printf '%s\n' "$pod_rows" | awk '
-      {split($2, ready, "/")}
-      $3 == "Succeeded" || $3 == "Completed" {next}
-      ready[1] != ready[2] || $3 != "Running" || $4 + 0 > 0 {bad=1}
+      $2 == "Succeeded" || $2 == "Completed" {next}
+      $1 != "true" || $2 != "Running" {bad=1}
+      $3 + 0 > 0 && ($4 == "OOMKilled" || $4 == "Error" || ($5 != "<none>" && $5 + 0 != 0)) {bad=1}
       END {exit !bad}
     '; then
-      warnings+=("One or more active Kubernetes pods are not ready, not running, or have restarted.")
+      warnings+=("One or more active Kubernetes pods are unhealthy or had an abnormal restart.")
     fi
     kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods \
       -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount'
@@ -176,8 +202,16 @@ render() {
     kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get deployment \
       -o custom-columns='NAME:.metadata.name,CPU_REQ:.spec.template.spec.containers[0].resources.requests.cpu,CPU_LIMIT:.spec.template.spec.containers[0].resources.limits.cpu,MEM_REQ:.spec.template.spec.containers[0].resources.requests.memory,MEM_LIMIT:.spec.template.spec.containers[0].resources.limits.memory'
     printf '\n%sLIVE USAGE%s\n' "$BLUE" "$RESET"
-    kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" top pods 2>/dev/null || \
-      printf '%sℹ Metrics warming up · resource limits remain enforced%s\n' "$YELLOW" "$RESET"
+    if ! kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" top pods 2>/dev/null; then
+      if kubectl --context "$KUBE_CONTEXT" get apiservice \
+        v1beta1.metrics.k8s.io >/dev/null 2>&1; then
+        printf '%sℹ Metrics API is installed but not ready · resource limits remain enforced%s\n' \
+          "$YELLOW" "$RESET"
+      else
+        printf '%sℹ Metrics Server is not installed · resource limits remain enforced%s\n' \
+          "$YELLOW" "$RESET"
+      fi
+    fi
   else
     printf '%s● OFFLINE%s Kubernetes context %s is unavailable\n' "$RED" "$RESET" "$KUBE_CONTEXT"
     warnings+=("Kubernetes context $KUBE_CONTEXT is unavailable.")
@@ -196,13 +230,14 @@ render() {
   printf '%s%-23s%s %s\n' "$BLUE" "Cleanup preview" "$RESET" "./scripts/manage_podman_storage.sh cleanup"
   printf '%s%-23s%s %s\n' "$BLUE" "Safe image cleanup" "$RESET" "./scripts/manage_podman_storage.sh cleanup --apply"
   printf '%s%-23s%s %s\n' "$BLUE" "Detailed K8s status" "$RESET" "./scripts/local_k8s_status.sh"
+  printf '%s%-23s%s %s\n' "$BLUE" "K8s recovery guard" "$RESET" "./scripts/local_k8s_guard.sh --status"
 }
 
 FRAME_FILE=""
 if [[ "$WATCH" -eq 1 && -t 1 ]]; then
   FRAME_FILE="$(mktemp -t mccain-resource-monitor.XXXXXX)"
-  printf '\033[?25l'
-  trap 'rm -f "$FRAME_FILE"; printf "\033[?25h\n"' EXIT INT TERM
+  printf '\033[?1049h\033[?25l'
+  trap 'rm -f "$FRAME_FILE"; printf "\033[?25h\033[?1049l\n"' EXIT INT TERM
 fi
 
 while true; do

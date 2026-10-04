@@ -35,6 +35,9 @@ echo "[local-k8s] worker heartbeat"
 "$KUBECTL_BIN" --context "kind-${CLUSTER_NAME}" -n "$NAMESPACE" exec \
   deployment/mccain-capital-worker -- python -m mccain_capital.worker --check
 echo "current"
+echo "[local-k8s] worker capacity"
+"$KUBECTL_BIN" --context "kind-${CLUSTER_NAME}" -n "$NAMESPACE" exec \
+  deployment/mccain-capital-worker -- python -m mccain_capital.worker --status-json
 echo
 echo "[local-k8s] localhost health"
 curl -sf http://127.0.0.1:5001/healthz

@@ -903,9 +903,9 @@ def test_market_pulse_header_uses_completed_candle_and_compact_controls(client):
     gamma_context = (root / "static/js/market_pulse_gamma_context.js").read_text(encoding="utf-8")
     chart = (root / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
 
-    assert "Last candle ·" in body
+    assert "Last completed 5m ·" in body
     assert "last_completed_candle_time_label" in gamma_context
-    assert "Last candle · ${snapshotLabel}" in chart
+    assert "Last completed 5m · ${snapshotLabel}" in chart
     assert body.count('id="marketPulseRefreshCountdown"') == 1
     assert body.count("marketPulseUtilityIconButton") == 3
     actions_start = body.index("marketPulsePlaybookActions marketPulseCockpitUtility")

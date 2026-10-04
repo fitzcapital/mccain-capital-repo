@@ -630,16 +630,7 @@ def run_market_pulse_server_setup_monitor_cycle(
         freshness = dict(snapshot.get("canonical_freshness") or {})
     execution_chart = dict(snapshot.get("execution_chart") or {})
     bars = list(execution_chart.get("strategy_bars_5m") or [])
-    last_candle = ""
-    if bars:
-        last = dict(bars[-1] or {})
-        last_candle = str(
-            last.get("completed_at")
-            or last.get("ts")
-            or last.get("timestamp")
-            or last.get("time")
-            or ""
-        )
+    last_candle = _market_pulse_last_completed_candle(bars)
     if last_candle and last_candle == previous_candle:
         return {
             "status": "unchanged",
@@ -667,6 +658,19 @@ def run_market_pulse_server_setup_monitor_cycle(
         "setup_count": len(monitor.get("recent") or []),
         "error": "" if healthy else ",".join(monitor.get("blockers") or ["setup_monitor"]),
     }
+
+
+def _market_pulse_last_completed_candle(bars: list[Any]) -> str:
+    if not bars:
+        return ""
+    last = dict(bars[-1] or {})
+    return str(
+        last.get("completed_at")
+        or last.get("ts")
+        or last.get("timestamp")
+        or last.get("time")
+        or ""
+    )
 
 
 def _market_news_cache_file() -> str:
@@ -952,7 +956,10 @@ def _store_market_pulse_replay_series(
         return
     symbols[symbol_key] = {
         "session_day": session_day_iso,
-        "points": list(points)[-240:],
+        # Preserve the full 390-minute cash session plus a small boundary
+        # allowance. Keeping only 240 points silently dropped the open after
+        # 1:30 PM even though the provider fetch itself pages the full day.
+        "points": list(points)[-420:],
         "saved_at": app_runtime.now_et().isoformat(),
     }
     _save_market_pulse_replay_cache(payload)
@@ -1003,7 +1010,9 @@ def _market_pulse_rows_session_day(rows: List[Dict[str, Any]]) -> Optional[date]
 
 def _market_pulse_rows_to_points(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     points: List[Dict[str, Any]] = []
-    for row in rows[-240:]:
+    # A regular session contains 390 one-minute rows. The previous 240-row
+    # limit caused afternoon Market Pulse snapshots to begin around 10:30.
+    for row in rows[-420:]:
         if not isinstance(row, dict) or row.get("close") is None:
             continue
         ts_raw = str(row.get("ts") or "").strip()
@@ -2737,13 +2746,13 @@ def _market_pulse_chart_source_viewmodel(
     points = list(execution_chart.get("points") or [])
     strategy_bars = list(execution_chart.get("strategy_bars_5m") or [])
     bars_as_of = ""
-    if points and isinstance(points[-1], dict):
-        bars_as_of = str(points[-1].get("ts") or "")
-    if not bars_as_of and strategy_bars and isinstance(strategy_bars[-1], dict):
-        # The canonical completed-bar series can remain populated while the
-        # sampled display series is temporarily empty. Keep the header tied to
-        # the newest completed five-minute candle instead of rendering a dash.
+    if strategy_bars and isinstance(strategy_bars[-1], dict):
+        # Freshness and setup evaluation must follow the canonical completed
+        # five-minute series. Display points can include the still-forming
+        # current minute and are not a completed-candle timestamp.
         bars_as_of = str(strategy_bars[-1].get("ts") or "")
+    if not bars_as_of and points and isinstance(points[-1], dict):
+        bars_as_of = str(points[-1].get("ts") or "")
     if mode == "live_session":
         chart_state = "live_session"
         bars_source = "live_session_bars"

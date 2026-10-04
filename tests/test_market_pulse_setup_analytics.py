@@ -631,6 +631,88 @@ def test_history_leaders_follow_the_same_family_and_time_filters(analytics_db):
     assert payload["leaders"]["combination"]["direction"] == "bullish"
 
 
+def test_weekday_filter_validation_and_new_york_session_assignment():
+    assert analytics._weekday_key("2026-09-07") == "monday"
+    assert analytics._weekday_key("2026-09-12") is None
+    assert analytics._weekday_key("not-a-date") is None
+    assert analytics.normalize_filters({"weekday": "Wednesday"})["weekday"] == "wednesday"
+
+    with pytest.raises(analytics.AnalyticsFilterError, match="Invalid weekday"):
+        analytics.normalize_filters({"weekday": "saturday"})
+
+
+def test_weekday_study_reconciles_and_excludes_incomplete_outcomes_from_rate(analytics_db):
+    events = [
+        setup("monday-hit", "2026-09-07T10:00:00-04:00", outcome="target_reached"),
+        setup("monday-miss", "2026-09-07T10:05:00-04:00", outcome="invalidated"),
+        setup("monday-open", "2026-09-07T10:10:00-04:00", outcome="open"),
+        setup("tuesday-hit", "2026-09-08T10:00:00-04:00", outcome="target_reached"),
+    ]
+    analytics.upsert_records(events)
+
+    payload = analytics.analytics_payload({"preset": "all_history"})
+    study = payload["weekday_study"]
+    monday = next(row for row in study["rows"] if row["weekday_key"] == "monday")
+
+    assert monday["total_occurrences"] == 3
+    assert monday["evaluated_count"] == 2
+    assert monday["target_reached_count"] == 1
+    assert monday["target_reached_rate"] == 50.0
+    assert monday["open_count"] == 1
+    assert monday["gamma_coverage"]["sufficient"] is False
+    assert sum(row["total_occurrences"] for row in study["rows"]) == 4
+    assert study["reconciliation"] == {
+        "named_weekday_count": 4,
+        "filtered_total": 4,
+        "matches": True,
+        "duplicate_rows_excluded": 0,
+    }
+
+
+def test_weekday_study_ranks_evidence_and_filter_constrains_entire_payload(analytics_db):
+    events = []
+    for index in range(2):
+        event = setup(
+            f"wednesday-tiny-{index}",
+            f"2026-09-09T12:{30 + index:02d}:00-04:00",
+            family="tiny_family",
+            outcome="target_reached",
+            mfe=4,
+            mae=1,
+        )
+        event["family_label"] = "Tiny perfect setup"
+        events.append(event)
+    for index, outcome in enumerate(
+        ["target_reached", "target_reached", "target_reached", "target_reached", "invalidated"]
+    ):
+        event = setup(
+            f"wednesday-established-{index}",
+            f"2026-09-09T10:{30 + index:02d}:00-04:00",
+            family="established_family",
+            outcome=outcome,
+            mfe=8,
+            mae=2,
+        )
+        event["family_label"] = "Repeatable setup"
+        events.append(event)
+    events.append(setup("thursday-only", "2026-09-10T11:00:00-04:00", outcome="invalidated"))
+    analytics.upsert_records(events)
+
+    all_history = analytics.analytics_payload({"preset": "all_history"})
+    wednesday = next(
+        row for row in all_history["weekday_study"]["rows"] if row["weekday_key"] == "wednesday"
+    )
+    assert wednesday["leaders"]["setup"]["label"] == "Repeatable setup"
+    assert wednesday["leaders"]["setup"]["evidence"]["key"] == "established"
+    assert wednesday["leaders"]["combination"]["filter_end_time"] == "10:59"
+
+    filtered = analytics.analytics_payload({"preset": "all_history", "weekday": "thursday"})
+    assert filtered["metrics"]["total_setups"] == 1
+    assert filtered["filters"]["weekday"] == "thursday"
+    assert [row["weekday_key"] for row in filtered["weekday_study"]["rows"]] == ["thursday"]
+    assert all(row["session_date"] == "2026-09-10" for row in filtered["ledger"]["rows"])
+
+
 def test_market_pulse_replay_links_to_analytics(client):
     body = client.get("/market-pulse?ticker=SPX").get_data(as_text=True)
     assert "Analyze setups" in body
@@ -644,10 +726,17 @@ def test_setup_analytics_api_is_bounded_and_read_only(client):
     )
     assert valid.status_code == 200
     payload = valid.get_json()["payload"]
-    assert {"metrics", "charts", "ledger", "coverage"}.issubset(payload)
+    assert {"metrics", "charts", "ledger", "coverage", "weekday_study"}.issubset(payload)
+    assert payload["weekday_study"]["reconciliation"]["matches"] is True
     assert (
         "not option fills, actual contract returns, or realized profit" in payload["interpretation"]
     )
+
+    invalid_weekday = client.get(
+        "/api/market-pulse/setup-analytics?ticker=SPX&preset=all_history&weekday=saturday"
+    )
+    assert invalid_weekday.status_code == 400
+    assert "weekday" in invalid_weekday.get_json()["message"].lower()
     assert "Gamma is frozen signal-time context" in payload["interpretation"]
     assumptions = payload["profit_estimate_assumptions"]
     assert {

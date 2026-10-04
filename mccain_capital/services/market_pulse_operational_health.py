@@ -112,6 +112,8 @@ def build_resource_diagnostics(
 def _component_evidence(name: str, value: dict[str, Any] | None) -> dict[str, Any]:
     item = dict(value or {})
     status = _text(item.get("status") or "unavailable").lower()
+    if name == "strategy" and not bool(item.get("required")) and status == "stale":
+        status = "waiting"
     completeness = item.get("completeness")
     if completeness is None:
         completeness = 1.0 if status == "current" else 0.0
@@ -167,7 +169,7 @@ def build_trust_verdict(
     adopted = not generation_id or generation_id == worker_generation
     if not persistence or bool(fresh.get("execution_locked")) or blockers:
         verdict = "Locked"
-    elif not adopted or not generation_id:
+    elif not adopted:
         verdict = "Degraded"
     else:
         verdict = "Verified"

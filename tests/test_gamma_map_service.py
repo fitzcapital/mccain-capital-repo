@@ -111,6 +111,35 @@ def test_compute_row_gex_matches_configured_formula():
     assert svc.compute_row_gex(0.01, 1000, 5100.0, "put") == -expected
 
 
+def test_gamma_export_skips_optional_png_renderer_by_default(tmp_path, monkeypatch):
+    calls = []
+
+    class Figure:
+        def write_image(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr(svc, "GAMMA_PNG_EXPORT_ENABLED", False)
+    paths = svc.export_outputs(pd.DataFrame([{"strike": 5000}]), Figure(), Figure(), tmp_path)
+
+    assert paths["csv"].endswith(svc.CSV_FILENAME)
+    assert paths["png"] == ""
+    assert calls == []
+
+
+def test_gamma_export_renders_png_only_when_explicitly_enabled(tmp_path, monkeypatch):
+    calls = []
+
+    class Figure:
+        def write_image(self, path, **kwargs):
+            calls.append((path, kwargs))
+
+    monkeypatch.setattr(svc, "GAMMA_PNG_EXPORT_ENABLED", True)
+    paths = svc.export_outputs(pd.DataFrame([{"strike": 5000}]), Figure(), Figure(), tmp_path)
+
+    assert paths["png"].endswith(svc.PNG_FILENAME)
+    assert len(calls) == 1
+
+
 def test_classify_gamma_regime_positive_threshold():
     assert (
         svc.classify_gamma_regime(

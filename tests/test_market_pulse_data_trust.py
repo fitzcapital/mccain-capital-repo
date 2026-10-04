@@ -67,6 +67,22 @@ def test_trust_verdict_fails_closed_without_fresh_gamma_or_persistence():
     assert proxy["source"] == "SPY volume proxy" and proxy["completeness"] == 0.8
 
 
+def test_optional_stale_strategy_is_advisory_not_a_degraded_verdict():
+    payload = freshness()
+    payload["generation_id"] = ""
+    payload["source_generation_id"] = ""
+    payload["components"]["strategy"] = {
+        "required": False,
+        "status": "stale",
+        "source": "Completed candle evidence",
+    }
+
+    result = build_trust_verdict(freshness=payload)
+
+    assert result["verdict"] == "Verified"
+    assert result["components"]["strategy"]["status"] == "waiting"
+
+
 def test_incident_is_deduped_recovered_and_read_after_memory_boundary(reliability_db):
     opened = record_reliability_event(
         at=NOW.isoformat(),

@@ -9,8 +9,10 @@ from pathlib import Path
 import signal
 import sys
 import time
+import json
 
 from mccain_capital import create_app, runtime_role
+from mccain_capital import worker_resources
 
 
 DATA_DIR = Path(os.environ.get("PERSISTENT_DATA_DIR") or "/data")
@@ -30,7 +32,7 @@ def heartbeat_is_current(*, now: float | None = None) -> bool:
         age = (now if now is not None else time.time()) - HEARTBEAT_PATH.stat().st_mtime
     except OSError:
         return False
-    return 0 <= age <= MAX_HEARTBEAT_AGE_SECONDS
+    return 0 <= age <= MAX_HEARTBEAT_AGE_SECONDS and worker_resources.capacity_is_safe()
 
 
 def _acquire_owner_lock():
@@ -74,6 +76,13 @@ def run() -> int:
     signal.signal(signal.SIGINT, _stop)
     try:
         while not stopping:
+            capacity = worker_resources.sample(component="heartbeat")
+            if worker_resources.critical_limit_reached(capacity):
+                print(
+                    "[mccain-worker] sustained task capacity is unsafe; requesting restart",
+                    file=sys.stderr,
+                )
+                return 70
             HEARTBEAT_PATH.touch()
             time.sleep(HEARTBEAT_SECONDS)
     finally:
@@ -85,7 +94,13 @@ def run() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="McCain Capital background worker")
     parser.add_argument("--check", action="store_true", help="check worker heartbeat freshness")
+    parser.add_argument("--status-json", action="store_true", help="print sanitized capacity state")
     args = parser.parse_args(argv)
+    if args.status_json:
+        payload = worker_resources.read_state()
+        payload["heartbeat_current"] = heartbeat_is_current()
+        print(json.dumps(payload, sort_keys=True))
+        return 0 if payload else 1
     if args.check:
         return 0 if heartbeat_is_current() else 1
     try:
