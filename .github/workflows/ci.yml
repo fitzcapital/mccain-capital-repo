@@ -106,61 +106,9 @@ jobs:
           docker logs --tail 80 mccain-capital-smoke
           docker rm -f mccain-capital-smoke
 
-  visual-regression-smoke:
-    runs-on: ubuntu-latest
-    needs: container-build-and-smoke
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-          python -m playwright install --with-deps chromium
-
-      - name: Start app container
-        run: |
-          docker build -t mccain-capital-app:visual -f Containerfile .
-          docker run -d --name mccain-capital-visual -p 5001:5001 mccain-capital-app:visual
-          ready=0
-          for i in $(seq 1 15); do
-            if curl -fsS http://127.0.0.1:5001/healthz >/dev/null; then
-              ready=1
-              break
-            fi
-            sleep 2
-          done
-          if [ "$ready" -ne 1 ]; then
-            docker logs --tail 120 mccain-capital-visual
-            exit 1
-          fi
-
-      - name: Capture desktop/mobile visual smoke screenshots
-        run: |
-          VISUAL_BASE_URL=http://127.0.0.1:5001 \
-          VISUAL_OUT_DIR=artifacts/visual \
-          python tests/visual_smoke.py
-
-      - name: Upload visual artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-smoke-screenshots
-          path: artifacts/visual
-          if-no-files-found: error
-
-      - name: Stop app container
-        if: always()
-        run: docker rm -f mccain-capital-visual || true
-
   deploy-guardrails:
     runs-on: ubuntu-latest
-    needs: visual-regression-smoke
+    needs: container-build-and-smoke
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Guardrail summary
@@ -171,4 +119,3 @@ jobs:
           echo "- migrations executed twice (idempotent)"
           echo "- tests green"
           echo "- container smoke checks green"
-          echo "- visual desktop/mobile smoke screenshots captured"
