@@ -138,7 +138,7 @@ def test_live_monitor_auto_cleanup_is_conservative_and_throttled() -> None:
     assert "podman volume prune" not in script
     assert '$2 == "Succeeded" || $2 == "Completed" {next}' in script
     assert "active Kubernetes pods" in script
-    assert 'LAST_REASON:.status.containerStatuses[0].lastState.terminated.reason' in script
+    assert "LAST_REASON:.status.containerStatuses[0].lastState.terminated.reason" in script
     assert '$4 == "OOMKilled" || $4 == "Error"' in script
     assert "had an abnormal restart" in script
     assert 'monitor_mode="safe auto-clean armed"' in script

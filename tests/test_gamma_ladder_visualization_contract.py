@@ -313,7 +313,7 @@ def test_gamma_ladder_guidance_is_ranked_selected_and_plain_language():
     assert "const nearestPriority = rankedPriorityRows(payload)[0]" in controller
     assert "if (nearestRow) updateSelectedInspector(nearestRow)" in controller
     assert 'Close ${movingUp ? "above" : "below"}' in controller
-    assert 'Failure: reclaim above ${nearestText}' in controller
+    assert "Failure: reclaim above ${nearestText}" in controller
     assert "Loss of ${formatNumber(decision, 0)}" in controller
     assert "Crossed ${Number(payload.spot)" in controller
     assert "No prior Gamma snapshot is available." in controller
